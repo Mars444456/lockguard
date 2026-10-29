@@ -73,6 +73,10 @@
               <span class="card-filename" id="current-filename">migration.sql</span>
             </div>
             <div class="header-actions">
+              <label style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                <input type="checkbox" id="chk-context" checked> Context Data (14.2M rows)
+              </label>
+              <button id="btn-split" class="btn-secondary btn-sm" style="border-color: var(--accent-cyan); color: var(--accent-cyan);">🔀 Auto-Split</button>
               <button id="btn-clear-sql" class="btn-secondary btn-sm">Clear</button>
               <button id="btn-analyze" class="btn-primary btn-sm">⚡ Analyze Migration</button>
             </div>

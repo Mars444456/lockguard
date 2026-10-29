@@ -273,7 +273,7 @@ jobs:
 
       # Подключаем гейткипер одной строкой:
       - name: Check PostgreSQL Locks
-        uses: lockguard/action@v1
+        uses: Mars444456/lockguard@v1
         with:
           migrations_dir: './migrations'
           format: 'github-pr-comment'
@@ -299,5 +299,6 @@ npm start
 - [ ] Добавляются ли новые колонки без volatile-выражений в `DEFAULT`?
 - [ ] Проверен ли PR автоматическим гейткипером?
 
-* Репозиторий проекта на GitHub: [github.com/lockguard/lockguard](https://github.com/lockguard/lockguard)
-* Лицензия: MIT (Open Source). Будем рады звездам, issue и вашим историям факапов в комментариях!
+* Репозиторий проекта на GitHub: [github.com/Mars444456/lockguard](https://github.com/Mars444456/lockguard)
+* Telegram автора для связи и бесплатного аудита: **[@marswwu](https://t.me/marswwu)**
+* Лицензия: MIT (Open Source). Будем рады звёздам и обратной связи!
