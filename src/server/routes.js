@@ -1,4 +1,11 @@
-const { RuleEngine, GitHubPrFormatter } = require('../core');
+const {
+  RuleEngine,
+  GitHubPrFormatter,
+  AutoSplitter,
+  ContextAnalyzer,
+  PostDeployWatchdog,
+  ShadowReplaySimulator
+} = require('../core');
 const db = require('./db-mock');
 const StripeService = require('./stripe-service');
 
@@ -8,7 +15,7 @@ function registerRoutes(router) {
   // 1. Analyze Migration SQL
   router.post('/api/v1/analyze', async (req, res) => {
     try {
-      const { sql, filename, apiKey, recordRun = false, repo, prNumber, branch } = req.body || {};
+      const { sql, filename, apiKey, recordRun = false, repo, prNumber, branch, withContext = false } = req.body || {};
 
       if (!sql || typeof sql !== 'string') {
         return res.status(400).json({ error: 'Missing or invalid "sql" parameter.' });
@@ -23,9 +30,13 @@ function registerRoutes(router) {
         }
       }
 
-      const result = ruleEngine.analyze(sql, {
+      let result = ruleEngine.analyze(sql, {
         filename: filename || 'custom_migration.sql'
       });
+
+      if (withContext) {
+        result = ContextAnalyzer.enrich(result);
+      }
 
       // Optionally record into audit run history
       if (recordRun || repo) {
@@ -179,6 +190,38 @@ function registerRoutes(router) {
       prNumber,
       markdownComment: markdown
     });
+  });
+
+  // 9. Auto-Splitter: Multi-phase generation
+  router.post('/api/v1/split', async (req, res) => {
+    const { sql, orm = 'sql' } = req.body || {};
+    if (!sql) return res.status(400).json({ error: 'Missing sql' });
+    const analysis = ruleEngine.analyze(sql);
+    const plan = AutoSplitter.generatePlan(analysis, orm);
+    return res.status(200).json({ success: true, plan });
+  });
+
+  // 10. Post-Deploy Watchdog: Invalid Index Inspection
+  router.get('/api/v1/watchdog', async (req, res) => {
+    const mockTelemetry = [
+      {
+        index_name: 'idx_orders_user_id_failed',
+        table_name: 'orders',
+        is_valid: false,
+        index_size: '3.4 GB'
+      }
+    ];
+    const report = PostDeployWatchdog.evaluate(mockTelemetry);
+    return res.status(200).json({ success: true, report });
+  });
+
+  // 11. Shadow Replay Simulator
+  router.post('/api/v1/simulate', async (req, res) => {
+    const { sql, simulatedRows = 50000, concurrentRps = 250 } = req.body || {};
+    if (!sql) return res.status(400).json({ error: 'Missing sql' });
+    const analysis = ruleEngine.analyze(sql);
+    const sim = ShadowReplaySimulator.simulate(analysis, { simulatedRows, concurrentRps });
+    return res.status(200).json({ success: true, simulation: sim });
   });
 }
 

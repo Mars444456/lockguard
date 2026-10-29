@@ -133,6 +133,14 @@ class LockGuardApp {
       this.analyzeCurrentSql();
     });
 
+    // Auto-Split button
+    const btnSplit = document.getElementById('btn-split');
+    if (btnSplit) {
+      btnSplit.addEventListener('click', () => {
+        this.splitCurrentSql();
+      });
+    }
+
     // Clear SQL
     document.getElementById('btn-clear-sql').addEventListener('click', () => {
       document.getElementById('sql-input').value = '';
@@ -177,6 +185,7 @@ class LockGuardApp {
       return;
     }
 
+    const withContext = document.getElementById('chk-context')?.checked ?? true;
     const btn = document.getElementById('btn-analyze');
     btn.disabled = true;
     btn.textContent = 'Analyzing AST...';
@@ -187,7 +196,8 @@ class LockGuardApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sql,
-          filename: document.getElementById('current-filename').textContent
+          filename: document.getElementById('current-filename').textContent,
+          withContext
         })
       });
 
@@ -202,6 +212,76 @@ class LockGuardApp {
     } finally {
       btn.disabled = false;
       btn.textContent = '⚡ Analyze Migration';
+    }
+  }
+
+  async splitCurrentSql() {
+    const sql = document.getElementById('sql-input').value.trim();
+    if (!sql) {
+      this.showToast('Please enter SQL statements to split.');
+      return;
+    }
+
+    const btn = document.getElementById('btn-split');
+    btn.disabled = true;
+    btn.textContent = 'Splitting...';
+
+    try {
+      const res = await fetch('/api/v1/split', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql, orm: 'sql' })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to split migration');
+
+      if (data.plan.isSafe) {
+        this.showToast('Migration is already safe! No splitting required.');
+      } else {
+        const violationsList = document.getElementById('violations-list');
+        violationsList.innerHTML = `
+          <div style="background: rgba(6, 182, 212, 0.1); border: 1px solid var(--accent-cyan); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+            <h4 style="color: var(--accent-cyan); margin-bottom: 0.5rem;">🔀 Auto-Splitter: Decomposed into ${data.plan.totalPhases} Zero-Downtime Releases</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted);">Apply these releases sequentially across deployments to eliminate production locking.</p>
+          </div>
+        `;
+
+        data.plan.phases.forEach(p => {
+          const item = document.createElement('div');
+          item.className = 'violation-card';
+          item.style.borderLeftColor = 'var(--accent-cyan)';
+          item.innerHTML = `
+            <div class="violation-header">
+              <span class="violation-title">📦 Phase ${p.phaseNumber}: ${p.title}</span>
+            </div>
+            <div class="violation-desc" style="color: var(--text-muted);">${p.description}</div>
+            <div class="fix-box">
+              <div class="fix-header">
+                <span>SQL Release Script</span>
+                <button class="btn-secondary btn-xs btn-copy-snippet" data-fix="${encodeURIComponent(p.sql)}">Copy Script</button>
+              </div>
+              <div class="fix-code">${this.escapeHtml(p.sql)}</div>
+            </div>
+          `;
+          violationsList.appendChild(item);
+        });
+
+        violationsList.querySelectorAll('.btn-copy-snippet').forEach(b => {
+          b.addEventListener('click', (e) => {
+            const raw = decodeURIComponent(e.target.dataset.fix);
+            navigator.clipboard.writeText(raw);
+            this.showToast('Copied phase script to clipboard!');
+          });
+        });
+
+        this.showToast(`Auto-Split into ${data.plan.totalPhases} zero-downtime releases!`);
+      }
+    } catch (err) {
+      this.showToast('Split error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔀 Auto-Split';
     }
   }
 
@@ -248,7 +328,12 @@ class LockGuardApp {
           <div class="violation-meta">
             Rule: <b>${v.ruleId}</b> | Table: <b>${v.table}</b> | Lock: <b>${v.lockLevel}</b> | Line: <b>L${v.line}</b>
           </div>
-          <div class="violation-desc">${v.message}</div>
+          ${v.estimatedDowntimeFormatted ? `
+            <div style="font-size:0.75rem; color:var(--accent-red); margin-bottom:0.4rem; font-weight:700;">
+              ⏱️ Расчетное время лока: ~${v.estimatedDowntimeFormatted} (${v.downtimeRiskLevel})
+            </div>
+          ` : ''}
+          <div class="violation-desc">${v.contextualMessage || v.message}</div>
           ${v.safeFix ? `
             <div class="fix-box">
               <div class="fix-header">
