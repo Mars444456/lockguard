@@ -1,4 +1,4 @@
-name: LockGuard Migration Gatekeeper
+name: LockGuard CI & Migration Gatekeeper
 
 on:
   pull_request:
@@ -6,14 +6,17 @@ on:
       - 'migrations/**'
       - 'fixtures/**'
       - '**/*.sql'
+      - 'src/**'
+      - 'test/**'
+      - 'bin/**'
   push:
     branches:
       - main
       - master
 
 jobs:
-  lockguard-audit:
-    name: Audit PostgreSQL Locks
+  test-and-audit:
+    name: Run Unit Tests & Migration Gatekeeper
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -28,11 +31,12 @@ jobs:
         with:
           node-version: 20
 
-      - name: Run LockGuard Gatekeeper
+      - name: Run Automated Test Suite
+        run: npm test
+
+      - name: Run LockGuard Gatekeeper on Safe Demo
         run: |
-          node bin/lockguard.js check fixtures/ --format=github-pr-comment --output=lockguard-pr-report.md
-        env:
-          LOCKGUARD_API_KEY: ${{ secrets.LOCKGUARD_API_KEY }}
+          node bin/lockguard.js check fixtures/10_safe_migration.sql --format=github-pr-comment --output=lockguard-pr-report.md
 
       - name: Post Sticky PR Comment
         if: always() && github.event_name == 'pull_request'

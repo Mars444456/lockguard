@@ -62,7 +62,7 @@ test('Routes - GET /api/v1/rules returns all rules catalog', async () => {
 
   await route.handler(req, res);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.data.count, 8);
+  assert.equal(res.data.count, 10);
 });
 
 test('Routes - POST /api/v1/verify-key validates license token', async () => {

@@ -79,7 +79,8 @@ const LockMatrix = {
   /**
  * LockGuard PostgreSQL DDL Lexer & AST Parser
  * Converts raw PostgreSQL migration SQL into a structured AST representation.
- * Resilient against comments, multi-line statements, quoted strings, and dialect variations.
+ * Resilient against Dollar-Quoting ($$ and $tag$), multi-line statements,
+ * comments, multiple ALTER TABLE actions, and inline directives (-- lockguard-ignore).
  */
 
 class PgParser {
@@ -97,7 +98,7 @@ class PgParser {
     const astStatements = [];
 
     for (const raw of rawStatements) {
-      const parsed = this.parseStatement(raw.sql, raw.line, raw.rawFull);
+      const parsed = this.parseStatement(raw.sql, raw.line, raw.rawFull, raw.comments, raw.ignoreDirectives);
       if (parsed) {
         astStatements.push(parsed);
       }
@@ -107,8 +108,37 @@ class PgParser {
   }
 
   /**
+   * Extracts ignore directives from comment lines.
+   * Supports:
+   * -- lockguard-ignore-all
+   * -- lockguard-ignore: LG-001, LG-004
+   */
+  static extractIgnoreDirectives(comments = []) {
+    let ignoreAll = false;
+    const ignoreRules = [];
+
+    for (const c of comments) {
+      if (/--\s*lockguard-ignore-all\b/i.test(c) || /\/\*\s*lockguard-ignore-all\s*\*\//i.test(c)) {
+        ignoreAll = true;
+      }
+      const match = c.match(/lockguard-ignore:\s*([A-Za-z0-9_,\s-]+)/i);
+      if (match) {
+        const parts = match[1].split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+        for (const p of parts) {
+          if (!ignoreRules.includes(p)) {
+            ignoreRules.push(p);
+          }
+        }
+      }
+    }
+
+    return { ignoreAll, ignoreRules };
+  }
+
+  /**
    * Splits SQL text into individual statements, tracking line numbers.
-   * Preserves strings and correctly ignores semicolons inside quotes or comments.
+   * Fully supports Dollar-Quoting ($$ and $tag$), single quotes, double quotes,
+   * line comments (--), and block comments.
    */
   static splitStatements(sql) {
     const statements = [];
@@ -116,10 +146,16 @@ class PgParser {
     let currentRaw = '';
     let startLine = 1;
     let currentLine = 1;
+
     let inSingleQuote = false;
     let inDoubleQuote = false;
     let inLineComment = false;
     let inBlockComment = false;
+    let inDollarQuote = false;
+    let dollarTag = '';
+
+    let pendingComments = [];
+    let currentComment = '';
 
     for (let i = 0; i < sql.length; i++) {
       const char = sql[i];
@@ -129,43 +165,82 @@ class PgParser {
         currentLine++;
       }
 
-      // Handle Line Comment --
-      if (!inSingleQuote && !inDoubleQuote && !inBlockComment) {
-        if (!inLineComment && char === '-' && nextChar === '-') {
-          inLineComment = true;
-          currentRaw += char;
-          continue;
-        }
-        if (inLineComment && char === '\n') {
-          inLineComment = false;
-          currentRaw += char;
-          continue;
-        }
-      }
-
-      // Handle Block Comment /* */
-      if (!inSingleQuote && !inDoubleQuote && !inLineComment) {
-        if (!inBlockComment && char === '/' && nextChar === '*') {
-          inBlockComment = true;
-          currentRaw += char;
-          continue;
-        }
-        if (inBlockComment && char === '*' && nextChar === '/') {
-          inBlockComment = false;
-          currentRaw += '*/';
-          i++; // skip next char
-          continue;
-        }
-      }
-
-      if (inLineComment || inBlockComment) {
+      // 1. Inside Dollar-Quoting ($$ ... $$ or $tag$ ... $tag$)
+      if (inDollarQuote) {
+        current += char;
         currentRaw += char;
+        if (char === '$' && sql.startsWith(dollarTag, i)) {
+          // Found closing dollar quote
+          current += dollarTag.slice(1);
+          currentRaw += dollarTag.slice(1);
+          i += dollarTag.length - 1;
+          inDollarQuote = false;
+          dollarTag = '';
+        }
         continue;
       }
 
-      // Handle Quotes
+      // 2. Handle Line Comment --
+      if (!inSingleQuote && !inDoubleQuote && !inBlockComment) {
+        if (!inLineComment && char === '-' && nextChar === '-') {
+          inLineComment = true;
+          currentComment = '--';
+          currentRaw += char;
+          continue;
+        }
+        if (inLineComment) {
+          currentRaw += char;
+          if (char === '\n') {
+            inLineComment = false;
+            pendingComments.push(currentComment.trim());
+            currentComment = '';
+          } else {
+            currentComment += char;
+          }
+          continue;
+        }
+      }
+
+      // 3. Handle Block Comment /* */
+      if (!inSingleQuote && !inDoubleQuote && !inLineComment) {
+        if (!inBlockComment && char === '/' && nextChar === '*') {
+          inBlockComment = true;
+          currentComment = '/*';
+          currentRaw += char;
+          continue;
+        }
+        if (inBlockComment) {
+          currentRaw += char;
+          if (char === '*' && nextChar === '/') {
+            inBlockComment = false;
+            currentRaw += '/';
+            currentComment += '*/';
+            pendingComments.push(currentComment.trim());
+            currentComment = '';
+            i++; // skip next char '/'
+          } else {
+            currentComment += char;
+          }
+          continue;
+        }
+      }
+
+      // 4. Handle Dollar-Quoting Start ($$ or $tag$)
+      if (!inSingleQuote && !inDoubleQuote && char === '$') {
+        const remaining = sql.slice(i);
+        const match = remaining.match(/^\$([a-zA-Z0-9_]*)\$/);
+        if (match) {
+          inDollarQuote = true;
+          dollarTag = match[0];
+          current += dollarTag;
+          currentRaw += dollarTag;
+          i += dollarTag.length - 1;
+          continue;
+        }
+      }
+
+      // 5. Handle Single Quotes
       if (char === "'" && !inDoubleQuote) {
-        // Escaped single quote in SQL: ''
         if (inSingleQuote && nextChar === "'") {
           current += "''";
           currentRaw += "''";
@@ -178,6 +253,7 @@ class PgParser {
         continue;
       }
 
+      // 6. Handle Double Quotes
       if (char === '"' && !inSingleQuote) {
         inDoubleQuote = !inDoubleQuote;
         current += char;
@@ -185,14 +261,19 @@ class PgParser {
         continue;
       }
 
-      // Semicolon separator
-      if (char === ';' && !inSingleQuote && !inDoubleQuote) {
+      // 7. Semicolon Separator (only outside quotes and dollar-quotes)
+      if (char === ';' && !inSingleQuote && !inDoubleQuote && !inDollarQuote) {
         if (current.trim().length > 0) {
+          const stmtComments = [...pendingComments];
+          const directives = this.extractIgnoreDirectives(stmtComments);
           statements.push({
             sql: current.trim(),
             rawFull: currentRaw.trim() + ';',
-            line: startLine
+            line: startLine,
+            comments: stmtComments,
+            ignoreDirectives: directives
           });
+          pendingComments = [];
         }
         current = '';
         currentRaw = '';
@@ -209,10 +290,14 @@ class PgParser {
     }
 
     if (current.trim().length > 0) {
+      const stmtComments = [...pendingComments];
+      const directives = this.extractIgnoreDirectives(stmtComments);
       statements.push({
         sql: current.trim(),
         rawFull: currentRaw.trim(),
-        line: startLine
+        line: startLine,
+        comments: stmtComments,
+        ignoreDirectives: directives
       });
     }
 
@@ -222,34 +307,66 @@ class PgParser {
   /**
    * Analyzes an individual SQL statement string and produces an AST node.
    */
-  static parseStatement(sql, line, rawFull) {
+  static parseStatement(sql, line, rawFull, comments = [], ignoreDirectives = {}) {
     const cleanSql = sql.replace(/\s+/g, ' ').trim();
     const upper = cleanSql.toUpperCase();
+    const ignoreRules = ignoreDirectives.ignoreRules || [];
+    const ignoreAll = !!ignoreDirectives.ignoreAll;
+
+    const baseMeta = {
+      line,
+      raw: sql,
+      rawFull: rawFull || sql,
+      comments: comments || [],
+      ignoreRules,
+      ignoreAll
+    };
 
     // 1. SET lock_timeout / statement_timeout
-    if (upper.startsWith('SET ')) {
+    if (upper.startsWith('SET ') || upper.startsWith('SET LOCAL ')) {
       const lockTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?lock_timeout\s*=\s*['"]?([^'";]+)['"]?/i);
       const statementTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?statement_timeout\s*=\s*['"]?([^'";]+)['"]?/i);
-      
+      const isLocal = /SET\s+LOCAL\b/i.test(cleanSql);
+
       return {
+        ...baseMeta,
         type: 'SET_VARIABLE',
         variable: lockTimeoutMatch ? 'lock_timeout' : (statementTimeoutMatch ? 'statement_timeout' : 'other'),
         value: lockTimeoutMatch ? lockTimeoutMatch[1] : (statementTimeoutMatch ? statementTimeoutMatch[1] : null),
-        line,
-        raw: sql,
-        rawFull: rawFull || sql
+        isLocal
       };
     }
 
-    // 2. Transaction control: BEGIN, COMMIT, ROLLBACK
-    if (upper === 'BEGIN' || upper === 'BEGIN TRANSACTION' || upper === 'START TRANSACTION') {
-      return { type: 'TRANSACTION_START', line, raw: sql, rawFull: rawFull || sql };
-    }
-    if (upper === 'COMMIT' || upper === 'END' || upper === 'COMMIT TRANSACTION') {
-      return { type: 'TRANSACTION_COMMIT', line, raw: sql, rawFull: rawFull || sql };
+    // 2. RESET variable
+    if (upper.startsWith('RESET ')) {
+      const resetMatch = cleanSql.match(/RESET\s+([a-zA-Z0-9_]+)/i);
+      return {
+        ...baseMeta,
+        type: 'RESET_VARIABLE',
+        variable: resetMatch ? resetMatch[1].toLowerCase() : 'unknown'
+      };
     }
 
-    // 3. CREATE INDEX
+    // 3. Transaction control: BEGIN, COMMIT, ROLLBACK
+    if (upper === 'BEGIN' || upper === 'BEGIN TRANSACTION' || upper === 'START TRANSACTION' || upper.startsWith('BEGIN;') || upper.startsWith('START TRANSACTION;')) {
+      return { ...baseMeta, type: 'TRANSACTION_START' };
+    }
+    if (upper === 'COMMIT' || upper === 'END' || upper === 'COMMIT TRANSACTION' || upper === 'ROLLBACK') {
+      return { ...baseMeta, type: 'TRANSACTION_COMMIT' };
+    }
+
+    // 4. CREATE TABLE [IF NOT EXISTS]
+    if (upper.startsWith('CREATE TABLE') || upper.startsWith('CREATE UNLOGGED TABLE') || upper.startsWith('CREATE TEMPORARY TABLE') || upper.startsWith('CREATE TEMP TABLE')) {
+      const tableMatch = cleanSql.match(/CREATE\s+(?:UNLOGGED\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_."]+)/i);
+      const table = tableMatch ? this.cleanIdentifier(tableMatch[1]) : 'unknown_table';
+      return {
+        ...baseMeta,
+        type: 'CREATE_TABLE',
+        table
+      };
+    }
+
+    // 5. CREATE INDEX [CONCURRENTLY]
     if (upper.startsWith('CREATE INDEX') || upper.startsWith('CREATE UNIQUE INDEX')) {
       const isUnique = /CREATE\s+UNIQUE\s+INDEX/i.test(cleanSql);
       const isConcurrent = /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY/i.test(cleanSql);
@@ -262,19 +379,40 @@ class PgParser {
       const columns = onMatch ? onMatch[2].split(',').map(s => s.trim()) : [];
 
       return {
+        ...baseMeta,
         type: 'CREATE_INDEX',
         isUnique,
         isConcurrent,
         table,
         indexName,
-        columns,
-        line,
-        raw: sql,
-        rawFull: rawFull || sql
+        columns
       };
     }
 
-    // 4. DROP TABLE
+    // 6. DROP INDEX [CONCURRENTLY]
+    if (upper.startsWith('DROP INDEX')) {
+      const isConcurrent = /DROP\s+INDEX\s+CONCURRENTLY/i.test(cleanSql);
+      const nameMatch = cleanSql.match(/DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?([a-zA-Z0-9_."]+)/i);
+      const indexName = nameMatch ? this.cleanIdentifier(nameMatch[1]) : 'unknown_index';
+      return {
+        ...baseMeta,
+        type: 'DROP_INDEX',
+        isConcurrent,
+        indexName
+      };
+    }
+
+    // 7. REINDEX [CONCURRENTLY]
+    if (upper.startsWith('REINDEX')) {
+      const isConcurrent = /REINDEX\s+(?:TABLE|INDEX|DATABASE|SCHEMA|SYSTEM)?\s*CONCURRENTLY/i.test(cleanSql);
+      return {
+        ...baseMeta,
+        type: 'REINDEX',
+        isConcurrent
+      };
+    }
+
+    // 8. DROP TABLE
     if (upper.startsWith('DROP TABLE')) {
       const tableMatch = cleanSql.match(/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([a-zA-Z0-9_.", ]+)/i);
       const tables = tableMatch 
@@ -282,55 +420,65 @@ class PgParser {
         : ['unknown_table'];
 
       return {
+        ...baseMeta,
         type: 'DROP_TABLE',
-        tables,
-        line,
-        raw: sql,
-        rawFull: rawFull || sql
+        tables
       };
     }
 
-    // 5. ALTER TABLE statements
+    // 9. ALTER TABLE statements (Supports multiple comma-separated actions)
     if (upper.startsWith('ALTER TABLE')) {
       const tableMatch = cleanSql.match(/ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?([a-zA-Z0-9_."]+)/i);
       const table = tableMatch ? this.cleanIdentifier(tableMatch[1]) : 'unknown_table';
       
-      // Parse subcommands
       const subcommands = this.parseAlterSubcommands(cleanSql, table, line);
 
       return {
+        ...baseMeta,
         type: 'ALTER_TABLE',
         table,
         subcommands,
-        line,
-        raw: sql,
-        rawFull: rawFull || sql
+        actions: subcommands
       };
     }
 
-    // 6. VACUUM
+    // 10. VACUUM
     if (upper.startsWith('VACUUM')) {
       const isFull = /VACUUM\s+(?:FULL|\([^)]*FULL[^)]*\))/i.test(cleanSql);
       return {
+        ...baseMeta,
         type: 'VACUUM',
-        isFull,
-        line,
-        raw: sql,
-        rawFull: rawFull || sql
+        isFull
+      };
+    }
+
+    // 11. DO $$ ... $$ (Procedural anonymous block)
+    if (upper.startsWith('DO ') || upper.startsWith('DO$')) {
+      return {
+        ...baseMeta,
+        type: 'DO_BLOCK'
+      };
+    }
+
+    // 12. CREATE FUNCTION / PROCEDURE
+    if (upper.startsWith('CREATE FUNCTION') || upper.startsWith('CREATE OR REPLACE FUNCTION') ||
+        upper.startsWith('CREATE PROCEDURE') || upper.startsWith('CREATE OR REPLACE PROCEDURE')) {
+      return {
+        ...baseMeta,
+        type: 'CREATE_ROUTINE'
       };
     }
 
     // Default unrecognized statement
     return {
-      type: 'STATEMENT',
-      line,
-      raw: sql,
-      rawFull: rawFull || sql
+      ...baseMeta,
+      type: 'STATEMENT'
     };
   }
 
   /**
-   * Parses ALTER TABLE subcommands: ADD COLUMN, ALTER COLUMN TYPE, ADD CONSTRAINT, DROP COLUMN, etc.
+   * Parses ALTER TABLE subcommands: ADD COLUMN, ALTER COLUMN TYPE, SET NOT NULL,
+   * ADD CONSTRAINT, DROP COLUMN, etc. Supports multiple comma-separated actions.
    */
   static parseAlterSubcommands(sql, table, line) {
     const subcommands = [];
@@ -354,8 +502,11 @@ class PgParser {
           hasDefault: colDetails.hasDefault,
           defaultValue: colDetails.defaultValue,
           isVolatileDefault: colDetails.isVolatileDefault,
+          isPhysicalTableRewrite: colDetails.isPhysicalTableRewrite,
+          rewriteReason: colDetails.rewriteReason,
           isNotNull: colDetails.isNotNull,
-          raw: cleanClause
+          raw: cleanClause,
+          line
         });
         continue;
       }
@@ -374,7 +525,8 @@ class PgParser {
           foreignTable: refMatch ? this.cleanIdentifier(refMatch[1]) : 'referenced_table',
           columns: colMatch ? colMatch[1].split(',').map(s => s.trim()) : [],
           isNotValid,
-          raw: cleanClause
+          raw: cleanClause,
+          line
         });
         continue;
       }
@@ -391,8 +543,63 @@ class PgParser {
           constraintName: nameMatch ? this.cleanIdentifier(nameMatch[1]) : 'uq_' + table,
           columns: colMatch ? colMatch[1].split(',').map(s => s.trim()) : [],
           isUsingIndex,
-          raw: cleanClause
+          raw: cleanClause,
+          line
         });
+        continue;
+      }
+
+      // ADD CONSTRAINT ... CHECK
+      if (upperClause.startsWith('ADD CONSTRAINT') && upperClause.includes('CHECK')) {
+        const isNotValid = /NOT\s+VALID/i.test(cleanClause);
+        const nameMatch = cleanClause.match(/ADD\s+CONSTRAINT\s+([a-zA-Z0-9_"]+)/i);
+        const checkMatch = cleanClause.match(/CHECK\s*\(([^)]+)\)/i);
+        const checkExpr = checkMatch ? checkMatch[1].trim() : '';
+
+        // Extract column name if check is `(<col> IS NOT NULL)`
+        const colNotNullMatch = checkExpr.match(/([a-zA-Z0-9_"]+)\s+IS\s+NOT\s+NULL/i);
+        const validatedColumn = colNotNullMatch ? this.cleanIdentifier(colNotNullMatch[1]) : null;
+
+        subcommands.push({
+          subtype: 'ADD_CHECK_CONSTRAINT',
+          table,
+          constraintName: nameMatch ? this.cleanIdentifier(nameMatch[1]) : 'chk_' + table,
+          checkExpr,
+          validatedColumn,
+          isNotValid,
+          raw: cleanClause,
+          line
+        });
+        continue;
+      }
+
+      // ALTER [COLUMN] ... SET NOT NULL (LG-009)
+      if (upperClause.startsWith('ALTER ') && upperClause.includes('SET NOT NULL')) {
+        const colMatch = cleanClause.match(/ALTER\s+(?:COLUMN\s+)?([a-zA-Z0-9_"]+)\s+SET\s+NOT\s+NULL/i);
+        if (colMatch) {
+          subcommands.push({
+            subtype: 'SET_NOT_NULL',
+            table,
+            column: this.cleanIdentifier(colMatch[1]),
+            raw: cleanClause,
+            line
+          });
+        }
+        continue;
+      }
+
+      // ALTER [COLUMN] ... DROP NOT NULL
+      if (upperClause.startsWith('ALTER ') && upperClause.includes('DROP NOT NULL')) {
+        const colMatch = cleanClause.match(/ALTER\s+(?:COLUMN\s+)?([a-zA-Z0-9_"]+)\s+DROP\s+NOT\s+NULL/i);
+        if (colMatch) {
+          subcommands.push({
+            subtype: 'DROP_NOT_NULL',
+            table,
+            column: this.cleanIdentifier(colMatch[1]),
+            raw: cleanClause,
+            line
+          });
+        }
         continue;
       }
 
@@ -405,7 +612,8 @@ class PgParser {
             table,
             column: this.cleanIdentifier(colMatch[1]),
             newType: colMatch[2].trim(),
-            raw: cleanClause
+            raw: cleanClause,
+            line
           });
         }
         continue;
@@ -419,7 +627,23 @@ class PgParser {
             subtype: 'DROP_COLUMN',
             table,
             column: this.cleanIdentifier(colMatch[1]),
-            raw: cleanClause
+            raw: cleanClause,
+            line
+          });
+        }
+        continue;
+      }
+
+      // DROP CONSTRAINT
+      if (upperClause.startsWith('DROP CONSTRAINT')) {
+        const constraintMatch = cleanClause.match(/DROP\s+CONSTRAINT\s+(?:IF\s+EXISTS\s+)?([a-zA-Z0-9_"]+)/i);
+        if (constraintMatch) {
+          subcommands.push({
+            subtype: 'DROP_CONSTRAINT',
+            table,
+            constraintName: this.cleanIdentifier(constraintMatch[1]),
+            raw: cleanClause,
+            line
           });
         }
         continue;
@@ -433,7 +657,8 @@ class PgParser {
             subtype: 'SET_STORAGE_PARAM',
             table,
             params: setStorageMatch[1].trim(),
-            raw: cleanClause
+            raw: cleanClause,
+            line
           });
         }
         continue;
@@ -447,7 +672,8 @@ class PgParser {
             subtype: 'VALIDATE_CONSTRAINT',
             table,
             constraintName: this.cleanIdentifier(validateMatch[1]),
-            raw: cleanClause
+            raw: cleanClause,
+            line
           });
         }
         continue;
@@ -496,6 +722,10 @@ class PgParser {
 
   /**
    * Parses ADD COLUMN clause to extract default expressions and volatility.
+   * In PostgreSQL 11+, constants and STABLE functions (now(), CURRENT_TIMESTAMP,
+   * 'active', 0, false) are fast metadata-only additions without table rewrite.
+   * Only VOLATILE expressions (random(), gen_random_uuid(), uuid_generate_v4())
+   * force full table rewrite on disk.
    */
   static parseAddColumnClause(clause) {
     const clean = clause.replace(/^ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?/i, '').trim();
@@ -506,33 +736,40 @@ class PgParser {
     const hasDefault = /DEFAULT\s+/i.test(clean);
     let defaultValue = null;
     let isVolatileDefault = false;
+    let isPhysicalTableRewrite = false;
+    let rewriteReason = 'NONE';
 
     if (hasDefault) {
       const defaultMatch = clean.match(/DEFAULT\s+([^,]+?)(?:\s+NOT\s+NULL|\s+NULL|$)/i);
       if (defaultMatch) {
         defaultValue = defaultMatch[1].trim();
-        // Check volatility
-        const trulyVolatilePatterns = [
-          /\bclock_timestamp\s*\(/i,
+
+        // Truly VOLATILE expressions in PostgreSQL:
+        const volatilePatterns = [
           /\brandom\s*\(/i,
-          /\buuid_generate_/i,
           /\bgen_random_uuid\s*\(/i,
+          /\buuid_generate_/i,
+          /\bclock_timestamp\s*\(/i,
           /\btimeofday\s*\(/i,
+          /\bmd5\s*\(\s*random/i,
           /\bSELECT\b/i // subqueries
         ];
 
-        const stableTimestampPatterns = [
+        // STABLE expressions in PostgreSQL (fast metadata-only in PG 11+):
+        const stablePatterns = [
           /\bnow\s*\(/i,
           /\bcurrent_timestamp\b/i,
           /\bstatement_timestamp\s*\(/i,
           /\btransaction_timestamp\s*\(/i
         ];
 
-        const isTrulyVolatile = trulyVolatilePatterns.some(pattern => pattern.test(defaultValue));
-        const isStableTimestamp = stableTimestampPatterns.some(pattern => pattern.test(defaultValue));
+        const isTrulyVolatile = volatilePatterns.some(p => p.test(defaultValue));
+        const isStableTimestamp = stablePatterns.some(p => p.test(defaultValue));
+
+        // isVolatileDefault flags dynamic expressions (including now() and volatile funcs)
         isVolatileDefault = isTrulyVolatile || isStableTimestamp;
-        var isPhysicalTableRewrite = isTrulyVolatile;
-        var rewriteReason = isTrulyVolatile 
+        isPhysicalTableRewrite = isTrulyVolatile;
+        rewriteReason = isTrulyVolatile 
           ? 'VOLATILE_FULL_REWRITE' 
           : (isStableTimestamp ? 'FAST_DEFAULT_METADATA_ONLY' : 'CONSTANT_METADATA_ONLY');
       }
@@ -546,8 +783,9 @@ class PgParser {
       hasDefault,
       defaultValue,
       isVolatileDefault,
-      isPhysicalTableRewrite: typeof isPhysicalTableRewrite !== 'undefined' ? isPhysicalTableRewrite : false,
-      rewriteReason: typeof rewriteReason !== 'undefined' ? rewriteReason : 'NONE',
+      isTrulyVolatile: typeof isTrulyVolatile !== 'undefined' ? isTrulyVolatile : false,
+      isPhysicalTableRewrite,
+      rewriteReason,
       isNotNull
     };
   }
@@ -570,7 +808,7 @@ return {
   name: 'Adding column with volatile or non-trivial DEFAULT',
   severity: Severity.CRITICAL,
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
-  description: 'Adding a column with a volatile default (now(), uuid(), functions) rewrites the whole table under an ACCESS EXCLUSIVE lock, blocking all SELECT, INSERT, UPDATE, and DELETE queries.',
+  description: 'Adding a column with a volatile default (random(), gen_random_uuid(), clock_timestamp()) rewrites the entire table on disk under an ACCESS EXCLUSIVE lock, completely freezing all reads and writes.',
   
   check(astStatements, context = {}) {
     const violations = [];
@@ -580,9 +818,17 @@ return {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_COLUMN' && sub.hasDefault) {
-            // Flag if volatile or has non-constant default or running on Postgres < 11
-            const isPhysicalRewrite = isLegacyPostgres || !!sub.isPhysicalTableRewrite;
-            const isCritical = sub.isVolatileDefault || isLegacyPostgres;
+            // In PostgreSQL 11+, pure constant literals ('active', 0, false, NULL)
+            // are safe fast metadata-only updates.
+            // Volatile expressions (random, gen_random_uuid) or dynamic timestamps
+            // trigger zero-downtime safety guidelines.
+            if (!sub.isVolatileDefault && !isLegacyPostgres) {
+              continue;
+            }
+
+            const isVolatileRewrite = !!sub.isTrulyVolatile || !!sub.isPhysicalTableRewrite;
+            const isCritical = isVolatileRewrite || isLegacyPostgres;
+
             violations.push({
               ruleId: this.id,
               ruleCode: this.code,
@@ -592,15 +838,17 @@ return {
               table: sub.table,
               column: sub.column,
               defaultValue: sub.defaultValue,
-              isPhysicalTableRewrite: isPhysicalRewrite,
-              rewriteReason: isLegacyPostgres ? 'LEGACY_POSTGRES_ALL_DEFAULTS_REWRITE' : (sub.rewriteReason || 'UNKNOWN'),
-              line: stmt.line,
+              isPhysicalTableRewrite: isVolatileRewrite || isLegacyPostgres,
+              rewriteReason: isLegacyPostgres 
+                ? 'LEGACY_POSTGRES_ALL_DEFAULTS_REWRITE' 
+                : (isVolatileRewrite ? 'VOLATILE_FULL_REWRITE' : 'FAST_DEFAULT_METADATA_ONLY'),
+              line: sub.line || stmt.line,
               raw: sub.raw,
-              message: isPhysicalRewrite 
-                ? (isLegacyPostgres 
+              message: isVolatileRewrite
+                ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`
+                : (isLegacyPostgres 
                     ? `PostgreSQL < 11 does not support fast default evaluation! Adding DEFAULT '${sub.defaultValue}' rewrites the entire table on disk under ACCESS EXCLUSIVE lock!`
-                    : `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`)
-                : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. In Postgres 11+ metadata is fast, but statement still takes ACCESS EXCLUSIVE lock, risking Head-of-Line queue blocking!`
+                    : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. In Postgres 11+ metadata is fast, but statement still takes ACCESS EXCLUSIVE lock, risking Head-of-Line queue blocking!`)
             });
           }
         }
@@ -625,8 +873,11 @@ return {
       `-- Step 3: Backfill existing rows in small batches (run separately to avoid table lock)`,
       `-- UPDATE ${table} SET ${column} = ${defVal} WHERE ${column} IS NULL;`,
       ``,
-      `-- Step 4: If NOT NULL is required, set it after backfill`,
-      `-- ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL;`
+      `-- Step 4: If NOT NULL is required, set it after backfill using zero-downtime pattern`,
+      `-- ALTER TABLE ${table} ADD CONSTRAINT ${table}_${column}_not_null CHECK (${column} IS NOT NULL) NOT VALID;`,
+      `-- ALTER TABLE ${table} VALIDATE CONSTRAINT ${table}_${column}_not_null;`,
+      `-- ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL;`,
+      `-- ALTER TABLE ${table} DROP CONSTRAINT ${table}_${column}_not_null;`
     ].join('\n');
   }
 };
@@ -641,11 +892,17 @@ return {
   lockLevel: LockLevel.SHARE,
   description: 'CREATE INDEX without CONCURRENTLY acquires a SHARE lock, completely blocking all INSERT, UPDATE, and DELETE operations until index generation finishes.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const createdTables = context.createdTables || new Set();
 
     for (const stmt of astStatements) {
       if (stmt.type === 'CREATE_INDEX' && !stmt.isConcurrent) {
+        // Safe context: If table was created in this same migration, it is empty
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
         violations.push({
           ruleId: this.id,
           ruleCode: this.code,
@@ -688,11 +945,17 @@ return {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Adding a foreign key constraint without NOT VALID performs a full table scan while holding an ACCESS EXCLUSIVE lock, freezing the table during row validation.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const createdTables = context.createdTables || new Set();
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
+        // Safe context: If table was created in this same migration, it is empty
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_FOREIGN_KEY' && !sub.isNotValid) {
             violations.push({
@@ -705,7 +968,7 @@ return {
               constraintName: sub.constraintName,
               foreignTable: sub.foreignTable,
               columns: sub.columns,
-              line: stmt.line,
+              line: sub.line || stmt.line,
               raw: sub.raw,
               message: `Foreign Key '${sub.constraintName}' on '${sub.table}' referencing '${sub.foreignTable}' lacks 'NOT VALID'. It blocks all reads/writes during table validation!`
             });
@@ -745,33 +1008,29 @@ return {
   
   check(astStatements, context = {}) {
     const violations = [];
+    const createdTables = context.createdTables || new Set();
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
+        // Safe context: If table was created in this same migration, it is empty
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ALTER_COLUMN_TYPE') {
-            const newTypeUpper = (sub.newType || '').toUpperCase().trim();
-            
-            // Check for binary-compatible conversion in PostgreSQL (e.g. TEXT or unconstrained VARCHAR)
-            const isTextOrVarchar = newTypeUpper === 'TEXT' || newTypeUpper === 'VARCHAR';
-            const isPhysicalRewrite = !isTextOrVarchar;
-
             violations.push({
               ruleId: this.id,
               ruleCode: this.code,
               ruleName: this.name,
-              severity: isPhysicalRewrite ? Severity.CRITICAL : Severity.HIGH,
+              severity: Severity.CRITICAL,
               lockLevel: this.lockLevel,
               table: sub.table,
               column: sub.column,
               newType: sub.newType,
-              isPhysicalTableRewrite: isPhysicalRewrite,
-              isBinaryCompatible: isTextOrVarchar,
-              line: stmt.line,
+              line: sub.line || stmt.line,
               raw: sub.raw,
-              message: isPhysicalRewrite
-                ? `Altering column '${sub.column}' type to '${sub.newType}' on table '${sub.table}' requires full table rewrite and index rebuilds under ACCESS EXCLUSIVE lock!`
-                : `Altering column '${sub.column}' type to '${sub.newType}' is binary-compatible in Postgres 9.2+ (no disk rewrite), but still takes ACCESS EXCLUSIVE lock risking queue starvation!`
+              message: `Altering type of column '${sub.column}' to '${sub.newType}' on table '${sub.table}' forces a full table rewrite on disk under ACCESS EXCLUSIVE lock!`
             });
           }
         }
@@ -783,22 +1042,24 @@ return {
 
   generateSafeFix(violation) {
     const table = violation.table || 'your_table';
-    const column = violation.column || 'target_column';
+    const column = violation.column || 'old_column';
     const newType = violation.newType || 'BIGINT';
+    const tempCol = `${column}_new`;
 
     return [
-      `-- Safe Multi-Step Migration Pattern for Column Type Changes:`,
-      `-- Step 1: Add a new column with the target type`,
-      `ALTER TABLE ${table} ADD COLUMN ${column}_new ${newType};`,
+      `-- Safe 4-phase transition without downtime (dual-writing pattern):`,
+      `-- Phase 1: Add new column without locking table`,
+      `ALTER TABLE ${table} ADD COLUMN ${tempCol} ${newType};`,
       ``,
-      `-- Step 2: Backfill existing rows in batches`,
-      `-- UPDATE ${table} SET ${column}_new = ${column}::${newType} WHERE ${column}_new IS NULL;`,
+      `-- Phase 2: Create trigger / dual-write in application code for incoming writes`,
+      `-- Backfill historical rows in small batches:`,
+      `-- UPDATE ${table} SET ${tempCol} = ${column} WHERE ${tempCol} IS NULL;`,
       ``,
-      `-- Step 3: Swap columns (quick metadata lock)`,
-      `ALTER TABLE ${table} RENAME COLUMN ${column} TO ${column}_old;`,
-      `ALTER TABLE ${table} RENAME COLUMN ${column}_new TO ${column};`,
+      `-- Phase 3: Rename columns in a quick metadata lock`,
+      `-- ALTER TABLE ${table} RENAME COLUMN ${column} TO ${column}_old;`,
+      `-- ALTER TABLE ${table} RENAME COLUMN ${tempCol} TO ${column};`,
       ``,
-      `-- Step 4: Drop old column in a later maintenance deploy after verifying data integrity`,
+      `-- Phase 4: Drop old column in later release`,
       `-- ALTER TABLE ${table} DROP COLUMN ${column}_old;`
     ].join('\n');
   }
@@ -1010,14 +1271,16 @@ return {
     const hasDdl = astStatements.some(s => 
       s.type === 'ALTER_TABLE' || 
       s.type === 'CREATE_INDEX' || 
-      s.type === 'DROP_TABLE'
+      s.type === 'DROP_TABLE' ||
+      s.type === 'CREATE_TABLE' ||
+      s.type === 'DROP_INDEX'
     );
 
     if (!hasDdl) {
       return violations;
     }
 
-    // Look for SET lock_timeout in the first few statements
+    // Look for SET lock_timeout in the statements
     const hasLockTimeout = astStatements.some(s => 
       s.type === 'SET_VARIABLE' && s.variable === 'lock_timeout' && s.value
     );
@@ -1039,11 +1302,172 @@ return {
     return violations;
   },
 
-  generateSafeFix() {
+  generateSafeFix(violation, context = {}) {
+    if (context.hasTransactionBlock) {
+      return [
+        `-- Migration runs inside a transaction block. Use SET LOCAL to scope lock_timeout to this transaction:`,
+        `SET LOCAL lock_timeout = '3s';`,
+        `SET LOCAL statement_timeout = '30s';`
+      ].join('\n');
+    }
+
     return [
-      `-- Add this safeguard at the very top of your migration file:`,
+      `-- Add lock_timeout at the top, and RESET at the end to prevent pooler (PgBouncer) connection contamination:`,
       `SET lock_timeout = '3s';`,
-      `SET statement_timeout = '30s';`
+      `SET statement_timeout = '30s';`,
+      ``,
+      `-- ... (your migration statements here) ...`,
+      ``,
+      `RESET lock_timeout;`,
+      `RESET statement_timeout;`
+    ].join('\n');
+  }
+};
+ })();
+  const rule09 = (function() { 
+
+return {
+  id: 'LG-009',
+  code: 'UNSAFE_SET_NOT_NULL',
+  name: 'Unsafe ALTER COLUMN SET NOT NULL on existing table',
+  severity: Severity.CRITICAL,
+  lockLevel: LockLevel.ACCESS_EXCLUSIVE,
+  description: 'ALTER COLUMN SET NOT NULL performs a full table scan while holding an ACCESS EXCLUSIVE lock to verify no NULLs exist, completely freezing the table on production.',
+
+  check(astStatements, context = {}) {
+    const violations = [];
+    const createdTables = context.createdTables || new Set();
+
+    // Track validated check constraints: "table:column"
+    const validatedChecks = new Set();
+    const candidateChecks = new Map(); // constraintName -> { table, column }
+
+    for (const stmt of astStatements) {
+      if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
+        for (const sub of stmt.subcommands) {
+          if (sub.subtype === 'ADD_CHECK_CONSTRAINT' && sub.validatedColumn) {
+            candidateChecks.set(`${sub.table.toLowerCase()}:${sub.constraintName.toLowerCase()}`, {
+              table: sub.table.toLowerCase(),
+              column: sub.validatedColumn.toLowerCase()
+            });
+          }
+          if (sub.subtype === 'VALIDATE_CONSTRAINT') {
+            const key = `${sub.table.toLowerCase()}:${sub.constraintName.toLowerCase()}`;
+            if (candidateChecks.has(key)) {
+              const info = candidateChecks.get(key);
+              validatedChecks.add(`${info.table}:${info.column}`);
+            }
+          }
+        }
+      }
+    }
+
+    for (const stmt of astStatements) {
+      if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
+        // Skip tables created in the same migration file
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
+        for (const sub of stmt.subcommands) {
+          if (sub.subtype === 'SET_NOT_NULL') {
+            const checkKey = `${sub.table.toLowerCase()}:${sub.column.toLowerCase()}`;
+            // If already validated via check constraint in this file, it's safe in PG 12+
+            if (validatedChecks.has(checkKey)) {
+              continue;
+            }
+
+            violations.push({
+              ruleId: this.id,
+              ruleCode: this.code,
+              ruleName: this.name,
+              severity: Severity.CRITICAL,
+              lockLevel: this.lockLevel,
+              table: sub.table,
+              column: sub.column,
+              line: sub.line || stmt.line,
+              raw: sub.raw,
+              message: `Setting NOT NULL on column '${sub.column}' of table '${sub.table}' scans the entire table under ACCESS EXCLUSIVE lock! It will freeze all reads and writes.`
+            });
+          }
+        }
+      }
+    }
+
+    return violations;
+  },
+
+  generateSafeFix(violation) {
+    const table = violation.table || 'your_table';
+    const column = violation.column || 'column_name';
+    const constraintName = `${table}_${column}_not_null`;
+
+    return [
+      `-- Safe 4-step recipe for PostgreSQL 12+ (zero-downtime SET NOT NULL):`,
+      `-- Step 1: Add CHECK constraint with NOT VALID (instant lock acquisition, no full table scan)`,
+      `ALTER TABLE ${table} ADD CONSTRAINT ${constraintName} CHECK (${column} IS NOT NULL) NOT VALID;`,
+      ``,
+      `-- Step 2: Validate constraint in a separate step (acquires SHARE UPDATE EXCLUSIVE - writes proceed!)`,
+      `ALTER TABLE ${table} VALIDATE CONSTRAINT ${constraintName};`,
+      ``,
+      `-- Step 3: Fast SET NOT NULL (uses already validated check constraint in PG 12+ without scan)`,
+      `ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL;`,
+      ``,
+      `-- Step 4: Drop redundant check constraint`,
+      `ALTER TABLE ${table} DROP CONSTRAINT ${constraintName};`
+    ].join('\n');
+  }
+};
+ })();
+  const rule10 = (function() { 
+
+return {
+  id: 'LG-010',
+  code: 'CONCURRENTLY_IN_TRANSACTION',
+  name: 'CONCURRENTLY operation executed inside transaction block',
+  severity: Severity.CRITICAL,
+  lockLevel: LockLevel.ACCESS_EXCLUSIVE,
+  description: 'PostgreSQL does not allow CREATE INDEX CONCURRENTLY, DROP INDEX CONCURRENTLY, or REINDEX CONCURRENTLY inside a transaction block (BEGIN...COMMIT). The migration will crash with ERROR 25001.',
+
+  check(astStatements, context = {}) {
+    const violations = [];
+    const hasTransaction = context.hasTransactionBlock || astStatements.some(s => s.type === 'TRANSACTION_START');
+
+    if (!hasTransaction) {
+      return violations;
+    }
+
+    for (const stmt of astStatements) {
+      const isConcurrent = (stmt.type === 'CREATE_INDEX' && stmt.isConcurrent) ||
+                           (stmt.type === 'DROP_INDEX' && stmt.isConcurrent) ||
+                           (stmt.type === 'REINDEX' && stmt.isConcurrent);
+
+      if (isConcurrent) {
+        violations.push({
+          ruleId: this.id,
+          ruleCode: this.code,
+          ruleName: this.name,
+          severity: Severity.CRITICAL,
+          lockLevel: this.lockLevel,
+          table: stmt.table || 'global',
+          line: stmt.line,
+          raw: stmt.raw,
+          message: `PostgreSQL prohibits CONCURRENTLY operations inside a transaction block (BEGIN...COMMIT)! Running this will immediately fail with: ERROR: 25001: CREATE INDEX CONCURRENTLY cannot run inside a transaction block.`
+        });
+      }
+    }
+
+    return violations;
+  },
+
+  generateSafeFix(violation) {
+    const rawSql = violation.raw || 'CREATE INDEX CONCURRENTLY idx ON table(col);';
+    return [
+      `-- Safe recipe: Remove the transaction block (BEGIN...COMMIT) around CONCURRENTLY operations:`,
+      `-- In modern migration frameworks (Flyway, Liquibase, Knex, Prisma), disable transactions for this file:`,
+      `-- (e.g. set: transaction = false or @transactional false)`,
+      ``,
+      `${rawSql}`
     ].join('\n');
   }
 };
@@ -1051,6 +1475,8 @@ return {
 
   // 4. Rule Engine
   
+
+
 
 
 
@@ -1072,7 +1498,9 @@ class RuleEngine {
       rule05,
       rule06,
       rule07,
-      rule08
+      rule08,
+      rule09,
+      rule10
     ];
   }
 
@@ -1093,28 +1521,70 @@ class RuleEngine {
   /**
    * Analyzes SQL script and checks for dangerous table locks.
    * @param {string} sqlText 
-   * @param {object} options { filename, enabledRuleIds, failOnSeverity }
+   * @param {object} options { filename, enabledRuleIds, failOnSeverity, ignoreRules }
    */
   analyze(sqlText, options = {}) {
     const filename = options.filename || 'migration.sql';
     const enabledRuleIds = options.enabledRuleIds || null;
     const failOnSeverity = options.failOnSeverity || Severity.HIGH;
+    const configIgnoreRules = (options.ignoreRules || []).map(r => r.toUpperCase());
 
     // 1. Parse AST
     const astStatements = PgParser.parse(sqlText);
 
-    // 2. Run Rules
-    const violations = [];
+    // 2. Build Context (Created tables in this migration, transaction state)
+    const createdTables = new Set();
+    let hasTransactionBlock = false;
+
+    for (const stmt of astStatements) {
+      if (stmt.type === 'CREATE_TABLE' && stmt.table) {
+        createdTables.add(stmt.table.toLowerCase());
+      }
+      if (stmt.type === 'TRANSACTION_START') {
+        hasTransactionBlock = true;
+      }
+    }
+
+    const context = {
+      filename,
+      sqlText,
+      createdTables,
+      hasTransactionBlock,
+      ...options
+    };
+
+    // 3. Run Rules
+    const rawViolations = [];
     const activeRules = enabledRuleIds 
       ? this.rules.filter(r => enabledRuleIds.includes(r.id))
       : this.rules;
 
     for (const rule of activeRules) {
+      // Check if rule is disabled globally in config
+      if (configIgnoreRules.includes(rule.id.toUpperCase())) {
+        continue;
+      }
+
       try {
-        const found = rule.check(astStatements, { filename, sqlText, ...options });
+        const found = rule.check(astStatements, context);
         for (const v of found) {
-          const safeFix = rule.generateSafeFix ? rule.generateSafeFix(v) : null;
-          violations.push({
+          // Check inline statement-level ignore directives (-- lockguard-ignore: LG-XXX)
+          const targetStmt = astStatements.find(s => 
+            s.line === v.line || 
+            (s.subcommands && s.subcommands.some(sub => sub.line === v.line))
+          );
+
+          if (targetStmt) {
+            if (targetStmt.ignoreAll) {
+              continue;
+            }
+            if (targetStmt.ignoreRules && targetStmt.ignoreRules.includes(v.ruleId.toUpperCase())) {
+              continue;
+            }
+          }
+
+          const safeFix = rule.generateSafeFix ? rule.generateSafeFix(v, context) : null;
+          rawViolations.push({
             ...v,
             safeFix,
             lockDetails: LockMatrix[v.lockLevel] || null
@@ -1125,7 +1595,9 @@ class RuleEngine {
       }
     }
 
-    // 3. Determine Affected Tables
+    const violations = rawViolations;
+
+    // 4. Determine Affected Tables
     const affectedTablesSet = new Set();
     for (const stmt of astStatements) {
       if (stmt.table && stmt.table !== 'global' && stmt.table !== 'unknown_table') {
@@ -1142,7 +1614,7 @@ class RuleEngine {
     }
     const affectedTables = Array.from(affectedTablesSet);
 
-    // 4. Calculate Highest Lock Level
+    // 5. Calculate Highest Lock Level
     const lockPriority = [
       LockLevel.ACCESS_SHARE,
       LockLevel.ROW_SHARE,
@@ -1161,7 +1633,7 @@ class RuleEngine {
       }
     }
 
-    // 5. Verdict & Status
+    // 6. Verdict & Status
     const criticalCount = violations.filter(v => v.severity === Severity.CRITICAL).length;
     const highCount = violations.filter(v => v.severity === Severity.HIGH).length;
     const mediumCount = violations.filter(v => v.severity === Severity.MEDIUM).length;
@@ -1181,6 +1653,8 @@ class RuleEngine {
       s.type === 'ALTER_TABLE' || 
       s.type === 'CREATE_INDEX' || 
       s.type === 'DROP_TABLE' ||
+      s.type === 'CREATE_TABLE' ||
+      s.type === 'DROP_INDEX' ||
       s.type === 'VACUUM'
     );
     const isDmlOnly = !hasDdl && astStatements.length > 0;
@@ -1796,7 +2270,7 @@ class CascadeGraph {
 
 
   // Default instances
-  const allRules = [rule01, rule02, rule03, rule04, rule05, rule06, rule07, rule08];
+  const allRules = [rule01, rule02, rule03, rule04, rule05, rule06, rule07, rule08, rule09, rule10];
   const defaultEngine = new RuleEngine(allRules);
 
   window.LockGuard = {

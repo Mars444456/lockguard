@@ -8,11 +8,17 @@ module.exports = {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Adding a foreign key constraint without NOT VALID performs a full table scan while holding an ACCESS EXCLUSIVE lock, freezing the table during row validation.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const createdTables = context.createdTables || new Set();
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
+        // Safe context: If table was created in this same migration, it is empty
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_FOREIGN_KEY' && !sub.isNotValid) {
             violations.push({
@@ -25,7 +31,7 @@ module.exports = {
               constraintName: sub.constraintName,
               foreignTable: sub.foreignTable,
               columns: sub.columns,
-              line: stmt.line,
+              line: sub.line || stmt.line,
               raw: sub.raw,
               message: `Foreign Key '${sub.constraintName}' on '${sub.table}' referencing '${sub.foreignTable}' lacks 'NOT VALID'. It blocks all reads/writes during table validation!`
             });
