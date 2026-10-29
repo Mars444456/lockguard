@@ -8,7 +8,12 @@
 const https = require('node:https');
 const { RuleEngine, AutoSplitter, ShadowReplaySimulator, ContextAnalyzer } = require('../src/core');
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '9240475991:AAEVV6JSueYTrQVfQw2kQGA1J5tA4tuUQP4';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!BOT_TOKEN) {
+  console.error('❌ Error: TELEGRAM_BOT_TOKEN is not defined in environment variables.');
+  console.error('Please configure TELEGRAM_BOT_TOKEN in your .env file or hosting provider environment.');
+  process.exit(1);
+}
 const BASE_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 const engine = new RuleEngine();

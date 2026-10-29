@@ -65,6 +65,21 @@ ALTER TABLE users ADD CONSTRAINT uq_users_tax_id UNIQUE (tax_id);`,
   missing_timeout: `-- Missing SET lock_timeout directive (Head-of-Line Blocking risk!)
 ALTER TABLE orders ADD COLUMN notes TEXT;`,
 
+  unsafe_not_null: `-- Unsafe ALTER COLUMN SET NOT NULL (LG-009)
+-- Scans entire table holding ACCESS EXCLUSIVE lock
+SET lock_timeout = '3s';
+
+ALTER TABLE users ALTER COLUMN email SET NOT NULL;`,
+
+  concurrent_in_tx: `-- Forbidden CONCURRENTLY inside Transaction Block (LG-010)
+-- PostgreSQL error: 25001 (cannot run CONCURRENTLY inside transaction)
+BEGIN;
+
+SET lock_timeout = '3s';
+CREATE INDEX CONCURRENTLY idx_users_email ON users (email);
+
+COMMIT;`,
+
   safe_migration: `-- 100% Zero-Downtime Safe PostgreSQL Migration
 SET lock_timeout = '3s';
 SET statement_timeout = '30s';

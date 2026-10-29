@@ -8,11 +8,17 @@ module.exports = {
   lockLevel: LockLevel.SHARE,
   description: 'CREATE INDEX without CONCURRENTLY acquires a SHARE lock, completely blocking all INSERT, UPDATE, and DELETE operations until index generation finishes.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const createdTables = context.createdTables || new Set();
 
     for (const stmt of astStatements) {
       if (stmt.type === 'CREATE_INDEX' && !stmt.isConcurrent) {
+        // Safe context: If table was created in this same migration, it is empty
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
         violations.push({
           ruleId: this.id,
           ruleCode: this.code,

@@ -9,6 +9,8 @@ const rule05 = require('./rules/rule05-unique-constraint');
 const rule06 = require('./rules/rule06-drop-column-table');
 const rule07 = require('./rules/rule07-vacuum-in-transaction');
 const rule08 = require('./rules/rule08-missing-lock-timeout');
+const rule09 = require('./rules/rule09-unsafe-set-not-null');
+const rule10 = require('./rules/rule10-concurrently-in-transaction');
 
 class RuleEngine {
   constructor(customRules = null) {
@@ -20,7 +22,9 @@ class RuleEngine {
       rule05,
       rule06,
       rule07,
-      rule08
+      rule08,
+      rule09,
+      rule10
     ];
   }
 
@@ -41,28 +45,70 @@ class RuleEngine {
   /**
    * Analyzes SQL script and checks for dangerous table locks.
    * @param {string} sqlText 
-   * @param {object} options { filename, enabledRuleIds, failOnSeverity }
+   * @param {object} options { filename, enabledRuleIds, failOnSeverity, ignoreRules }
    */
   analyze(sqlText, options = {}) {
     const filename = options.filename || 'migration.sql';
     const enabledRuleIds = options.enabledRuleIds || null;
     const failOnSeverity = options.failOnSeverity || Severity.HIGH;
+    const configIgnoreRules = (options.ignoreRules || []).map(r => r.toUpperCase());
 
     // 1. Parse AST
     const astStatements = PgParser.parse(sqlText);
 
-    // 2. Run Rules
-    const violations = [];
+    // 2. Build Context (Created tables in this migration, transaction state)
+    const createdTables = new Set();
+    let hasTransactionBlock = false;
+
+    for (const stmt of astStatements) {
+      if (stmt.type === 'CREATE_TABLE' && stmt.table) {
+        createdTables.add(stmt.table.toLowerCase());
+      }
+      if (stmt.type === 'TRANSACTION_START') {
+        hasTransactionBlock = true;
+      }
+    }
+
+    const context = {
+      filename,
+      sqlText,
+      createdTables,
+      hasTransactionBlock,
+      ...options
+    };
+
+    // 3. Run Rules
+    const rawViolations = [];
     const activeRules = enabledRuleIds 
       ? this.rules.filter(r => enabledRuleIds.includes(r.id))
       : this.rules;
 
     for (const rule of activeRules) {
+      // Check if rule is disabled globally in config
+      if (configIgnoreRules.includes(rule.id.toUpperCase())) {
+        continue;
+      }
+
       try {
-        const found = rule.check(astStatements, { filename, sqlText, ...options });
+        const found = rule.check(astStatements, context);
         for (const v of found) {
-          const safeFix = rule.generateSafeFix ? rule.generateSafeFix(v) : null;
-          violations.push({
+          // Check inline statement-level ignore directives (-- lockguard-ignore: LG-XXX)
+          const targetStmt = astStatements.find(s => 
+            s.line === v.line || 
+            (s.subcommands && s.subcommands.some(sub => sub.line === v.line))
+          );
+
+          if (targetStmt) {
+            if (targetStmt.ignoreAll) {
+              continue;
+            }
+            if (targetStmt.ignoreRules && targetStmt.ignoreRules.includes(v.ruleId.toUpperCase())) {
+              continue;
+            }
+          }
+
+          const safeFix = rule.generateSafeFix ? rule.generateSafeFix(v, context) : null;
+          rawViolations.push({
             ...v,
             safeFix,
             lockDetails: LockMatrix[v.lockLevel] || null
@@ -73,7 +119,9 @@ class RuleEngine {
       }
     }
 
-    // 3. Determine Affected Tables
+    const violations = rawViolations;
+
+    // 4. Determine Affected Tables
     const affectedTablesSet = new Set();
     for (const stmt of astStatements) {
       if (stmt.table && stmt.table !== 'global' && stmt.table !== 'unknown_table') {
@@ -90,7 +138,7 @@ class RuleEngine {
     }
     const affectedTables = Array.from(affectedTablesSet);
 
-    // 4. Calculate Highest Lock Level
+    // 5. Calculate Highest Lock Level
     const lockPriority = [
       LockLevel.ACCESS_SHARE,
       LockLevel.ROW_SHARE,
@@ -109,7 +157,7 @@ class RuleEngine {
       }
     }
 
-    // 5. Verdict & Status
+    // 6. Verdict & Status
     const criticalCount = violations.filter(v => v.severity === Severity.CRITICAL).length;
     const highCount = violations.filter(v => v.severity === Severity.HIGH).length;
     const mediumCount = violations.filter(v => v.severity === Severity.MEDIUM).length;
@@ -129,6 +177,8 @@ class RuleEngine {
       s.type === 'ALTER_TABLE' || 
       s.type === 'CREATE_INDEX' || 
       s.type === 'DROP_TABLE' ||
+      s.type === 'CREATE_TABLE' ||
+      s.type === 'DROP_INDEX' ||
       s.type === 'VACUUM'
     );
     const isDmlOnly = !hasDdl && astStatements.length > 0;

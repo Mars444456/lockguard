@@ -15,14 +15,16 @@ module.exports = {
     const hasDdl = astStatements.some(s => 
       s.type === 'ALTER_TABLE' || 
       s.type === 'CREATE_INDEX' || 
-      s.type === 'DROP_TABLE'
+      s.type === 'DROP_TABLE' ||
+      s.type === 'CREATE_TABLE' ||
+      s.type === 'DROP_INDEX'
     );
 
     if (!hasDdl) {
       return violations;
     }
 
-    // Look for SET lock_timeout in the first few statements
+    // Look for SET lock_timeout in the statements
     const hasLockTimeout = astStatements.some(s => 
       s.type === 'SET_VARIABLE' && s.variable === 'lock_timeout' && s.value
     );
@@ -44,11 +46,24 @@ module.exports = {
     return violations;
   },
 
-  generateSafeFix() {
+  generateSafeFix(violation, context = {}) {
+    if (context.hasTransactionBlock) {
+      return [
+        `-- Migration runs inside a transaction block. Use SET LOCAL to scope lock_timeout to this transaction:`,
+        `SET LOCAL lock_timeout = '3s';`,
+        `SET LOCAL statement_timeout = '30s';`
+      ].join('\n');
+    }
+
     return [
-      `-- Add this safeguard at the very top of your migration file:`,
+      `-- Add lock_timeout at the top, and RESET at the end to prevent pooler (PgBouncer) connection contamination:`,
       `SET lock_timeout = '3s';`,
-      `SET statement_timeout = '30s';`
+      `SET statement_timeout = '30s';`,
+      ``,
+      `-- ... (your migration statements here) ...`,
+      ``,
+      `RESET lock_timeout;`,
+      `RESET statement_timeout;`
     ].join('\n');
   }
 };

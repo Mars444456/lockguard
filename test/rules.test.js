@@ -2,15 +2,18 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { RuleEngine, LockLevel, Severity } = require('../src/core');
+const { RuleEngine, LockLevel, Severity, PgParser } = require('../src/core');
 
 const engine = new RuleEngine();
 
-test('RuleEngine - lists all 8 fatal anti-pattern rules', () => {
+test('RuleEngine - lists all 10 fatal anti-pattern rules', () => {
   const rules = engine.getRules();
-  assert.equal(rules.length, 8);
+  assert.equal(rules.length, 10);
   const ids = rules.map(r => r.id);
-  assert.deepEqual(ids, ['LG-001', 'LG-002', 'LG-003', 'LG-004', 'LG-005', 'LG-006', 'LG-007', 'LG-008']);
+  assert.deepEqual(ids, [
+    'LG-001', 'LG-002', 'LG-003', 'LG-004', 'LG-005',
+    'LG-006', 'LG-007', 'LG-008', 'LG-009', 'LG-010'
+  ]);
 });
 
 test('RuleEngine - Fixture 01: Dangerous ADD COLUMN with volatile DEFAULT (LG-001)', () => {
@@ -85,6 +88,97 @@ test('RuleEngine - Fixture 08: Missing SET lock_timeout (LG-008)', () => {
   const v = res.violations.find(v => v.ruleId === 'LG-008');
   assert.ok(v);
   assert.ok(v.safeFix.includes("SET lock_timeout = '3s';"));
+});
+
+test('RuleEngine - Rule 09: Unsafe ALTER COLUMN SET NOT NULL (LG-009)', () => {
+  const sql = `
+    SET lock_timeout = '3s';
+    ALTER TABLE users ALTER COLUMN email SET NOT NULL;
+  `;
+  const res = engine.analyze(sql);
+  assert.equal(res.passed, false);
+  const v = res.violations.find(v => v.ruleId === 'LG-009');
+  assert.ok(v);
+  assert.equal(v.table, 'users');
+  assert.equal(v.column, 'email');
+  assert.ok(v.safeFix.includes('CHECK (email IS NOT NULL) NOT VALID'));
+  assert.ok(v.safeFix.includes('VALIDATE CONSTRAINT users_email_not_null'));
+});
+
+test('RuleEngine - Rule 10: CONCURRENTLY inside transaction block (LG-010)', () => {
+  const sql = `
+    BEGIN;
+    SET lock_timeout = '3s';
+    CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+    COMMIT;
+  `;
+  const res = engine.analyze(sql);
+  assert.equal(res.passed, false);
+  const v = res.violations.find(v => v.ruleId === 'LG-010');
+  assert.ok(v);
+  assert.ok(v.message.includes('ERROR: 25001'));
+  assert.ok(v.safeFix.includes('Remove the transaction block'));
+});
+
+test('RuleEngine - Smart Context: CREATE TABLE in same file prevents false positives', () => {
+  const sql = `
+    SET lock_timeout = '3s';
+    CREATE TABLE new_products (
+      id serial primary key,
+      title text,
+      category_id int
+    );
+    -- The following would normally trigger LG-002, LG-003, LG-004, LG-009 on existing tables
+    CREATE INDEX idx_products_cat ON new_products(category_id);
+    ALTER TABLE new_products ADD CONSTRAINT fk_cat FOREIGN KEY (category_id) REFERENCES categories(id);
+    ALTER TABLE new_products ALTER COLUMN title TYPE varchar(500);
+    ALTER TABLE new_products ALTER COLUMN title SET NOT NULL;
+  `;
+  const res = engine.analyze(sql);
+  // None of LG-002, LG-003, LG-004, LG-009 should trigger on new_products!
+  const dangerousRules = ['LG-002', 'LG-003', 'LG-004', 'LG-009'];
+  const found = res.violations.filter(v => dangerousRules.includes(v.ruleId));
+  assert.equal(found.length, 0);
+});
+
+test('RuleEngine - Inline Ignore: -- lockguard-ignore suppresses specific rule', () => {
+  const sql = `
+    SET lock_timeout = '3s';
+    -- lockguard-ignore: LG-004
+    ALTER TABLE users ALTER COLUMN age TYPE bigint;
+  `;
+  const res = engine.analyze(sql);
+  const v4 = res.violations.find(v => v.ruleId === 'LG-004');
+  assert.equal(v4, undefined);
+});
+
+test('RuleEngine - Inline Ignore: -- lockguard-ignore-all suppresses all rules for statement', () => {
+  const sql = `
+    SET lock_timeout = '3s';
+    -- lockguard-ignore-all
+    CREATE INDEX idx_orders_unindexed ON orders(status);
+  `;
+  const res = engine.analyze(sql);
+  const v2 = res.violations.find(v => v.ruleId === 'LG-002');
+  assert.equal(v2, undefined);
+});
+
+test('RuleEngine - Dollar-Quoting: does not split statements on internal semicolons', () => {
+  const sql = `
+    SET lock_timeout = '3s';
+    DO $$
+    BEGIN
+      PERFORM 1;
+      PERFORM 2;
+    END;
+    $$;
+    ALTER TABLE users ADD COLUMN phone text;
+  `;
+  const ast = PgParser.parse(sql);
+  assert.equal(ast.length, 3);
+  assert.equal(ast[0].type, 'SET_VARIABLE');
+  assert.equal(ast[1].type, 'DO_BLOCK');
+  assert.equal(ast[2].type, 'ALTER_TABLE');
 });
 
 test('RuleEngine - Fixture 10: 100% Safe Migration PASSED with 0 violations', () => {
