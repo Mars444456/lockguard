@@ -1,0 +1,46 @@
+name: 'LockGuard: PostgreSQL Zero-Downtime Migration Gatekeeper'
+description: 'Detect fatal PostgreSQL table locks (ACCESS EXCLUSIVE, non-concurrent index, heavy FK validation) and block PRs before production outages.'
+author: 'LockGuard Team'
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  migrations_dir:
+    description: 'Path to directory containing SQL migrations (e.g. ./migrations, ./prisma/migrations)'
+    required: false
+    default: './migrations'
+  format:
+    description: 'Output report format: github-pr-comment, table, json, markdown'
+    required: false
+    default: 'github-pr-comment'
+  severity:
+    description: 'Severity threshold to fail the build: CRITICAL, HIGH, or MEDIUM'
+    required: false
+    default: 'HIGH'
+  output_file:
+    description: 'File path to save the generated Markdown/JSON report'
+    required: false
+    default: 'lockguard-report.md'
+  api_key:
+    description: 'LockGuard Team or Business License Key (optional for open rules)'
+    required: false
+    default: ''
+
+outputs:
+  report_path:
+    description: 'Path to generated report file'
+    value: ${{ inputs.output_file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run LockGuard Migration Gatekeeper
+      shell: bash
+      env:
+        LOCKGUARD_API_KEY: ${{ inputs.api_key }}
+      run: |
+        node "${{ github.action_path }}/bin/lockguard.js" check "${{ inputs.migrations_dir }}" \
+          --format="${{ inputs.format }}" \
+          --severity="${{ inputs.severity }}" \
+          --output="${{ inputs.output_file }}"

@@ -1,0 +1,37 @@
+{
+  "name": "lockguard",
+  "version": "1.0.0",
+  "description": "Automated PostgreSQL CI/CD gatekeeper and AST migration analyzer for detecting dangerous table locks",
+  "main": "src/core/index.js",
+  "bin": {
+    "lockguard": "./bin/lockguard.js"
+  },
+  "scripts": {
+    "start": "node src/server/server.js",
+    "dev": "node src/server/server.js",
+    "check": "node bin/lockguard.js check fixtures/09_catastrophic_combined.sql",
+    "check:safe": "node bin/lockguard.js check fixtures/10_safe_migration.sql",
+    "check:pr": "node bin/lockguard.js check fixtures/ --format=github-pr-comment",
+    "rules": "node bin/lockguard.js rules",
+    "test": "node --test test/**/*.test.js"
+  },
+  "keywords": [
+    "postgresql",
+    "postgres",
+    "migration",
+    "linter",
+    "lock",
+    "access-exclusive",
+    "ci-cd",
+    "github-action",
+    "dba",
+    "prisma",
+    "drizzle",
+    "alembic"
+  ],
+  "author": "LockGuard Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

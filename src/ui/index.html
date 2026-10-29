@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LockGuard - PostgreSQL CI/CD Gatekeeper & Migration AST Analyzer</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="bg-dark text-light antialiased">
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="brand-logo">🛡️</div>
+        <div>
+          <div class="brand-title">LockGuard <span class="brand-tag">GATEKEEPER</span></div>
+          <div class="brand-subtitle">PostgreSQL DDL Lock Analyzer & CI Gatekeeper</div>
+        </div>
+      </div>
+
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="playground">🧪 SQL Playground</button>
+        <button class="nav-tab" data-tab="runs">🚀 PR Audit Runs</button>
+        <button class="nav-tab" data-tab="keys">🔑 API Keys</button>
+        <button class="nav-tab" data-tab="rules">📜 Rule Catalog</button>
+        <button class="nav-tab" data-tab="billing">💳 Billing & Plans</button>
+      </nav>
+
+      <div class="nav-actions">
+        <div class="org-badge">
+          <span class="org-dot"></span>
+          <span id="org-name">Acme SaaS Engineering</span>
+          <span id="org-plan-badge" class="plan-pill team">Team ($39/mo)</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <!-- TAB 1: SQL PLAYGROUND -->
+    <section id="tab-playground" class="tab-pane active">
+      <div class="section-header">
+        <div>
+          <h1 class="page-title">Interactive Migration AST Playground</h1>
+          <p class="page-desc">Paste raw PostgreSQL DDL or load a preset to detect dangerous table locks (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>) before production outage.</p>
+        </div>
+        <div class="preset-selector">
+          <label for="preset-select">Load Preset Scenario:</label>
+          <select id="preset-select" class="select-input">
+            <option value="catastrophic">🚨 Catastrophic E-Commerce PR (Multiple Fatal Locks)</option>
+            <option value="add_column">⚠️ Unsafe ADD COLUMN with volatile DEFAULT (now())</option>
+            <option value="blocking_index">⛔ Blocking CREATE INDEX (without CONCURRENTLY)</option>
+            <option value="unsafe_fk">⏳ Heavy Foreign Key Scan without NOT VALID</option>
+            <option value="alter_type">🔄 Table Rewrite: ALTER COLUMN TYPE</option>
+            <option value="direct_unique">🔒 Direct UNIQUE Constraint</option>
+            <option value="missing_timeout">⏱️ Missing SET lock_timeout</option>
+            <option value="safe_migration">✅ 100% Safe Zero-Downtime Migration</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="playground-grid">
+        <!-- Left: Code Editor -->
+        <div class="editor-card">
+          <div class="card-header">
+            <div class="header-left">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+              <span class="card-filename" id="current-filename">migration.sql</span>
+            </div>
+            <div class="header-actions">
+              <button id="btn-clear-sql" class="btn-secondary btn-sm">Clear</button>
+              <button id="btn-analyze" class="btn-primary btn-sm">⚡ Analyze Migration</button>
+            </div>
+          </div>
+          <div class="editor-wrapper">
+            <textarea id="sql-input" spellcheck="false" placeholder="Paste PostgreSQL DDL statements here..."></textarea>
+          </div>
+          <div class="editor-footer">
+            <span>Engine: <b>libpg_query AST WebAssembly & Tokenizer</b></span>
+            <span>Target: <b>PostgreSQL 12 - 17+</b></span>
+          </div>
+        </div>
+
+        <!-- Right: Realtime Analysis Results -->
+        <div class="analysis-card">
+          <div class="card-header">
+            <span class="card-title">Analysis Verdict & Lock Assessment</span>
+            <div id="verdict-badge" class="verdict-pill pending">Awaiting Analysis</div>
+          </div>
+
+          <div class="results-body" id="results-body">
+            <!-- Empty state placeholder -->
+            <div class="empty-state" id="empty-state">
+              <div class="empty-icon">🛡️</div>
+              <h3>Click "Analyze Migration"</h3>
+              <p>LockGuard will parse your SQL statements into an AST, calculate exact PostgreSQL lock levels, and generate zero-downtime SQL replacements.</p>
+            </div>
+
+            <!-- Analysis details container -->
+            <div id="analysis-details" class="analysis-details hidden">
+              <!-- Metric Tiles -->
+              <div class="metric-tiles">
+                <div class="metric-tile">
+                  <div class="metric-label">Max Lock Acquired</div>
+                  <div class="metric-value" id="res-max-lock">ACCESS EXCLUSIVE</div>
+                  <div class="metric-sub" id="res-lock-sub">Blocks all reads & writes</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="metric-label">Fatal Violations</div>
+                  <div class="metric-value text-red" id="res-violations-count">0</div>
+                  <div class="metric-sub" id="res-violations-sub">Critical / High</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="metric-label">Affected Tables</div>
+                  <div class="metric-value" id="res-tables-count">0</div>
+                  <div class="metric-sub" id="res-tables-list">-</div>
+                </div>
+              </div>
+
+              <!-- Violations & Safe Fixes list -->
+              <div class="violations-section">
+                <h3 class="violations-title">Detected Lock Anti-Patterns & Safe Fixes</h3>
+                <div id="violations-list" class="violations-list"></div>
+              </div>
+
+              <!-- PR Comment Preview -->
+              <div class="pr-preview-section">
+                <div class="pr-preview-header">
+                  <span>GitHub PR Comment Preview (Markdown)</span>
+                  <button id="btn-copy-pr-md" class="btn-secondary btn-xs">Copy Markdown</button>
+                </div>
+                <pre class="pr-markdown-box" id="pr-markdown-box"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: PR AUDIT RUNS -->
+    <section id="tab-runs" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="page-title">CI/CD Gatekeeper Pull Request Runs</h1>
+          <p class="page-desc">Real-time log of GitHub Action checks blocking unsafe DDL deployments before production merge.</p>
+        </div>
+        <button id="btn-simulate-webhook" class="btn-primary">
+          <span>⚡ Simulate PR Webhook Check</span>
+        </button>
+      </div>
+
+      <div class="runs-table-card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Pull Request</th>
+              <th>Branch / Commit</th>
+              <th>Max Lock Level</th>
+              <th>Violations</th>
+              <th>Timestamp</th>
+              <th>Gatekeeper Action</th>
+            </tr>
+          </thead>
+          <tbody id="runs-tbody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: API KEYS -->
+    <section id="tab-keys" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="page-title">Team API Keys & Access Tokens</h1>
+          <p class="page-desc">Use these license keys in GitHub Action secrets (<code>LOCKGUARD_API_KEY</code>) or your local CLI.</p>
+        </div>
+        <button id="btn-create-key" class="btn-primary">
+          <span>+ Generate New API Key</span>
+        </button>
+      </div>
+
+      <div class="keys-table-card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Key Name</th>
+              <th>API Token</th>
+              <th>Created</th>
+              <th>Last Used</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="keys-tbody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="guide-box">
+        <h3>How to connect LockGuard to your GitHub Repository:</h3>
+        <p>1. Copy your API Key above and add it to repository secrets as <code>LOCKGUARD_API_KEY</code>.</p>
+        <p>2. Add <code>.github/workflows/lockguard.yml</code> or run <code>npx lockguard init</code> in your terminal.</p>
+        <p>3. Every Pull Request modifying <code>migrations/*.sql</code> will automatically be audited by LockGuard!</p>
+      </div>
+    </section>
+
+    <!-- TAB 4: RULE CATALOG -->
+    <section id="tab-rules" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="page-title">LockGuard PostgreSQL Rule Catalog</h1>
+          <p class="page-desc">The Top-8 fatal PostgreSQL migration anti-patterns detected by our AST analyzer engine.</p>
+        </div>
+      </div>
+
+      <div class="rules-grid" id="rules-grid">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+
+    <!-- TAB 5: BILLING & PLANS -->
+    <section id="tab-billing" class="tab-pane">
+      <div class="section-header text-center">
+        <div>
+          <h1 class="page-title">LockGuard Subscription Plans</h1>
+          <p class="page-desc">Protect your PostgreSQL databases from catastrophic locking outages and customer downtime.</p>
+        </div>
+      </div>
+
+      <div class="pricing-grid">
+        <!-- Free Card -->
+        <div class="pricing-card" id="card-plan-free">
+          <div class="pricing-badge">DEVELOPER</div>
+          <h3 class="plan-name">Developer Free</h3>
+          <div class="plan-price">$0 <span class="per-month">/ forever</span></div>
+          <p class="plan-desc">For local CLI linting and personal developer projects.</p>
+          <ul class="plan-features">
+            <li>✔ Local CLI linting tool (<code>lockguard check</code>)</li>
+            <li>✔ Top-8 fatal anti-pattern rules</li>
+            <li>✔ Up to 3 checks / day</li>
+            <li>✖ GitHub App / CI PR Gatekeeper</li>
+            <li>✖ Safe SQL fix snippets in PR comments</li>
+            <li>✖ Staging replica live table stats</li>
+          </ul>
+          <button class="btn-plan btn-secondary" onclick="app.selectPlan('free')">Current Plan</button>
+        </div>
+
+        <!-- Team Card -->
+        <div class="pricing-card featured" id="card-plan-team">
+          <div class="pricing-badge popular">RECOMMENDED FOR TEAMS</div>
+          <h3 class="plan-name">Team Gatekeeper</h3>
+          <div class="plan-price">$39 <span class="per-month">/ month</span></div>
+          <p class="plan-desc">Automated CI/CD gatekeeper blocking dangerous PRs before production merge.</p>
+          <ul class="plan-features">
+            <li>✔ <b>Unlimited</b> GitHub Action & GitLab CI PR checks</li>
+            <li>✔ Automated rich PR comments with lock matrix</li>
+            <li>✔ Ready-to-copy safe multi-step SQL fixes</li>
+            <li>✔ Unlimited team members & API keys</li>
+            <li>✔ Slack & Discord outage alerts</li>
+            <li>✔ Priority rule customization</li>
+          </ul>
+          <button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Upgrade to Team ($39)</button>
+        </div>
+
+        <!-- Business Card -->
+        <div class="pricing-card" id="card-plan-business">
+          <div class="pricing-badge">ENTERPRISE SCALE</div>
+          <h3 class="plan-name">Business</h3>
+          <div class="plan-price">$99 <span class="per-month">/ month</span></div>
+          <p class="plan-desc">For high-throughput SaaS with tables exceeding 5M+ rows and strict SLAs.</p>
+          <ul class="plan-features">
+            <li>✔ Everything in Team Gatekeeper</li>
+            <li>✔ Read-only replica connection for live row stats</li>
+            <li>✔ Table bloat factor & dynamic lock duration estimation</li>
+            <li>✔ Custom company-wide lock policies</li>
+            <li>✔ Dedicated DBA architecture support</li>
+          </ul>
+          <button class="btn-plan btn-secondary" id="btn-subscribe-biz" onclick="app.selectPlan('business')">Upgrade to Business ($99)</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Notification Toast Container -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
