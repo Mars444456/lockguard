@@ -6,10 +6,11 @@
 
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-LockGuard%20Gatekeeper-red?style=for-the-badge&logo=github)](https://github.com/marketplace/actions/lockguard-ci-cd-gatekeeper)
 [![Zero Downtime](https://img.shields.io/badge/Postgres-Zero--Downtime-emerald?style=for-the-badge&logo=postgresql)](https://postgresql.org)
-[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Pure%20Node.js)-blue?style=for-the-badge)](https://nodejs.org)
-[![Tests Passing](https://img.shields.io/badge/Tests-22%2F22%20Passing-brightgreen?style=for-the-badge)](test/)
+[![Interactive Playground](https://img.shields.io/badge/Web_Playground-Live_Simulator-blueviolet?style=for-the-badge&logo=googlechrome&logoColor=white)](https://mars444456.github.io/lockguard/)
+[![Telegram Audit Bot](https://img.shields.io/badge/Telegram_Bot-@lockguard__audit__bot-0088cc?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/lockguard_audit_bot)
+[![Tests Passing](https://img.shields.io/badge/Tests-27%2F27%20Passing-brightgreen?style=for-the-badge)](test/)
 
-[Quickstart](#-quickstart-github-action) • [Why LockGuard?](#-why-lockguard) • [Rule Catalog](#-the-top-8-fatal-anti-patterns-detected) • [PR Comment Preview](#-what-lockguards-pr-comment-looks-like) • [Local CLI](#-local-cli-usage)
+[Quickstart](#-quickstart-github-action) • [Web Playground](https://mars444456.github.io/lockguard/) • [Telegram Bot](https://t.me/lockguard_audit_bot) • [Rule Catalog](#-the-top-8-fatal-anti-patterns-detected) • [PR Comment Preview](#-what-lockguards-pr-comment-looks-like) • [Local CLI](#-local-cli-usage)
 
 </div>
 
@@ -39,6 +40,15 @@ take **`ACCESS EXCLUSIVE`** or **`SHARE`** table locks.
 ```
 
 **LockGuard is your automated CI/CD gatekeeper.** It parses migration SQL into an Abstract Syntax Tree (AST), identifies fatal lock anti-patterns, fails the GitHub Action check before merge, and posts a ready-to-copy safe multi-step SQL fix right inside the Pull Request.
+
+---
+
+## 🤖 24/7 Telegram Audit Bot
+
+Audit migrations on the fly directly from your phone or desktop:
+👉 **[@lockguard_audit_bot](https://t.me/lockguard_audit_bot)**
+
+Send your SQL migration code or upload `.sql` files directly to the bot to get instant lock AST analysis, risk assessment, and safe alternatives.
 
 ---
 
