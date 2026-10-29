@@ -103,6 +103,8 @@ class LockGuardWebPlayground {
     this.valPool = document.getElementById('val-pool');
     this.sliderGmv = document.getElementById('slider-gmv');
     this.valGmv = document.getElementById('val-gmv');
+    this.sliderCores = document.getElementById('slider-cores');
+    this.valCores = document.getElementById('val-cores');
 
     this.verdictBadge = document.getElementById('verdict-badge');
     this.emptyState = document.getElementById('empty-state');
@@ -122,6 +124,8 @@ class LockGuardWebPlayground {
     this.resPoolSub = document.getElementById('res-pool-sub');
     this.resFinancialLoss = document.getElementById('res-financial-loss');
     this.resFinancialSub = document.getElementById('res-financial-sub');
+    this.resCollisionProb = document.getElementById('res-collision-prob');
+    this.resCollisionSub = document.getElementById('res-collision-sub');
 
     this.btnShare = document.getElementById('btn-share');
     this.btnCopyBadge = document.getElementById('btn-copy-badge');
@@ -195,6 +199,14 @@ class LockGuardWebPlayground {
           ? (val / 1000000).toFixed(1) + 'M ₽ / день'
           : (val / 1000).toFixed(0) + 'K ₽ / день';
         this.valGmv.textContent = formatted;
+        if (this.lastAnalysis) this.runAnalysis();
+      });
+    }
+
+    if (this.sliderCores) {
+      this.sliderCores.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        this.valCores.textContent = val + ' vCPU';
         if (this.lastAnalysis) this.runAnalysis();
       });
     }
@@ -283,6 +295,7 @@ class LockGuardWebPlayground {
     const rows = parseInt(this.sliderRows.value, 10);
     const rps = parseInt(this.sliderRps.value, 10);
     const poolSize = this.sliderPool ? parseInt(this.sliderPool.value, 10) : 100;
+    const cpuCores = this.sliderCores ? parseInt(this.sliderCores.value, 10) : 8;
 
     // 1. Analyze AST
     const analysis = window.LockGuard.analyze(sql);
@@ -292,7 +305,8 @@ class LockGuardWebPlayground {
     const simulation = window.LockGuard.simulate(analysis, { 
       simulatedRows: rows, 
       concurrentRps: rps,
-      pgBouncerPoolSize: poolSize 
+      pgBouncerPoolSize: poolSize,
+      cpuCores: cpuCores
     });
 
     // 3. Render Results
@@ -343,6 +357,11 @@ class LockGuardWebPlayground {
         this.resFinancialLoss.textContent = '0 ₽';
         this.resFinancialLoss.className = 'metric-value text-emerald';
         this.resFinancialSub.textContent = 'Потери бизнеса отсутствуют';
+      }
+      if (this.resCollisionProb) {
+        this.resCollisionProb.textContent = '0.0%';
+        this.resCollisionProb.className = 'metric-value text-emerald';
+        this.resCollisionSub.textContent = 'Конфликтов схемы нет';
       }
       return;
     }
@@ -400,6 +419,15 @@ class LockGuardWebPlayground {
         this.resFinancialLoss.className = 'metric-value text-emerald';
         this.resFinancialSub.textContent = 'Потери бизнеса отсутствуют';
       }
+    }
+
+    if (this.resCollisionProb) {
+      const prob = simulation.lockContentionProbability || 0;
+      this.resCollisionProb.textContent = `${prob}%`;
+      this.resCollisionProb.className = prob > 60 ? 'metric-value text-purple' : 'metric-value text-emerald';
+      this.resCollisionSub.textContent = prob > 70 
+        ? 'Высокий риск коллизии' 
+        : (prob > 35 ? 'Средняя плотность очереди' : 'Низкая вероятность коллизии');
     }
   }
 
@@ -522,11 +550,13 @@ class LockGuardWebPlayground {
     const rows = parseInt(this.sliderRows.value, 10);
     const rps = parseInt(this.sliderRps.value, 10);
     const poolSize = this.sliderPool ? parseInt(this.sliderPool.value, 10) : 100;
+    const cpuCores = this.sliderCores ? parseInt(this.sliderCores.value, 10) : 8;
     const gmv = this.sliderGmv ? parseInt(this.sliderGmv.value, 10) : 1000000;
     const simulation = window.LockGuard.simulate(analysis, { 
       simulatedRows: rows, 
       concurrentRps: rps,
-      pgBouncerPoolSize: poolSize 
+      pgBouncerPoolSize: poolSize,
+      cpuCores: cpuCores
     });
     const splitPlan = window.LockGuard.generatePlan(analysis, 'sql');
 
@@ -633,7 +663,7 @@ ${v.safeFix}
     </tr>
     <tr>
       <td class="label">Параметры прод-базы:</td>
-      <td>Таблица: ${formattedRows} | Трафик: ${rps} RPS</td>
+      <td>Таблица: ${formattedRows} | Трафик: ${rps} RPS (${cpuCores} vCPU)</td>
       <td class="label">Контакты команды:</td>
       <td>Telegram: <b>@marswwu</b> | GitHub: Mars444456/lockguard</td>
     </tr>
@@ -658,8 +688,8 @@ ${v.safeFix}
       <div class="stat-val ${analysis.isDmlOnly ? '' : 'red'}">${analysis.isDmlOnly ? '0.0' : estDowntimeSec} сек</div>
     </div>
     <div class="stat-box">
-      <div class="stat-label">Зависнет запросов</div>
-      <div class="stat-val">${analysis.isDmlOnly ? '0' : simulation.totalBlockedQueriesEstimated.toLocaleString()}</div>
+      <div class="stat-label">Риск коллизии</div>
+      <div class="stat-val ${simulation.lockContentionProbability > 60 && !analysis.isDmlOnly ? 'red' : ''}">${analysis.isDmlOnly ? '0%' : (simulation.lockContentionProbability || 0) + '%'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Пул PgBouncer (${poolSize})</div>

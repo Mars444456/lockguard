@@ -22,6 +22,9 @@
       </a>
 
       <div class="nav-links">
+        <a href="#pricing" class="nav-btn" style="border-color: #8B5CF6; color: #C084FC; font-weight: 700;">
+          <span>💎 Тарифы</span>
+        </a>
         <a href="https://github.com/Mars444456/lockguard" target="_blank" class="nav-btn">
           <span>⭐ GitHub (v1.1.0)</span>
         </a>
@@ -92,6 +95,14 @@
           <span class="slider-value" id="val-gmv">1 000 000 ₽ / день</span>
         </div>
         <input type="range" id="slider-gmv" min="100000" max="20000000" step="100000" value="1000000">
+      </div>
+
+      <div class="slider-group" style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
+        <div class="slider-header">
+          <span class="slider-label">🖥️ Конфигурация сервера БД (vCPU Cores):</span>
+          <span class="slider-value" id="val-cores">8 vCPU</span>
+        </div>
+        <input type="range" id="slider-cores" min="2" max="64" step="2" value="8">
       </div>
     </div>
 
@@ -183,6 +194,12 @@
                 <div class="metric-value text-red" id="res-financial-loss">~52 300 ₽</div>
                 <div class="metric-sub" id="res-financial-sub">Остановка онлайн-платежей</div>
               </div>
+
+              <div class="metric-tile" style="border-color: rgba(168, 85, 247, 0.4); background: linear-gradient(180deg, rgba(168,85,247,0.12) 0%, rgba(15,23,42,0.8) 100%);">
+                <div class="metric-label" style="color: #C084FC;">Вероятность коллизии</div>
+                <div class="metric-value text-purple" id="res-collision-prob">74.2%</div>
+                <div class="metric-sub" id="res-collision-sub">M/M/c модель очередей</div>
+              </div>
             </div>
 
             <!-- Lock Conflict Matrix Grid -->
@@ -260,6 +277,69 @@
         📋 Скопировать Markdown
       </button>
     </div>
+    <!-- Pricing & Commercial Monetization Section -->
+    <section id="pricing" class="pricing-section">
+      <div class="pricing-header">
+        <h2 class="pricing-title">Тарифы & Интеграция в инфраструктуру</h2>
+        <p class="pricing-subtitle">Выберите подходящий уровень защиты для вашей команды. Открытый бесплатный линтер для пет-проектов или готовый Zero-Downtime пайплайн для высоких нагрузок.</p>
+      </div>
+
+      <div class="pricing-grid">
+        <!-- Tier 1: Community -->
+        <div class="pricing-card">
+          <div class="pricing-name">Community</div>
+          <div class="pricing-price">0 ₽ <span class="pricing-period">/ навсегда</span></div>
+          <div class="pricing-desc">Базовый CI-гейткипер для открытых проектов и небольших баз данных.</div>
+          <ul class="pricing-features">
+            <li><span class="check">✔</span> GitHub Action линтер в CI/CD</li>
+            <li><span class="check">✔</span> Проверка 8 критических антипаттернов</li>
+            <li><span class="check">✔</span> In-Browser AST песочница</li>
+            <li><span class="check">✔</span> Базовая оценка блокировок и локов</li>
+            <li><span class="check">✔</span> 100% открытый исходный код</li>
+          </ul>
+          <a href="https://github.com/Mars444456/lockguard" target="_blank" class="pricing-btn btn-free">
+            Установить из GitHub
+          </a>
+        </div>
+
+        <!-- Tier 2: Pro Team -->
+        <div class="pricing-card featured">
+          <div class="pricing-badge">Хит для команд</div>
+          <div class="pricing-name" style="color: #C084FC;">Pro Team</div>
+          <div class="pricing-price">4 990 ₽ <span class="pricing-period">/ месяц ($49)</span></div>
+          <div class="pricing-desc">Для продуктовых команд с непрерывными релизами и высокими требованиями к SLA.</div>
+          <ul class="pricing-features">
+            <li><span class="check">✔</span> <b>Все функции Community</b></li>
+            <li><span class="check">✔</span> Неограниченные репозитории и микросервисы</li>
+            <li><span class="check">✔</span> <b>Auto-Splitter:</b> автогенерация безопасных миграций для <b>Django, Prisma, Drizzle, SQLAlchemy</b></li>
+            <li><span class="check">✔</span> <b>Telegram & Slack боты:</b> моментальные алерты команде дежурных</li>
+            <li><span class="check">✔</span> Генерация брендированных <b>PDF-отчетов для CTO</b></li>
+            <li><span class="check">✔</span> Приоритетная поддержка в закрытом чате</li>
+          </ul>
+          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%BF%D0%BE%D0%B4%D0%BA%D0%BB%D1%8E%D1%87%D0%B8%D1%82%D1%8C%20LockGuard%20Pro%20%D0%B4%D0%BB%D1%8F%20%D0%BA%D0%BE%D0%BC%D0%B0%D0%BD%D0%B4%D1%8B." target="_blank" class="pricing-btn btn-pro">
+            💎 Подключить Pro для команды
+          </a>
+        </div>
+
+        <!-- Tier 3: Enterprise -->
+        <div class="pricing-card">
+          <div class="pricing-name" style="color: #38BDF8;">Enterprise & Аудит</div>
+          <div class="pricing-price">99 000 ₽ <span class="pricing-period">/ аудит под ключ</span></div>
+          <div class="pricing-desc">Полный аудит существующей базы, архитектуры миграций и On-premise внедрение.</div>
+          <ul class="pricing-features">
+            <li><span class="check">✔</span> <b>Персональный аудит</b> всей структуры БД и истории миграций</li>
+            <li><span class="check">✔</span> <b>On-Premise:</b> изолированная установка в GitLab CI / Bitbucket</li>
+            <li><span class="check">✔</span> Тюнинг пулеров PgBouncer / Odyssey под высокий RPS</li>
+            <li><span class="check">✔</span> Поддержка шардинга (Citus), партиций и реплик</li>
+            <li><span class="check">✔</span> Индивидуальный SLA 99.99% и договор</li>
+            <li><span class="check">✔</span> Прямой контакт с ведущим DBA-архитектором</li>
+          </ul>
+          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%98%D0%BD%D1%82%D0%B5%D1%80%D0%B5%D1%81%D1%83%D0%B5%D1%82%20Enterprise%20%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%B2%D0%BD%D0%B5%D0%B4%D1%80%D0%B5%D0%BD%D0%B8%D0%B5." target="_blank" class="pricing-btn btn-enterprise">
+            🚀 Заказать Enterprise аудит
+          </a>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Scripts -->
