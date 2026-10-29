@@ -434,21 +434,29 @@ class PgParser {
       if (defaultMatch) {
         defaultValue = defaultMatch[1].trim();
         // Check volatility
-        // Volatile functions in Postgres: now(), current_timestamp, clock_timestamp(), random(), uuid_generate_v4(), gen_random_uuid(), etc.
-        const volatilePatterns = [
-          /\bnow\s*\(/i,
+        const trulyVolatilePatterns = [
           /\bclock_timestamp\s*\(/i,
-          /\bcurrent_timestamp\b/i,
           /\brandom\s*\(/i,
           /\buuid_generate_/i,
           /\bgen_random_uuid\s*\(/i,
           /\btimeofday\s*\(/i,
-          /\bstatement_timestamp\s*\(/i,
-          /\btransaction_timestamp\s*\(/i,
           /\bSELECT\b/i // subqueries
         ];
 
-        isVolatileDefault = volatilePatterns.some(pattern => pattern.test(defaultValue));
+        const stableTimestampPatterns = [
+          /\bnow\s*\(/i,
+          /\bcurrent_timestamp\b/i,
+          /\bstatement_timestamp\s*\(/i,
+          /\btransaction_timestamp\s*\(/i
+        ];
+
+        const isTrulyVolatile = trulyVolatilePatterns.some(pattern => pattern.test(defaultValue));
+        const isStableTimestamp = stableTimestampPatterns.some(pattern => pattern.test(defaultValue));
+        isVolatileDefault = isTrulyVolatile || isStableTimestamp;
+        var isPhysicalTableRewrite = isTrulyVolatile;
+        var rewriteReason = isTrulyVolatile 
+          ? 'VOLATILE_FULL_REWRITE' 
+          : (isStableTimestamp ? 'FAST_DEFAULT_METADATA_ONLY' : 'CONSTANT_METADATA_ONLY');
       }
     }
 
@@ -460,6 +468,8 @@ class PgParser {
       hasDefault,
       defaultValue,
       isVolatileDefault,
+      isPhysicalTableRewrite: typeof isPhysicalTableRewrite !== 'undefined' ? isPhysicalTableRewrite : false,
+      rewriteReason: typeof rewriteReason !== 'undefined' ? rewriteReason : 'NONE',
       isNotNull
     };
   }

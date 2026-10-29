@@ -99,11 +99,15 @@ class LockGuardWebPlayground {
     this.valRows = document.getElementById('val-rows');
     this.sliderRps = document.getElementById('slider-rps');
     this.valRps = document.getElementById('val-rps');
+    this.sliderPool = document.getElementById('slider-pool');
+    this.valPool = document.getElementById('val-pool');
 
     this.verdictBadge = document.getElementById('verdict-badge');
     this.emptyState = document.getElementById('empty-state');
     this.analysisDetails = document.getElementById('analysis-details');
     this.splitterPanel = document.getElementById('splitter-panel');
+    this.dmlNotice = document.getElementById('dml-notice');
+    this.dmlDesc = document.getElementById('dml-desc');
 
     this.resMaxLock = document.getElementById('res-max-lock');
     this.resLockSub = document.getElementById('res-lock-sub');
@@ -112,6 +116,8 @@ class LockGuardWebPlayground {
     this.resDowntime = document.getElementById('res-downtime');
     this.resDowntimeSub = document.getElementById('res-downtime-sub');
     this.resBlockedQueries = document.getElementById('res-blocked-queries');
+    this.resPoolTime = document.getElementById('res-pool-time');
+    this.resPoolSub = document.getElementById('res-pool-sub');
 
     this.violationsList = document.getElementById('violations-list');
     this.splitterPhases = document.getElementById('splitter-phases');
@@ -148,6 +154,26 @@ class LockGuardWebPlayground {
       const val = parseInt(e.target.value, 10);
       this.valRps.textContent = val + ' RPS';
       if (this.lastAnalysis) this.runAnalysis();
+    });
+
+    if (this.sliderPool) {
+      this.sliderPool.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        this.valPool.textContent = val + ' коннектов';
+        if (this.lastAnalysis) this.runAnalysis();
+      });
+    }
+
+    this.sqlInput.addEventListener('input', () => {
+      // Auto-analyze on typing after 300ms
+      clearTimeout(this.typeTimer);
+      this.typeTimer = setTimeout(() => {
+        if (this.sqlInput.value.trim()) {
+          this.runAnalysis();
+        } else {
+          this.showEmptyState();
+        }
+      }, 350);
     });
 
     // Auto-splitter ORM tabs
@@ -190,13 +216,18 @@ class LockGuardWebPlayground {
 
     const rows = parseInt(this.sliderRows.value, 10);
     const rps = parseInt(this.sliderRps.value, 10);
+    const poolSize = this.sliderPool ? parseInt(this.sliderPool.value, 10) : 100;
 
     // 1. Analyze AST
     const analysis = window.LockGuard.analyze(sql);
     this.lastAnalysis = analysis;
 
     // 2. Simulate Latency & Blocked Queries
-    const simulation = window.LockGuard.simulate(analysis, { simulatedRows: rows, concurrentRps: rps });
+    const simulation = window.LockGuard.simulate(analysis, { 
+      simulatedRows: rows, 
+      concurrentRps: rps,
+      pgBouncerPoolSize: poolSize 
+    });
 
     // 3. Render Results
     this.emptyState.classList.add('hidden');
@@ -209,7 +240,10 @@ class LockGuardWebPlayground {
   }
 
   renderVerdict(analysis) {
-    if (analysis.passed) {
+    if (analysis.isDmlOnly) {
+      this.verdictBadge.className = 'verdict-pill passed';
+      this.verdictBadge.innerHTML = '✔ DML / ЧТЕНИЕ ДАННЫХ (БЛОКИРОВОК НЕТ)';
+    } else if (analysis.passed) {
       this.verdictBadge.className = 'verdict-pill passed';
       this.verdictBadge.innerHTML = '✔ 100% ZERO-DOWNTIME SAFE';
     } else {
@@ -219,6 +253,33 @@ class LockGuardWebPlayground {
   }
 
   renderMetrics(analysis, simulation, rows) {
+    if (analysis.isDmlOnly) {
+      if (this.dmlNotice) {
+        this.dmlNotice.classList.remove('hidden');
+        this.dmlDesc.textContent = analysis.dmlDescription;
+      }
+      this.resMaxLock.textContent = 'ACCESS SHARE (READ)';
+      this.resMaxLock.className = 'metric-value text-emerald';
+      this.resLockSub.textContent = 'Обычное чтение/запись данных (DML)';
+      this.resViolationsCount.textContent = '0';
+      this.resViolationsSub.textContent = 'Нет DDL-операций';
+      this.resDowntime.textContent = '0.0s';
+      this.resDowntime.className = 'metric-value text-emerald';
+      this.resDowntimeSub.textContent = 'Простой отсутствует';
+      this.resBlockedQueries.textContent = '0';
+      this.resBlockedQueries.className = 'metric-value text-emerald';
+      if (this.resPoolTime) {
+        this.resPoolTime.textContent = 'Безопасно';
+        this.resPoolTime.className = 'metric-value text-emerald';
+        this.resPoolSub.textContent = 'Пул не забивается';
+      }
+      return;
+    }
+
+    if (this.dmlNotice) {
+      this.dmlNotice.classList.add('hidden');
+    }
+
     this.resMaxLock.textContent = analysis.highestLockLevel || 'ACCESS SHARE';
     if (analysis.highestLockLevel === 'ACCESS EXCLUSIVE') {
       this.resMaxLock.className = 'metric-value text-red';
@@ -242,6 +303,12 @@ class LockGuardWebPlayground {
 
     this.resBlockedQueries.textContent = `~${simulation.totalBlockedQueriesEstimated.toLocaleString()}`;
     this.resBlockedQueries.className = simulation.totalBlockedQueriesEstimated > 100 ? 'metric-value text-cyan' : 'metric-value text-emerald';
+
+    if (this.resPoolTime) {
+      this.resPoolTime.textContent = `${simulation.timeToPoolExhaustionSec}s`;
+      this.resPoolTime.className = simulation.isPoolExhausted ? 'metric-value text-amber' : 'metric-value text-emerald';
+      this.resPoolSub.textContent = simulation.isPoolExhausted ? '⚠️ Пул будет исчерпан!' : 'В пределах нормы';
+    }
   }
 
   renderLockMatrix(highestLock) {
@@ -279,7 +346,11 @@ class LockGuardWebPlayground {
       card.innerHTML = `
         <div class="violation-header">
           <div class="violation-title">#${idx + 1}. ${v.ruleName} (<code>${v.ruleId}</code>)</div>
-          <span class="badge-sev ${v.severity.toLowerCase()}">${v.severity} • ${v.lockLevel}</span>
+          <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+            ${v.isPhysicalTableRewrite ? '<span style="background:rgba(239,68,68,0.2); color:#F87171; border:1px solid rgba(239,68,68,0.4); padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">💾 Рерайт диска</span>' : ''}
+            ${v.rewriteReason === 'FAST_DEFAULT_METADATA_ONLY' ? '<span style="background:rgba(6,182,212,0.2); color:#22D3EE; border:1px solid rgba(6,182,212,0.4); padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">⚡ Fast Default (Метаданные)</span>' : ''}
+            <span class="badge-sev ${v.severity.toLowerCase()}">${v.severity} • ${v.lockLevel}</span>
+          </div>
         </div>
         <div class="violation-msg">
           <b>Table:</b> <code>${v.table || 'unknown'}</code> | <b>Line:</b> L${v.line || '1'}
@@ -345,15 +416,18 @@ class LockGuardWebPlayground {
   }
 
   exportPdfReport() {
-    if (!this.lastAnalysis) {
-      this.runAnalysis();
-    }
+    this.runAnalysis();
     const analysis = this.lastAnalysis;
     if (!analysis) return;
 
     const rows = parseInt(this.sliderRows.value, 10);
     const rps = parseInt(this.sliderRps.value, 10);
-    const simulation = window.LockGuard.simulate(analysis, { simulatedRows: rows, concurrentRps: rps });
+    const poolSize = this.sliderPool ? parseInt(this.sliderPool.value, 10) : 100;
+    const simulation = window.LockGuard.simulate(analysis, { 
+      simulatedRows: rows, 
+      concurrentRps: rps,
+      pgBouncerPoolSize: poolSize 
+    });
     const splitPlan = window.LockGuard.generatePlan(analysis, 'sql');
 
     const formattedRows = rows >= 1000000 
@@ -458,25 +532,31 @@ ${v.safeFix}
     </tr>
   </table>
 
-  <div class="banner ${isSafe ? 'safe' : 'critical'}">
-    <div class="banner-title">${isSafe ? '✅ СТАТУС: МИГРАЦИЯ БЕЗОПАСНА (ZERO-DOWNTIME COMPLIANT)' : '⚠️ СТАТУС: КРИТИЧЕСКИЙ РИСК ПРОСТОЯ ПРОДАКШЕНА (OUTAGE IMMINENT)'}</div>
-    <div>${isSafe 
-      ? 'Анализ AST-дерева подтвердил: запрошенные операции не вызывают длительных эксклюзивных блокировок. Миграция безопасна для боевого деплоя под живым трафиком.' 
-      : 'В миграционном скрипте обнаружены операции с блокировкой <b>ACCESS EXCLUSIVE</b>. Выкатка приведет к полной заморозке таблицы, накоплению очереди входящих транзакций и лавинообразным ошибкам 504 Gateway Timeout.'}</div>
+  <div class="banner ${analysis.isDmlOnly ? 'safe' : (isSafe ? 'safe' : 'critical')}">
+    <div class="banner-title">${analysis.isDmlOnly ? 'ℹ️ СТАТУС: DML ОПЕРАЦИЯ ДАННЫХ (БЛОКИРОВОК СХЕМЫ НЕТ)' : (isSafe ? '✅ СТАТУС: МИГРАЦИЯ БЕЗОПАСНА (ZERO-DOWNTIME COMPLIANT)' : '⚠️ СТАТУС: КРИТИЧЕСКИЙ РИСК ПРОСТОЯ ПРОДАКШЕНА (OUTAGE IMMINENT)')}</div>
+    <div>${analysis.isDmlOnly 
+      ? 'Запрос является операцией чтения/записи данных (SELECT / INSERT / UPDATE / DELETE). Структура и схема базы данных не изменяются, блокировок DDL нет. Расчетный простой базы: 0.0 сек.'
+      : (isSafe 
+        ? 'Анализ AST-дерева подтвердил: запрошенные операции не вызывают длительных эксклюзивных блокировок. Миграция безопасна для боевого деплоя под живым трафиком.' 
+        : 'В миграционном скрипте обнаружены операции с блокировкой <b>ACCESS EXCLUSIVE</b>. Выкатка приведет к полной заморозке таблицы, накоплению очереди входящих транзакций и лавинообразным ошибкам 504 Gateway Timeout.')}</div>
   </div>
 
-  <div class="stats-grid">
+  <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
     <div class="stat-box">
       <div class="stat-label">Макс. Блокировка</div>
-      <div class="stat-val ${analysis.highestLockLevel === 'ACCESS EXCLUSIVE' ? 'red' : ''}">${analysis.highestLockLevel || 'ACCESS SHARE'}</div>
+      <div class="stat-val ${analysis.highestLockLevel === 'ACCESS EXCLUSIVE' && !analysis.isDmlOnly ? 'red' : ''}">${analysis.isDmlOnly ? 'ACCESS SHARE' : (analysis.highestLockLevel || 'ACCESS SHARE')}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Расчетный простой</div>
-      <div class="stat-val red">${estDowntimeSec} сек</div>
+      <div class="stat-val ${analysis.isDmlOnly ? '' : 'red'}">${analysis.isDmlOnly ? '0.0' : estDowntimeSec} сек</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Зависнет запросов</div>
-      <div class="stat-val">${simulation.totalBlockedQueriesEstimated.toLocaleString()}</div>
+      <div class="stat-val">${analysis.isDmlOnly ? '0' : simulation.totalBlockedQueriesEstimated.toLocaleString()}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Пул PgBouncer (${poolSize})</div>
+      <div class="stat-val ${simulation.isPoolExhausted && !analysis.isDmlOnly ? 'red' : ''}">${analysis.isDmlOnly ? 'Safe' : simulation.timeToPoolExhaustionSec + 's'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Нарушений в коде</div>

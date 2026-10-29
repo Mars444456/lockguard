@@ -17,6 +17,7 @@ module.exports = {
           if (sub.subtype === 'ADD_COLUMN' && sub.hasDefault) {
             // Flag if volatile or has non-constant default
             const isCritical = sub.isVolatileDefault;
+            const isPhysicalRewrite = !!sub.isPhysicalTableRewrite;
             violations.push({
               ruleId: this.id,
               ruleCode: this.code,
@@ -26,11 +27,13 @@ module.exports = {
               table: sub.table,
               column: sub.column,
               defaultValue: sub.defaultValue,
+              isPhysicalTableRewrite: isPhysicalRewrite,
+              rewriteReason: sub.rewriteReason || 'UNKNOWN',
               line: stmt.line,
               raw: sub.raw,
-              message: isCritical 
-                ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite holding ACCESS EXCLUSIVE lock!`
-                : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. Adding a column with DEFAULT can acquire ACCESS EXCLUSIVE lock. Prefer multi-phase migration.`
+              message: isPhysicalRewrite 
+                ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`
+                : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. In Postgres 11+ metadata is fast, but statement still takes ACCESS EXCLUSIVE lock, risking Head-of-Line queue blocking!`
             });
           }
         }

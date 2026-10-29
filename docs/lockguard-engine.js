@@ -512,21 +512,29 @@ class PgParser {
       if (defaultMatch) {
         defaultValue = defaultMatch[1].trim();
         // Check volatility
-        // Volatile functions in Postgres: now(), current_timestamp, clock_timestamp(), random(), uuid_generate_v4(), gen_random_uuid(), etc.
-        const volatilePatterns = [
-          /\bnow\s*\(/i,
+        const trulyVolatilePatterns = [
           /\bclock_timestamp\s*\(/i,
-          /\bcurrent_timestamp\b/i,
           /\brandom\s*\(/i,
           /\buuid_generate_/i,
           /\bgen_random_uuid\s*\(/i,
           /\btimeofday\s*\(/i,
-          /\bstatement_timestamp\s*\(/i,
-          /\btransaction_timestamp\s*\(/i,
           /\bSELECT\b/i // subqueries
         ];
 
-        isVolatileDefault = volatilePatterns.some(pattern => pattern.test(defaultValue));
+        const stableTimestampPatterns = [
+          /\bnow\s*\(/i,
+          /\bcurrent_timestamp\b/i,
+          /\bstatement_timestamp\s*\(/i,
+          /\btransaction_timestamp\s*\(/i
+        ];
+
+        const isTrulyVolatile = trulyVolatilePatterns.some(pattern => pattern.test(defaultValue));
+        const isStableTimestamp = stableTimestampPatterns.some(pattern => pattern.test(defaultValue));
+        isVolatileDefault = isTrulyVolatile || isStableTimestamp;
+        var isPhysicalTableRewrite = isTrulyVolatile;
+        var rewriteReason = isTrulyVolatile 
+          ? 'VOLATILE_FULL_REWRITE' 
+          : (isStableTimestamp ? 'FAST_DEFAULT_METADATA_ONLY' : 'CONSTANT_METADATA_ONLY');
       }
     }
 
@@ -538,6 +546,8 @@ class PgParser {
       hasDefault,
       defaultValue,
       isVolatileDefault,
+      isPhysicalTableRewrite: typeof isPhysicalTableRewrite !== 'undefined' ? isPhysicalTableRewrite : false,
+      rewriteReason: typeof rewriteReason !== 'undefined' ? rewriteReason : 'NONE',
       isNotNull
     };
   }
@@ -571,6 +581,7 @@ return {
           if (sub.subtype === 'ADD_COLUMN' && sub.hasDefault) {
             // Flag if volatile or has non-constant default
             const isCritical = sub.isVolatileDefault;
+            const isPhysicalRewrite = !!sub.isPhysicalTableRewrite;
             violations.push({
               ruleId: this.id,
               ruleCode: this.code,
@@ -580,11 +591,13 @@ return {
               table: sub.table,
               column: sub.column,
               defaultValue: sub.defaultValue,
+              isPhysicalTableRewrite: isPhysicalRewrite,
+              rewriteReason: sub.rewriteReason || 'UNKNOWN',
               line: stmt.line,
               raw: sub.raw,
-              message: isCritical 
-                ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite holding ACCESS EXCLUSIVE lock!`
-                : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. Adding a column with DEFAULT can acquire ACCESS EXCLUSIVE lock. Prefer multi-phase migration.`
+              message: isPhysicalRewrite 
+                ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`
+                : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. In Postgres 11+ metadata is fast, but statement still takes ACCESS EXCLUSIVE lock, risking Head-of-Line queue blocking!`
             });
           }
         }
@@ -1151,10 +1164,20 @@ class RuleEngine {
 
     const status = violations.length === 0 ? 'PASSED' : (passed ? 'WARNING' : 'FAILED');
 
+    const hasDdl = astStatements.some(s => 
+      s.type === 'ALTER_TABLE' || 
+      s.type === 'CREATE_INDEX' || 
+      s.type === 'DROP_TABLE' ||
+      s.type === 'VACUUM'
+    );
+    const isDmlOnly = !hasDdl && astStatements.length > 0;
+
     return {
       filename,
       status,
       passed,
+      isDmlOnly,
+      dmlDescription: isDmlOnly ? 'Операция не является DDL-миграцией схемы (SELECT / DML чтение/запись данных). Блокировок DDL нет, простой базы: 0.0 сек.' : null,
       violationsCount: violations.length,
       criticalCount,
       highCount,
@@ -1261,17 +1284,28 @@ class AutoSplitter {
           const col = v.column || 'column_name';
           const newType = v.newType || 'BIGINT';
 
-          phase1Statements.push(`-- Phase 1 (Deploy 1): Add shadow column`);
+          phase1Statements.push(`-- Phase 1 (Deploy 1): Add shadow column & Dual-Write Trigger`);
           phase1Statements.push(`ALTER TABLE ${table} ADD COLUMN ${col}_new ${newType};`);
+          phase1Statements.push(`CREATE OR REPLACE FUNCTION trg_sync_${table}_${col}() RETURNS TRIGGER AS $$`);
+          phase1Statements.push(`BEGIN`);
+          phase1Statements.push(`  NEW.${col}_new = NEW.${col}::${newType};`);
+          phase1Statements.push(`  RETURN NEW;`);
+          phase1Statements.push(`END;`);
+          phase1Statements.push(`$$ LANGUAGE plpgsql;`);
+          phase1Statements.push(`CREATE TRIGGER trg_${table}_${col}_dual_write`);
+          phase1Statements.push(`  BEFORE INSERT OR UPDATE ON ${table}`);
+          phase1Statements.push(`  FOR EACH ROW EXECUTE FUNCTION trg_sync_${table}_${col}();`);
 
-          phase2Operations.push(`-- Phase 2 (Async Worker): Dual-write in application & backfill shadow column`);
-          phase2Operations.push(`-- UPDATE ${table} SET ${col}_new = ${col}::${newType} WHERE ${col}_new IS NULL;`);
+          phase2Operations.push(`-- Phase 2 (Async Worker): Backfill historical rows in chunks of 5000`);
+          phase2Operations.push(`UPDATE ${table} SET ${col}_new = ${col}::${newType} WHERE ${col}_new IS NULL;`);
 
-          phase3Statements.push(`-- Phase 3 (Deploy 2): Instant column swap (metadata change)`);
+          phase3Statements.push(`-- Phase 3 (Deploy 2): Remove trigger and swap columns`);
+          phase3Statements.push(`DROP TRIGGER IF EXISTS trg_${table}_${col}_dual_write ON ${table};`);
+          phase3Statements.push(`DROP FUNCTION IF EXISTS trg_sync_${table}_${col}();`);
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col} TO ${col}_deprecated;`);
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col}_new TO ${col};`);
 
-          phase4Statements.push(`-- Phase 4 (Maintenance / Deploy 3): Drop deprecated column`);
+          phase4Statements.push(`-- Phase 4 (Cleanup): Drop deprecated column`);
           phase4Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col}_deprecated;`);
           break;
         }
@@ -1551,6 +1585,7 @@ class ShadowReplaySimulator {
   static simulate(analysis, options = {}) {
     const rows = options.simulatedRows || 50000;
     const rps = options.concurrentRps || 250;
+    const poolSize = options.pgBouncerPoolSize || 100;
 
     const simulationResults = [];
     let totalContentionMs = 0;
@@ -1598,9 +1633,18 @@ class ShadowReplaySimulator {
       });
     }
 
+    const timeToExhaustSec = Number((poolSize / rps).toFixed(2));
+    const isPoolExhausted = totalContentionMs > (timeToExhaustSec * 1000);
+
     return {
       simulatedRows: rows,
       simulatedConcurrentRps: rps,
+      pgBouncerPoolSize: poolSize,
+      timeToPoolExhaustionSec: timeToExhaustSec,
+      isPoolExhausted,
+      poolExhaustionWarning: isPoolExhausted
+        ? `При трафике ${rps} RPS пул PgBouncer (${poolSize} коннектов) забьется за ${timeToExhaustSec} сек! Все последующие запросы встанут в очередь или отвалятся по HTTP 504.`
+        : `Пул PgBouncer (${poolSize} коннектов) успеет обслужить трафик в пределах нормы.`,
       totalLockWaitContentionMs: totalContentionMs,
       totalBlockedQueriesEstimated: simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0),
       tableSimulations: simulationResults,

@@ -77,6 +77,14 @@
         </div>
         <input type="range" id="slider-rps" min="10" max="1000" step="10" value="250">
       </div>
+
+      <div class="slider-group" style="grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
+        <div class="slider-header">
+          <span class="slider-label">🛡️ Пул соединений PgBouncer (лимит одновременных коннектов):</span>
+          <span class="slider-value" id="val-pool">100 коннектов</span>
+        </div>
+        <input type="range" id="slider-pool" min="20" max="500" step="10" value="100">
+      </div>
     </div>
 
     <!-- Playground Workspace -->
@@ -129,6 +137,12 @@
 
           <!-- Analysis Details -->
           <div id="analysis-details" class="analysis-details hidden">
+            <!-- DML Notice Banner (Natalya's Case) -->
+            <div id="dml-notice" class="hidden" style="margin-bottom: 1.25rem; border: 1px solid #10B981; border-left: 5px solid #10B981; background: rgba(16, 185, 129, 0.12); padding: 0.85rem 1.1rem; border-radius: 8px;">
+              <b style="color: #34D399; font-size: 0.9rem;">ℹ️ DML ЗАПРОС ДАННЫХ (SELECT / INSERT / UPDATE):</b>
+              <div id="dml-desc" style="font-size: 0.82rem; color: #E5E7EB; margin-top: 0.25rem;"></div>
+            </div>
+
             <!-- Key Metric Tiles -->
             <div class="metric-tiles">
               <div class="metric-tile">
@@ -147,6 +161,12 @@
                 <div class="metric-label">Зависнет запросов</div>
                 <div class="metric-value text-cyan" id="res-blocked-queries">~11,300</div>
                 <div class="metric-sub">504 Gateway Timeout</div>
+              </div>
+
+              <div class="metric-tile">
+                <div class="metric-label">Пул PgBouncer (100)</div>
+                <div class="metric-value text-amber" id="res-pool-time">0.4s</div>
+                <div class="metric-sub" id="res-pool-sub">Время до взрыва пула</div>
               </div>
             </div>
 

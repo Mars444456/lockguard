@@ -86,17 +86,28 @@ class AutoSplitter {
           const col = v.column || 'column_name';
           const newType = v.newType || 'BIGINT';
 
-          phase1Statements.push(`-- Phase 1 (Deploy 1): Add shadow column`);
+          phase1Statements.push(`-- Phase 1 (Deploy 1): Add shadow column & Dual-Write Trigger`);
           phase1Statements.push(`ALTER TABLE ${table} ADD COLUMN ${col}_new ${newType};`);
+          phase1Statements.push(`CREATE OR REPLACE FUNCTION trg_sync_${table}_${col}() RETURNS TRIGGER AS $$`);
+          phase1Statements.push(`BEGIN`);
+          phase1Statements.push(`  NEW.${col}_new = NEW.${col}::${newType};`);
+          phase1Statements.push(`  RETURN NEW;`);
+          phase1Statements.push(`END;`);
+          phase1Statements.push(`$$ LANGUAGE plpgsql;`);
+          phase1Statements.push(`CREATE TRIGGER trg_${table}_${col}_dual_write`);
+          phase1Statements.push(`  BEFORE INSERT OR UPDATE ON ${table}`);
+          phase1Statements.push(`  FOR EACH ROW EXECUTE FUNCTION trg_sync_${table}_${col}();`);
 
-          phase2Operations.push(`-- Phase 2 (Async Worker): Dual-write in application & backfill shadow column`);
-          phase2Operations.push(`-- UPDATE ${table} SET ${col}_new = ${col}::${newType} WHERE ${col}_new IS NULL;`);
+          phase2Operations.push(`-- Phase 2 (Async Worker): Backfill historical rows in chunks of 5000`);
+          phase2Operations.push(`UPDATE ${table} SET ${col}_new = ${col}::${newType} WHERE ${col}_new IS NULL;`);
 
-          phase3Statements.push(`-- Phase 3 (Deploy 2): Instant column swap (metadata change)`);
+          phase3Statements.push(`-- Phase 3 (Deploy 2): Remove trigger and swap columns`);
+          phase3Statements.push(`DROP TRIGGER IF EXISTS trg_${table}_${col}_dual_write ON ${table};`);
+          phase3Statements.push(`DROP FUNCTION IF EXISTS trg_sync_${table}_${col}();`);
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col} TO ${col}_deprecated;`);
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col}_new TO ${col};`);
 
-          phase4Statements.push(`-- Phase 4 (Maintenance / Deploy 3): Drop deprecated column`);
+          phase4Statements.push(`-- Phase 4 (Cleanup): Drop deprecated column`);
           phase4Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col}_deprecated;`);
           break;
         }

@@ -478,9 +478,15 @@ input[type="range"] {
 /* Metric Tiles */
 .metric-tiles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
   margin-bottom: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .metric-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 640px) {
