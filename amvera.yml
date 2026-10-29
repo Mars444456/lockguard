@@ -1,6 +1,10 @@
 meta:
-  environment: dockerfile
+  environment: node
+  toolchain:
+    name: npm
+    version: 20
 build:
-  dockerfile: Dockerfile
+  commands:
+    - npm install
 run:
-  command: node bin/bot.js
+  scriptName: bin/bot.js
