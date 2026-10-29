@@ -332,8 +332,11 @@
             <li><span class="check">✔</span> Генерация брендированных <b>PDF-отчетов для CTO</b></li>
             <li><span class="check">✔</span> Приоритетная поддержка в закрытом чате</li>
           </ul>
-          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%BF%D0%BE%D0%B4%D0%BA%D0%BB%D1%8E%D1%87%D0%B8%D1%82%D1%8C%20LockGuard%20Pro%20%D0%B4%D0%BB%D1%8F%20%D0%BA%D0%BE%D0%BC%D0%B0%D0%BD%D0%B4%D1%8B." target="_blank" class="pricing-btn btn-pro">
-            💎 Подключить Pro для команды
+          <button id="btn-open-trial" class="pricing-btn btn-pro" style="margin-bottom: 0.6rem; width: 100%; border: none; cursor: pointer;">
+            🎁 Активировать 30 дней Pro бесплатно
+          </button>
+          <a href="#payment-methods" id="btn-pay-details" class="pricing-btn btn-free" style="border-color: rgba(139, 92, 246, 0.4); color: #C084FC;">
+            💳 Оплата картой / СБП (4 990 ₽/мес)
           </a>
         </div>
 
@@ -355,8 +358,100 @@
           </a>
         </div>
       </div>
+
+      <!-- Payment & Direct Card/SBP Billing Info -->
+      <div id="payment-methods" class="payment-methods-box">
+        <h3 style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.5rem;">
+          💳 Прием оплаты и способы продления подписки
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+          После окончания 30-дневного пробного периода вы можете продлить подписку любым удобным способом напрямую автору проекта:
+        </p>
+
+        <div class="payment-methods-grid">
+          <div class="payment-method-item">
+            <h5>⚡ Перевод по СБП / Карте РФ</h5>
+            <p>Оплата на карту или по СБП (Сбер / Тинькофф / Альфа-Банк). Без комиссии, моментальная активация лицензии.</p>
+            <div style="margin-top: 0.75rem;">
+              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B8%D1%82%D1%8C%20LockGuard%20Pro%20%D0%BF%D0%BE%20%D0%A1%D0%91%D0%9F%20%D0%B8%D0%BB%D0%B8%20%D0%BA%D0%B0%D1%80%D1%82%D0%B5." target="_blank" class="btn-secondary btn-xs" style="color: #34D399; border-color: #10B981; text-decoration: none; display: inline-block;">
+                Получить реквизиты СБП (@marswwu)
+              </a>
+            </div>
+          </div>
+
+          <div class="payment-method-item">
+            <h5>🏢 Безналичный расчет для юрлиц (ООО / ИП)</h5>
+            <p>Официальный договор, счет на оплату и закрывающие акты (ЭДО Диадок / СБИС) для бухгалтерии компании.</p>
+            <div style="margin-top: 0.75rem;">
+              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%9D%D1%83%D0%B6%D0%B5%D0%BD%20%D1%81%D1%87%D0%B5%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%8E%D1%80%D0%BB%D0%B8%D1%86%D0%B0%20%D0%BD%D0%B0%20LockGuard%20Pro." target="_blank" class="btn-secondary btn-xs" style="color: #38BDF8; border-color: #38BDF8; text-decoration: none; display: inline-block;">
+                Запросить счет для юрлица
+              </a>
+            </div>
+          </div>
+
+          <div class="payment-method-item">
+            <h5>🌐 Зарубежные карты / Crypto</h5>
+            <p>Оплата картами Visa/Mastercard иностранных банков (Stripe), а также USDT (TRC-20) для международных команд.</p>
+            <div style="margin-top: 0.75rem;">
+              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%9D%D1%83%D0%B6%D0%BD%D0%B0%20%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20LockGuard%20Pro%20%D0%B7%D0%B0%D1%80%D1%83%D0%B1%D0%B5%D0%B6%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%B0%D1%80%D1%82%D0%BE%D0%B9%20%D0%B8%D0%BB%D0%B8%20USDT." target="_blank" class="btn-secondary btn-xs" style="color: #F87171; border-color: #EF4444; text-decoration: none; display: inline-block;">
+                Запросить международную ссылку
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
+
+  <!-- Modal: 30-Day Free Pro Trial Activation -->
+  <div id="modal-trial" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>🎁 Активация 30 дней Full Pro бесплатно</span>
+        </div>
+        <button id="btn-close-modal" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.85rem; color: #9CA3AF; margin-bottom: 1.25rem; line-height: 1.5;">
+          Введите ваш Telegram или Email. Мы мгновенно сгенерируем персональный лицензионный ключ <b>LockGuard Pro</b> на 30 дней без привязки банковской карты.
+        </p>
+
+        <form id="form-trial">
+          <div class="form-group">
+            <label class="form-label" for="trial-contact">Ваш Telegram (@username) или Email:</label>
+            <input type="text" id="trial-contact" class="form-input" placeholder="@your_telegram или dev@company.com" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="trial-project">Название компании или проекта:</label>
+            <input type="text" id="trial-project" class="form-input" placeholder="Например: MyCompany / Backend" required>
+          </div>
+
+          <button type="submit" class="pricing-btn btn-pro" style="width: 100%; border: none; cursor: pointer; padding: 0.85rem;">
+            🔥 Сгенерировать ключ на 30 дней
+          </button>
+        </form>
+
+        <!-- Result Box (Hidden by default) -->
+        <div id="trial-result" class="trial-key-result hidden">
+          <div style="font-size: 0.85rem; font-weight: 700; color: #10B981;">
+            ✔ Лицензионный ключ Pro успешно активирован! (Срок: 30 дней)
+          </div>
+          <code id="display-key" class="key-code">LG-PRO-TRIAL-DEMO</code>
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+            <button id="btn-copy-key" class="btn-primary btn-sm" style="flex: 1;">📋 Скопировать ключ</button>
+            <a id="link-notify-tg" href="#" target="_blank" class="btn-secondary btn-sm" style="flex: 1; text-align: center; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
+              💬 Открыть в Telegram
+            </a>
+          </div>
+          <p style="font-size: 0.75rem; color: #9CA3AF; margin-top: 0.75rem; margin-bottom: 0;">
+            Добавьте этот ключ в секреты вашего репозитория: <code>LOCKGUARD_API_KEY</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Scripts -->
   <script src="lockguard-engine.js"></script>
