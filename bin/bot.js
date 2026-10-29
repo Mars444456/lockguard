@@ -189,10 +189,29 @@ async function handleUpdate(update) {
       `7. VACUUM внутри транзакции`,
       `8. Отсутствие SET lock_timeout`,
       ``,
+      `💳 <b>Оплата подписки Pro и донаты:</b> /donate`,
       `💬 <b>Связь с автором для полного аудита:</b> @marswwu`
     ].join('\n');
 
     await sendMessage(chatId, help);
+    return;
+  }
+
+  // Command /donate or /pay or /pricing
+  if (msg.text && (msg.text.startsWith('/donate') || msg.text.startsWith('/pay') || msg.text.startsWith('/pricing'))) {
+    const donateMsg = [
+      `🧡 <b>Оплата подписки LockGuard Pro и поддержка проекта:</b>`,
+      ``,
+      `Вы можете оплатить подписку (4 990 ₽/мес) или поддержать развитие open-source ядра через <b>DonationAlerts</b>:`,
+      ``,
+      `👉 <a href="https://www.donationalerts.com/r/marswwu"><b>donationalerts.com/r/marswwu</b></a>`,
+      ``,
+      `💳 <i>Принимаются любые карты РФ (МИР, Сбер, Тинькофф, ВТБ), СБП, ЮMoney.</i>`,
+      ``,
+      `После оплаты напишите автору @marswwu для мгновенной привязки ключа Pro на 1 месяц!`
+    ].join('\n');
+
+    await sendMessage(chatId, donateMsg, { disable_web_page_preview: false });
     return;
   }
 
