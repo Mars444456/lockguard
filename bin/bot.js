@@ -200,10 +200,11 @@ async function handleUpdate(update) {
   // Command /donate or /pay or /pricing
   if (msg.text && (msg.text.startsWith('/donate') || msg.text.startsWith('/pay') || msg.text.startsWith('/pricing'))) {
     const donateMsg = [
-      `🧡 <b>Оплата подписки LockGuard Pro и поддержка проекта:</b>`,
+      `🧡 <b>Оплата подписки LockGuard Pro со скидкой 50%:</b>`,
       ``,
-      `Вы можете оплатить подписку (4 990 ₽/мес) или поддержать развитие open-source ядра через <b>DonationAlerts</b>:`,
+      `🔥 Сейчас действует спеццена: <b>2 490 ₽ / месяц</b> (вместо <s>4 990 ₽</s>)!`,
       ``,
+      `Оплатить подписку или поддержать проект через <b>DonationAlerts</b>:`,
       `👉 <a href="https://www.donationalerts.com/r/marswwu"><b>donationalerts.com/r/marswwu</b></a>`,
       ``,
       `💳 <i>Принимаются любые карты РФ (МИР, Сбер, Тинькофф, ВТБ), СБП, ЮMoney.</i>`,
