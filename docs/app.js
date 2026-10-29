@@ -132,6 +132,15 @@ class LockGuardWebPlayground {
     this.btnShare = document.getElementById('btn-share');
     this.btnCopyBadge = document.getElementById('btn-copy-badge');
 
+    this.modalTrial = document.getElementById('modal-trial');
+    this.btnOpenTrial = document.getElementById('btn-open-trial');
+    this.btnCloseModal = document.getElementById('btn-close-modal');
+    this.formTrial = document.getElementById('form-trial');
+    this.trialResult = document.getElementById('trial-result');
+    this.displayKey = document.getElementById('display-key');
+    this.btnCopyKey = document.getElementById('btn-copy-key');
+    this.linkNotifyTg = document.getElementById('link-notify-tg');
+
     this.violationsList = document.getElementById('violations-list');
     this.splitterPhases = document.getElementById('splitter-phases');
 
@@ -246,6 +255,60 @@ class LockGuardWebPlayground {
           setTimeout(() => {
             this.btnCopyBadge.textContent = '📋 Скопировать Markdown';
           }, 2500);
+        });
+      });
+    }
+
+    // Free Trial Modal listeners
+    if (this.btnOpenTrial) {
+      this.btnOpenTrial.addEventListener('click', () => {
+        if (this.modalTrial) this.modalTrial.classList.remove('hidden');
+      });
+    }
+
+    if (this.btnCloseModal) {
+      this.btnCloseModal.addEventListener('click', () => {
+        if (this.modalTrial) this.modalTrial.classList.add('hidden');
+      });
+    }
+
+    if (this.modalTrial) {
+      this.modalTrial.addEventListener('click', (e) => {
+        if (e.target === this.modalTrial) {
+          this.modalTrial.classList.add('hidden');
+        }
+      });
+    }
+
+    if (this.formTrial) {
+      this.formTrial.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const contact = document.getElementById('trial-contact').value.trim();
+        const project = document.getElementById('trial-project').value.trim();
+        
+        // Generate random 30-day Pro Key
+        const rand = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+        const generatedKey = `LG-PRO-TRIAL-30D-${rand()}-${rand()}-${rand()}`;
+        
+        localStorage.setItem('lockguard_pro_key', generatedKey);
+        localStorage.setItem('lockguard_pro_contact', contact);
+        
+        this.displayKey.textContent = generatedKey;
+        this.trialResult.classList.remove('hidden');
+        
+        const tgMsg = encodeURIComponent(`Привет! Я активировал 30-дневный Pro триал в LockGuard.\nПроект: ${project}\nКонтакт: ${contact}\nКлюч: ${generatedKey}`);
+        if (this.linkNotifyTg) {
+          this.linkNotifyTg.href = `https://t.me/marswwu?text=${tgMsg}`;
+        }
+      });
+    }
+
+    if (this.btnCopyKey) {
+      this.btnCopyKey.addEventListener('click', () => {
+        const key = this.displayKey.textContent;
+        navigator.clipboard.writeText(key).then(() => {
+          this.btnCopyKey.textContent = '✔ Скопировано!';
+          setTimeout(() => this.btnCopyKey.textContent = '📋 Скопировать ключ', 2000);
         });
       });
     }
