@@ -10,6 +10,14 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body class="bg-dark text-light antialiased">
+  <!-- Top Announcement Banner -->
+  <div style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(139, 92, 246, 0.15)); border-bottom: 1px solid rgba(245, 158, 11, 0.3); padding: 0.5rem 1rem; text-align: center; font-size: 0.88rem; color: #F3F4F6;">
+    ☕ <b>Поддержите разработку LockGuard:</b> Развиваем независимый инструмент для безопасных миграций PostgreSQL. 
+    <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="color: #FBBF24; font-weight: 700; text-decoration: underline; margin-left: 6px;">Отправить донат автору (любая сумма) 🧡</a> 
+    <span style="margin: 0 8px; color: var(--text-dim);">|</span>
+    <a href="#pricing" style="color: #C084FC; font-weight: 700; text-decoration: none;">💎 Лицензия Pro со скидкой 50% (2 490 ₽)</a>
+  </div>
+
   <!-- Top Navigation Bar -->
   <header class="navbar">
     <div class="nav-container">
@@ -46,6 +54,14 @@
         <div>
           <h1 class="page-title">Interactive Migration AST Playground</h1>
           <p class="page-desc">Paste raw PostgreSQL DDL or load a preset to detect dangerous table locks (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>) before production outage.</p>
+          <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0.85rem; flex-wrap: wrap;">
+            <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #000; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
+              <span>☕ Поддержать автора (DonationAlerts)</span>
+            </a>
+            <a href="https://t.me/lockguard_audit_bot" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.8rem; background: rgba(59, 130, 246, 0.15); border: 1px solid #3B82F6; color: #60A5FA; font-weight: 700; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
+              <span>🤖 Telegram Bot 24/7</span>
+            </a>
+          </div>
         </div>
         <div class="preset-selector">
           <label for="preset-select">Load Preset Scenario:</label>

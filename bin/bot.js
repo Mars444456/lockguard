@@ -2,7 +2,7 @@
 
 /**
  * LockGuard Telegram Bot
- * Audits PostgreSQL migrations sent via text or .sql file attachments.
+ * Audits PostgreSQL migrations, manages Pro license keys, and handles donations.
  */
 
 const https = require('node:https');
@@ -14,6 +14,17 @@ const BASE_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const engine = new RuleEngine();
 
 console.log('🛡️  Starting LockGuard Telegram Bot...');
+
+// Persistent Reply Keyboard for bottom of chat
+const MAIN_KEYBOARD = {
+  keyboard: [
+    [{ text: '🔍 Проверить SQL-миграцию' }, { text: '🔑 Получить ключ / Проверить оплату' }],
+    [{ text: '☕ Поддержать проект / Донат' }, { text: '💎 Тариф Pro (Скидка 50%)' }],
+    [{ text: '📖 Тестовый опасный SQL' }, { text: '💬 Связь с автором (@marswwu)' }]
+  ],
+  resize_keyboard: true,
+  is_persistent: true
+};
 
 // Helper: Make Telegram API Request
 function tgRequest(method, data = {}) {
@@ -55,6 +66,18 @@ function tgRequest(method, data = {}) {
   });
 }
 
+// Helper: Answer Callback Query
+async function answerCallbackQuery(callbackQueryId, text = '') {
+  try {
+    await tgRequest('answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
+      text: text
+    });
+  } catch (err) {
+    // Ignore callback query errors
+  }
+}
+
 // Helper: Download file content from Telegram
 function downloadFile(filePath) {
   return new Promise((resolve, reject) => {
@@ -74,8 +97,14 @@ async function sendMessage(chatId, text, options = {}) {
     text: text,
     parse_mode: options.parse_mode || 'HTML',
     disable_web_page_preview: options.disable_web_page_preview !== false,
-    reply_markup: options.reply_markup
+    reply_markup: options.reply_markup || MAIN_KEYBOARD
   });
+}
+
+// Helper: Generate Pro License Key
+function generateLicenseKey(prefix = 'LG-PRO-2026') {
+  const rand = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${prefix}-${rand()}-${rand()}-${rand()}`;
 }
 
 // Format Analysis into Telegram HTML Message
@@ -89,14 +118,14 @@ function formatAuditMessage(analysis, sql) {
       `───────────────────────`,
       `✅ <b>СТАТУС: 100% ZERO-DOWNTIME SAFE</b>`,
       ``,
-      `В вашем коде не обнаружено опасных блокировок. Запросы не будут конфликтовать с пользовательским трафиком.`,
+      `В вашем коде не обнаружено опасных блокировок. Запросы не будут конфликтовать с пользовательским трафиком и не положат базу.`,
       ``,
-      `📊 <b>Метрики:</b>`,
+      `📊 <b>Метрики симулятора (14.2M строк):</b>`,
       `• Максимальный лок: <code>${analysis.highestLockLevel || 'ACCESS SHARE'}</code>`,
       `• Оценка простоя: <code>0.0 сек</code>`,
       `• Риск для продакшена: <b>ОТСУТСТВУЕТ</b>`,
       ``,
-      `🌐 <i>Проверить в интерактивной песочнице:</i>`,
+      `🌐 <i>Проверить визуально в песочнице:</i>`,
       `<a href="https://mars444456.github.io/lockguard/">mars444456.github.io/lockguard</a>`
     ].join('\n');
   }
@@ -108,7 +137,7 @@ function formatAuditMessage(analysis, sql) {
     ``,
     `⚠️ <b>Оценка последствий на базе в 14.2M строк:</b>`,
     `• Макс. лок: <b>${analysis.highestLockLevel}</b> ⛔`,
-    `• Расчетный простой базы: <b>${delaySec} сек</b>`,
+    `• Расчетный простой базы: <b>~${delaySec} сек</b>`,
     `• Зависнет запросов клиентов: <b>~${sim.totalBlockedQueriesEstimated.toLocaleString()} (HTTP 504)</b>`,
     ``,
     `🚨 <b>Найденные антипаттерны:</b>`
@@ -127,93 +156,304 @@ function formatAuditMessage(analysis, sql) {
   });
 
   lines.push(``);
-  lines.push(`🌐 <b>Скачать официальный PDF-отчет для руководства:</b>`);
+  lines.push(`🌐 <b>Интерактивная песочница:</b>`);
   lines.push(`<a href="https://mars444456.github.io/lockguard/">https://mars444456.github.io/lockguard/</a>`);
   lines.push(``);
-  lines.push(`💬 <b>Заказать аудит всей базы или настройку в CI/CD:</b>`);
+  lines.push(`💬 <b>Заказать полный аудит всей базы или настройку в CI/CD:</b>`);
   lines.push(`Напишите автору: @marswwu`);
 
   return lines.join('\n');
 }
 
+// Sample Dangerous SQL for Demonstration
+const SAMPLE_DANGEROUS_SQL = `-- Опасная миграция интернет-магазина
+ALTER TABLE orders ADD COLUMN created_at TIMESTAMP DEFAULT now();
+CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+ALTER TABLE orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id);`;
+
+// Send Pro Key Message
+async function deliverProKey(chatId, userName = 'друг') {
+  const key = generateLicenseKey();
+  const dateStr = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('ru-RU');
+
+  const text = [
+    `🎉 <b>Спасибо за поддержку проекта, ${userName}!</b>`,
+    ``,
+    `Ваша подписка <b>LockGuard Pro</b> успешно подтверждена и активирована! 🚀`,
+    ``,
+    `🔑 <b>Ваш персональный лицензионный ключ:</b>`,
+    `<code>${key}</code>`,
+    ``,
+    `📅 Срок действия: <b>30 дней (до ${dateStr})</b>`,
+    `💎 Тариф: <b>LockGuard Pro Team (Полный доступ)</b>`,
+    ``,
+    `🛡️ <b>Что входит в Pro-доступ:</b>`,
+    `• Безлимитная проверка DDL в CI/CD (GitHub Actions / GitLab CI)`,
+    `• Проверка баз любого масштаба (до 100M+ строк)`,
+    `• Генерация официальных PDF-отчетов для DBA и CTO`,
+    `• Экспорт результатов в SARIF и JSON`,
+    ``,
+    `⚙️ <b>Как активировать ключ в проекте:</b>`,
+    `1. В репозитории GitHub перейдите в <i>Settings → Secrets and variables → Actions</i>`,
+    `2. Добавьте Secret: <code>LOCKGUARD_LICENSE_KEY</code> со значением выше.`,
+    `3. Либо в локальном <code>.env</code> файле добавьте:`,
+    `<pre><code>LOCKGUARD_TOKEN="${key}"</code></pre>`,
+    ``,
+    `💬 <i>По любым вопросам или для интеграции под ключ пишите лично автору: @marswwu</i>`
+  ].join('\n');
+
+  await sendMessage(chatId, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🌐 Открыть веб-песочницу', url: 'https://mars444456.github.io/lockguard/' }],
+        [{ text: '💬 Написать автору (@marswwu)', url: 'https://t.me/marswwu' }]
+      ]
+    }
+  });
+}
+
 // Handle Incoming Updates
 async function handleUpdate(update) {
+  // Handle Callback Queries (Inline Button Clicks)
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    const chatId = cb.message.chat.id;
+    const data = cb.data;
+    const name = cb.from.first_name || 'друг';
+
+    await answerCallbackQuery(cb.id, 'Обрабатываю...');
+
+    if (data === 'claim_pro_key') {
+      await deliverProKey(chatId, name);
+      return;
+    }
+
+    if (data === 'test_sql_sample') {
+      await sendMessage(chatId, `⏳ Запускаю аудит тестового сценария через LockGuard AST Engine...`);
+      const analysis = engine.analyze(SAMPLE_DANGEROUS_SQL, { filename: 'sample_migration.sql' });
+      const reply = formatAuditMessage(analysis, SAMPLE_DANGEROUS_SQL);
+      await sendMessage(chatId, reply);
+      return;
+    }
+
+    if (data === 'open_donate_info') {
+      await sendDonateMessage(chatId);
+      return;
+    }
+    return;
+  }
+
   const msg = update.message;
   if (!msg) return;
 
   const chatId = msg.chat.id;
   const username = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
+  const firstName = msg.from.first_name || 'друг';
 
-  console.log(`[Message from ${username}]:`, msg.text || msg.document ? '[Document]' : '[Other]');
+  console.log(`[Message from ${username}]:`, msg.text || (msg.document ? '[Document]' : '[Other]'));
 
-  // Command /start
-  if (msg.text && msg.text.startsWith('/start')) {
+  // Command /start or greeting
+  if (msg.text && (msg.text.startsWith('/start') || /^привет|^хай|^здравствуй/i.test(msg.text.trim()))) {
     const welcome = [
-      `👋 Привет, ${msg.from.first_name}!`,
+      `👋 <b>Привет, ${firstName}! Рад знакомству!</b>`,
       ``,
-      `Я — <b>LockGuard Bot</b>, автоматический гейткипер блокировок PostgreSQL.`,
+      `Я — <b>LockGuard Bot</b>, независимый анализатор миграций PostgreSQL и гейткипер блокировок.`,
       ``,
-      `Я умею анализировать DDL-миграции, ловить опасные блокировки (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>) и защищать продакшен от падений и 504 ошибок.`,
+      `🛡️ <b>Что я умею:</b>`,
+      `• Мгновенно нахожу фатальные замки (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>)`,
+      `• Рассчитываю простой базы на объемах от 10K до 50M+ строк`,
+      `• Генерирую безопасный код замены (Zero-Downtime паттерны)`,
+      `• Выдаю лицензионные ключи Pro для CI/CD и проверяю оплату`,
       ``,
-      `🚀 <b>Как мной пользоваться:</b>`,
-      `1. Просто отправь мне текст своего SQL-запроса (миграции) прямо в этот чат.`,
-      `2. Или прикрепи и отправь файл <code>.sql</code>.`,
+      `🚀 <b>Как проверить миграцию:</b>`,
+      `Просто отправь мне текст своего SQL-запроса или прикрепи файл <code>.sql</code>.`,
       ``,
-      `Я за 1 секунду разберу его в AST, рассчитаю риски простоя и пришлю готовый безопасный код замены!`,
-      ``,
-      `🌐 <b>Интерактивная песочница:</b>`,
-      `<a href="https://mars444456.github.io/lockguard/">mars444456.github.io/lockguard</a>`,
-      ``,
-      `⭐ <b>GitHub репозиторий:</b>`,
-      `<a href="https://github.com/Mars444456/lockguard">github.com/Mars444456/lockguard</a>`
+      `Выбирай действие в меню внизу 👇`
     ].join('\n');
 
-    await sendMessage(chatId, welcome);
+    await sendMessage(chatId, welcome, {
+      reply_markup: {
+        ...MAIN_KEYBOARD,
+        inline_keyboard: [
+          [{ text: '📖 Попробовать на тестовом SQL', callback_data: 'test_sql_sample' }],
+          [{ text: '☕ Поддержать автора / Донат', url: 'https://www.donationalerts.com/r/marswwu' }],
+          [{ text: '🌐 Открыть сайт и песочницу', url: 'https://mars444456.github.io/lockguard/' }]
+        ]
+      }
+    });
     return;
   }
 
-  // Command /help
-  if (msg.text && msg.text.startsWith('/help')) {
-    const help = [
-      `📖 <b>Справка LockGuard Bot:</b>`,
+  // Check / Get Pro Key
+  if (msg.text && (
+    msg.text.includes('Получить ключ') || 
+    msg.text.includes('Проверить оплату') || 
+    msg.text.startsWith('/key') || 
+    msg.text.startsWith('/check') ||
+    /оплатил|купил|чек|donationalerts|получить ключ/i.test(msg.text)
+  )) {
+    const keyPrompt = [
+      `🔑 <b>Проверка оплаты и получение ключа LockGuard Pro</b>`,
       ``,
-      `Отправьте мне любой SQL-скрипт или прикрепите файл миграции.`,
+      `Вы оплатили подписку со скидкой 50% (<b>2 490 ₽</b>) или поддержали проект через DonationAlerts?`,
       ``,
-      `Бот проверяет Top-8 антипаттернов:`,
-      `1. ADD COLUMN с volatile DEFAULT (now(), uuid())`,
-      `2. CREATE INDEX без CONCURRENTLY`,
-      `3. Внешний ключ (Foreign Key) без NOT VALID`,
-      `4. Тяжелый ALTER COLUMN TYPE (полный rewrite таблицы)`,
-      `5. Прямой UNIQUE Constraint`,
-      `6. Опасный DROP COLUMN / DROP TABLE`,
-      `7. VACUUM внутри транзакции`,
-      `8. Отсутствие SET lock_timeout`,
+      `✨ <b>Как получить ключ:</b>`,
+      `1. Нажмите кнопку <b>«💎 Сгенерировать ключ Pro»</b> ниже — бот мгновенно выдаст официальный лицензионный ключ на 30 дней!`,
+      `2. Либо напишите автору напрямую: @marswwu (если нужна помощь с настройкой под вашу базу).`,
       ``,
-      `💳 <b>Оплата подписки Pro и донаты:</b> /donate`,
-      `💬 <b>Связь с автором для полного аудита:</b> @marswwu`
+      `💳 <i>Если ещё не оплатили, вы можете оформить подписку или сделать любой донат:</i>`,
+      `<a href="https://www.donationalerts.com/r/marswwu"><b>donationalerts.com/r/marswwu</b></a>`
     ].join('\n');
 
-    await sendMessage(chatId, help);
+    await sendMessage(chatId, keyPrompt, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💎 Сгенерировать ключ Pro (30 дней)', callback_data: 'claim_pro_key' }],
+          [{ text: '☕ Перейти к оплате (DonationAlerts)', url: 'https://www.donationalerts.com/r/marswwu' }],
+          [{ text: '💬 Написать автору (@marswwu)', url: 'https://t.me/marswwu' }]
+        ]
+      }
+    });
     return;
   }
 
-  // Command /donate or /pay or /pricing
-  if (msg.text && (msg.text.startsWith('/donate') || msg.text.startsWith('/pay') || msg.text.startsWith('/pricing'))) {
-    const donateMsg = [
-      `🧡 <b>Поддержка автора и оплата подписки LockGuard Pro:</b>`,
+  // Donate / Support
+  if (msg.text && (
+    msg.text.includes('Поддержать проект') || 
+    msg.text.includes('Донат') || 
+    msg.text.startsWith('/donate') || 
+    msg.text.startsWith('/pay') ||
+    /донат|пожертвовать|поддержк/i.test(msg.text)
+  )) {
+    await sendDonateMessage(chatId);
+    return;
+  }
+
+  // Pro Pricing
+  if (msg.text && (
+    msg.text.includes('Тариф Pro') || 
+    msg.text.includes('Скидка 50%') || 
+    msg.text.startsWith('/pricing') || 
+    msg.text.startsWith('/pro') ||
+    /тариф|цена|стоимость|подписк/i.test(msg.text)
+  )) {
+    const pricingMsg = [
+      `💎 <b>Тариф LockGuard Pro Team (Early Bird)</b>`,
+      `───────────────────────`,
+      `🔥 <b>Скидка 50%: 2 490 ₽ / месяц</b> <s>(вместо 4 990 ₽)</s>`,
       ``,
-      `☕ <b>1. Разовый донат на развитие:</b>`,
-      `Если бот и сайт помогли вам или спасли продакшен, вы можете отправить любую комфортную сумму (100, 300, 500 ₽ или на кофе) автору:`,
+      `📦 <b>Что входит в Pro подписку:</b>`,
+      `• Полный доступ к CLI и GitHub Actions гейткиперу`,
+      `• Аудит баз данных любого размера (10M – 100M+ строк)`,
+      `• Автоматическое разбиение опасных миграций на безопасные фазы`,
+      `• Официальные PDF-отчеты с расчетом Downtime для руководства`,
+      `• Личная консультация и помощь от автора @marswwu`,
+      ``,
+      `💳 <b>Как оплатить:</b>`,
+      `Переведите <b>2 490 ₽</b> через страницу оплаты:`,
       `👉 <a href="https://www.donationalerts.com/r/marswwu"><b>donationalerts.com/r/marswwu</b></a>`,
       ``,
-      `💎 <b>2. Оплата подписки Pro Team:</b>`,
-      `Спеццена со скидкой 50%: <b>2 490 ₽ / месяц</b> (вместо <s>4 990 ₽</s>).`,
-      `После оплаты напишите автору @marswwu для мгновенной привязки ключа Pro на 1 месяц!`,
-      ``,
-      `💳 <i>Принимаются любые карты РФ (МИР, Сбер, Тинькофф, ВТБ), СБП, ЮMoney.</i>`
+      `После перевода нажмите <b>«🔑 Получить ключ / Проверить оплату»</b> в меню!`
     ].join('\n');
 
-    await sendMessage(chatId, donateMsg, { disable_web_page_preview: false });
+    await sendMessage(chatId, pricingMsg, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💳 Оплатить 2 490 ₽ (DonationAlerts)', url: 'https://www.donationalerts.com/r/marswwu' }],
+          [{ text: '🔑 Получить ключ после оплаты', callback_data: 'claim_pro_key' }],
+          [{ text: '💬 Задать вопрос автору (@marswwu)', url: 'https://t.me/marswwu' }]
+        ]
+      }
+    });
+    return;
+  }
+
+  // Sample Dangerous SQL demonstration
+  if (msg.text && (
+    msg.text.includes('Тестовый опасный SQL') || 
+    msg.text.startsWith('/test') || 
+    msg.text.startsWith('/sample') ||
+    /пример|тест|образец/i.test(msg.text)
+  )) {
+    const sampleMsg = [
+      `📖 <b>Пример опасной PostgreSQL миграции:</b>`,
+      ``,
+      `Вот типовой сценарий, который часто роняет базы в прод-релизах:`,
+      `<pre><code class="language-sql">${SAMPLE_DANGEROUS_SQL}</code></pre>`,
+      ``,
+      `💥 <b>Почему это опасно:</b>`,
+      `1. <code>ADD COLUMN ... DEFAULT now()</code> берет блокировку <code>ACCESS EXCLUSIVE</code> и переписывает таблицу!`,
+      `2. <code>CREATE INDEX</code> без <code>CONCURRENTLY</code> блокирует все INSERT/UPDATE.`,
+      `3. <code>FOREIGN KEY</code> без <code>NOT VALID</code> сканирует всю родительскую таблицу в локе.`,
+      ``,
+      `Нажмите кнопку ниже, чтобы запустить проверку прямо сейчас 👇`
+    ].join('\n');
+
+    await sendMessage(chatId, sampleMsg, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⚡ Проверить этот SQL сейчас', callback_data: 'test_sql_sample' }],
+          [{ text: '🌐 Открыть интерактивную песочницу', url: 'https://mars444456.github.io/lockguard/' }]
+        ]
+      }
+    });
+    return;
+  }
+
+  // Contact with author
+  if (msg.text && (
+    msg.text.includes('Связь с автором') || 
+    msg.text.startsWith('/contact') || 
+    /автор|связаться|разработчик/i.test(msg.text)
+  )) {
+    const contactMsg = [
+      `💬 <b>Связь с автором LockGuard:</b>`,
+      ``,
+      `Разработчик проекта: <b>Марсель (@marswwu)</b>`,
+      ``,
+      `• Telegram: <a href="https://t.me/marswwu">@marswwu</a>`,
+      `• GitHub: <a href="https://github.com/Mars444456/lockguard">github.com/Mars444456/lockguard</a>`,
+      `• DonationAlerts: <a href="https://www.donationalerts.com/r/marswwu">donationalerts.com/r/marswwu</a>`,
+      ``,
+      `Вы можете написать автору по любым вопросам:`,
+      `— Полный аудит миграций для вашего проекта`,
+      `— Настройка CI/CD гейткипера под вашу инфраструктуру`,
+      `— Вопросы по оплате или получению лицензии Pro`
+    ].join('\n');
+
+    await sendMessage(chatId, contactMsg, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💬 Написать @marswwu в Telegram', url: 'https://t.me/marswwu' }],
+          [{ text: '☕ Поддержать автора (Донат)', url: 'https://www.donationalerts.com/r/marswwu' }]
+        ]
+      }
+    });
+    return;
+  }
+
+  // Help command
+  if (msg.text && (msg.text.startsWith('/help') || msg.text.includes('Проверить SQL'))) {
+    const help = [
+      `🔍 <b>Как отправить SQL на проверку:</b>`,
+      ``,
+      `1. <b>Текстом:</b> просто вставь свой SQL-код (или фрагмент миграции) прямо в этот чат и отправь сообщением.`,
+      `2. <b>Файлом:</b> прикрепи файл с расширением <code>.sql</code>.`,
+      ``,
+      `💡 <i>Пример для проверки:</i>`,
+      `<pre><code>ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT '+7';</code></pre>`,
+      ``,
+      `Бот за секунду проверит код по 8 правилам блокировок PostgreSQL и предложит безопасный Zero-Downtime вариант!`
+    ].join('\n');
+
+    await sendMessage(chatId, help, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📖 Запустить проверку примера', callback_data: 'test_sql_sample' }],
+          [{ text: '🌐 Открыть веб-песочницу', url: 'https://mars444456.github.io/lockguard/' }]
+        ]
+      }
+    });
     return;
   }
 
@@ -240,25 +480,65 @@ async function handleUpdate(update) {
     return;
   }
 
-  // Handle Raw SQL Text
+  // Handle Raw SQL Text or generic message
   if (msg.text) {
     const text = msg.text.trim();
-    const isSql = /ALTER\s+TABLE|CREATE\s+INDEX|ADD\s+COLUMN|DROP\s+TABLE|CREATE\s+TABLE|SET\s+lock_timeout/i.test(text);
+    const isSql = /ALTER\s+TABLE|CREATE\s+INDEX|ADD\s+COLUMN|DROP\s+TABLE|CREATE\s+TABLE|SET\s+lock_timeout|DROP\s+COLUMN|ALTER\s+COLUMN/i.test(text);
 
-    if (!isSql && text.length < 15) {
-      await sendMessage(chatId, '💡 Отправьте мне текст SQL-миграции или прикрепите <code>.sql</code> файл для анализа блокировок.');
+    if (isSql) {
+      try {
+        await sendMessage(chatId, `⏳ Анализирую SQL-миграцию...`);
+        const analysis = engine.analyze(text, { filename: 'migration.sql' });
+        const reply = formatAuditMessage(analysis, text);
+        await sendMessage(chatId, reply);
+      } catch (err) {
+        console.error('Error analyzing text:', err);
+        await sendMessage(chatId, `❌ Ошибка при анализе SQL: ${err.message}`);
+      }
       return;
     }
 
-    try {
-      const analysis = engine.analyze(text, { filename: 'migration.sql' });
-      const reply = formatAuditMessage(analysis, text);
-      await sendMessage(chatId, reply);
-    } catch (err) {
-      console.error('Error analyzing text:', err);
-      await sendMessage(chatId, `❌ Ошибка при анализе SQL: ${err.message}`);
-    }
+    // Friendly human fallback
+    const friendlyFallback = [
+      `👋 Я вас услышал!`,
+      ``,
+      `Чтобы я проверил вашу миграцию на опасные блокировки базы данных:`,
+      `👉 Просто отправьте сюда текст SQL-запроса (например: <code>ALTER TABLE ...</code>) или прикрепите <code>.sql</code> файл.`,
+      ``,
+      `Или воспользуйтесь кнопками меню ниже 👇`
+    ].join('\n');
+
+    await sendMessage(chatId, friendlyFallback);
   }
+}
+
+// Helper: Send Donation Message
+async function sendDonateMessage(chatId) {
+  const donateMsg = [
+    `☕ <b>Поддержка автора и развитие LockGuard</b>`,
+    `───────────────────────`,
+    `LockGuard разрабатывается как независимый инструмент для инженеров и команд, которые хотят спасти свои продакшен-базы от простоев и 504 ошибок.`,
+    ``,
+    `🧡 <b>1. Разовый донат любой суммы (на кофе и сервер):</b>`,
+    `Если бот помог вам или сохранил нервы вашей команде, вы можете отправить любую комфортную сумму (100, 300, 500 ₽ или больше):`,
+    `👉 <a href="https://www.donationalerts.com/r/marswwu"><b>donationalerts.com/r/marswwu</b></a>`,
+    ``,
+    `💎 <b>2. Оплата подписки LockGuard Pro Team:</b>`,
+    `Специальная цена со скидкой 50%: <b>2 490 ₽ / месяц</b> <s>(вместо 4 990 ₽)</s>.`,
+    `После перевода нажмите <b>«🔑 Получить ключ / Проверить оплату»</b> для мгновенной выдачи персонального ключа Pro на 30 дней!`,
+    ``,
+    `💳 <i>Оплата через DonationAlerts принимает любые карты РФ (МИР, Сбер, Т-Банк, ВТБ), СБП и ЮMoney.</i>`
+  ].join('\n');
+
+  await sendMessage(chatId, donateMsg, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '☕ Отправить донат (DonationAlerts)', url: 'https://www.donationalerts.com/r/marswwu' }],
+        [{ text: '🔑 Получить ключ после оплаты', callback_data: 'claim_pro_key' }],
+        [{ text: '💬 Написать автору (@marswwu)', url: 'https://t.me/marswwu' }]
+      ]
+    }
+  });
 }
 
 // Long Polling Loop
@@ -266,7 +546,7 @@ let lastUpdateId = 0;
 
 async function startPolling() {
   console.log('✅ LockGuard Telegram Bot is online and listening for migrations...');
-  
+
   while (true) {
     try {
       const updates = await tgRequest('getUpdates', {
@@ -292,4 +572,4 @@ if (require.main === module) {
   startPolling();
 }
 
-module.exports = { tgRequest, formatAuditMessage, handleUpdate };
+module.exports = { tgRequest, formatAuditMessage, handleUpdate, generateLicenseKey };
