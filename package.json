@@ -13,6 +13,7 @@
     "check:safe": "node bin/lockguard.js check fixtures/10_safe_migration.sql",
     "check:pr": "node bin/lockguard.js check fixtures/ --format=github-pr-comment",
     "rules": "node bin/lockguard.js rules",
+    "bot": "node bin/bot.js",
     "test": "node --test test/**/*.test.js"
   },
   "keywords": [
