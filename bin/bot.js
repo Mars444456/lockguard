@@ -200,16 +200,17 @@ async function handleUpdate(update) {
   // Command /donate or /pay or /pricing
   if (msg.text && (msg.text.startsWith('/donate') || msg.text.startsWith('/pay') || msg.text.startsWith('/pricing'))) {
     const donateMsg = [
-      `🧡 <b>Оплата подписки LockGuard Pro со скидкой 50%:</b>`,
+      `🧡 <b>Поддержка автора и оплата подписки LockGuard Pro:</b>`,
       ``,
-      `🔥 Сейчас действует спеццена: <b>2 490 ₽ / месяц</b> (вместо <s>4 990 ₽</s>)!`,
-      ``,
-      `Оплатить подписку или поддержать проект через <b>DonationAlerts</b>:`,
+      `☕ <b>1. Разовый донат на развитие:</b>`,
+      `Если бот и сайт помогли вам или спасли продакшен, вы можете отправить любую комфортную сумму (100, 300, 500 ₽ или на кофе) автору:`,
       `👉 <a href="https://www.donationalerts.com/r/marswwu"><b>donationalerts.com/r/marswwu</b></a>`,
       ``,
-      `💳 <i>Принимаются любые карты РФ (МИР, Сбер, Тинькофф, ВТБ), СБП, ЮMoney.</i>`,
+      `💎 <b>2. Оплата подписки Pro Team:</b>`,
+      `Спеццена со скидкой 50%: <b>2 490 ₽ / месяц</b> (вместо <s>4 990 ₽</s>).`,
+      `После оплаты напишите автору @marswwu для мгновенной привязки ключа Pro на 1 месяц!`,
       ``,
-      `После оплаты напишите автору @marswwu для мгновенной привязки ключа Pro на 1 месяц!`
+      `💳 <i>Принимаются любые карты РФ (МИР, Сбер, Тинькофф, ВТБ), СБП, ЮMoney.</i>`
     ].join('\n');
 
     await sendMessage(chatId, donateMsg, { disable_web_page_preview: false });
