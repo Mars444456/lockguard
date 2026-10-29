@@ -78,12 +78,20 @@
         <input type="range" id="slider-rps" min="10" max="1000" step="10" value="250">
       </div>
 
-      <div class="slider-group" style="grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
+      <div class="slider-group" style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
         <div class="slider-header">
           <span class="slider-label">🛡️ Пул соединений PgBouncer (лимит одновременных коннектов):</span>
           <span class="slider-value" id="val-pool">100 коннектов</span>
         </div>
         <input type="range" id="slider-pool" min="20" max="500" step="10" value="100">
+      </div>
+
+      <div class="slider-group" style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
+        <div class="slider-header">
+          <span class="slider-label">💰 Дневной оборот проекта (GMV / выручка):</span>
+          <span class="slider-value" id="val-gmv">1 000 000 ₽ / день</span>
+        </div>
+        <input type="range" id="slider-gmv" min="100000" max="20000000" step="100000" value="1000000">
       </div>
     </div>
 
@@ -99,6 +107,7 @@
             <span class="card-filename">migration.sql</span>
           </div>
           <div class="header-actions">
+            <button id="btn-share" class="btn-secondary btn-sm" title="Скопировать ссылку на этот запрос">🔗 Поделиться</button>
             <button id="btn-split" class="btn-secondary btn-sm btn-cyan">🔀 Auto-Splitter</button>
             <button id="btn-clear-sql" class="btn-secondary btn-sm">Очистить</button>
             <button id="btn-analyze" class="btn-primary btn-sm">⚡ Проверить DDL</button>
@@ -144,7 +153,7 @@
             </div>
 
             <!-- Key Metric Tiles -->
-            <div class="metric-tiles">
+            <div class="metric-tiles" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
               <div class="metric-tile">
                 <div class="metric-label">Макс. Блокировка</div>
                 <div class="metric-value" id="res-max-lock">ACCESS EXCLUSIVE</div>
@@ -167,6 +176,12 @@
                 <div class="metric-label">Пул PgBouncer (100)</div>
                 <div class="metric-value text-amber" id="res-pool-time">0.4s</div>
                 <div class="metric-sub" id="res-pool-sub">Время до взрыва пула</div>
+              </div>
+
+              <div class="metric-tile" style="border-color: rgba(239, 68, 68, 0.4); background: linear-gradient(180deg, rgba(239,68,68,0.12) 0%, rgba(15,23,42,0.8) 100%);">
+                <div class="metric-label" style="color: #FCA5A5;">Убыток от простоя</div>
+                <div class="metric-value text-red" id="res-financial-loss">~52 300 ₽</div>
+                <div class="metric-sub" id="res-financial-sub">Остановка онлайн-платежей</div>
               </div>
             </div>
 
@@ -202,8 +217,10 @@
                 </div>
                 <div class="splitter-tabs">
                   <button class="splitter-tab active" data-orm="sql">Raw SQL</button>
-                  <button class="splitter-tab" data-orm="prisma">Prisma ORM</button>
-                  <button class="splitter-tab" data-orm="drizzle">Drizzle ORM</button>
+                  <button class="splitter-tab" data-orm="prisma">Prisma</button>
+                  <button class="splitter-tab" data-orm="drizzle">Drizzle</button>
+                  <button class="splitter-tab" data-orm="django">Django ORM</button>
+                  <button class="splitter-tab" data-orm="alembic">SQLAlchemy / Alembic</button>
                 </div>
               </div>
               <div id="splitter-phases"></div>
@@ -228,6 +245,20 @@
       <a href="https://t.me/marswwu" target="_blank" class="nav-btn btn-tg" style="padding: 0.65rem 1.25rem; font-size: 0.9rem;">
         <span>💬 Написать автору в Telegram: @marswwu</span>
       </a>
+    </div>
+
+    <!-- GitHub Badge Embed Card -->
+    <div class="b2b-card" style="margin-top: 1rem; border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05);">
+      <div class="b2b-content">
+        <h4 style="color: #34D399; margin-bottom: 0.25rem;">🛡️ Добавьте бейдж защиты LockGuard в README вашего проекта</h4>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Показывает всей команде и руководству, что в вашем CI/CD настроена автоматическая защита базы данных от блокировок.</p>
+        <div>
+          <img src="https://img.shields.io/badge/PostgreSQL-Zero--Downtime_Protected-10B981?style=flat-square&logo=postgresql&logoColor=white" alt="LockGuard Protected">
+        </div>
+      </div>
+      <button id="btn-copy-badge" class="btn-secondary btn-sm" style="border-color: #10B981; color: #34D399; font-weight: 700; white-space: nowrap;">
+        📋 Скопировать Markdown
+      </button>
     </div>
   </main>
 
