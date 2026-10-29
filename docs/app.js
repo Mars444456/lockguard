@@ -127,6 +127,8 @@ class LockGuardWebPlayground {
     this.resCollisionProb = document.getElementById('res-collision-prob');
     this.resCollisionSub = document.getElementById('res-collision-sub');
 
+    this.versionSelect = document.getElementById('version-select');
+    this.btnDownloadMigration = document.getElementById('btn-download-migration');
     this.btnShare = document.getElementById('btn-share');
     this.btnCopyBadge = document.getElementById('btn-copy-badge');
 
@@ -159,8 +161,14 @@ class LockGuardWebPlayground {
 
   initEventListeners() {
     this.presetSelect.addEventListener('change', (e) => this.loadPreset(e.target.value));
+    if (this.versionSelect) {
+      this.versionSelect.addEventListener('change', () => this.runAnalysis());
+    }
     this.btnAnalyze.addEventListener('click', () => this.runAnalysis());
     this.btnSplit.addEventListener('click', () => this.runSplitter());
+    if (this.btnDownloadMigration) {
+      this.btnDownloadMigration.addEventListener('click', () => this.downloadSafeMigration());
+    }
     if (this.btnExportPdf) {
       this.btnExportPdf.addEventListener('click', () => this.exportPdfReport());
     }
@@ -296,9 +304,10 @@ class LockGuardWebPlayground {
     const rps = parseInt(this.sliderRps.value, 10);
     const poolSize = this.sliderPool ? parseInt(this.sliderPool.value, 10) : 100;
     const cpuCores = this.sliderCores ? parseInt(this.sliderCores.value, 10) : 8;
+    const pgVersion = this.versionSelect ? this.versionSelect.value : '17';
 
     // 1. Analyze AST
-    const analysis = window.LockGuard.analyze(sql);
+    const analysis = window.LockGuard.analyze(sql, { pgVersion });
     this.lastAnalysis = analysis;
 
     // 2. Simulate Latency & Blocked Queries
@@ -540,6 +549,46 @@ class LockGuardWebPlayground {
       `;
       this.splitterPhases.appendChild(card);
     });
+  }
+
+  downloadSafeMigration() {
+    if (!this.lastAnalysis) this.runAnalysis();
+    const plan = window.LockGuard.generatePlan(this.lastAnalysis, this.currentOrm);
+    if (!plan.phases || plan.phases.length === 0) {
+      alert('Миграция уже безопасна, разбиение не требуется.');
+      return;
+    }
+
+    let fileContent = '';
+    let fileName = 'safe_migration.sql';
+
+    if (this.currentOrm === 'django') {
+      fileName = '0042_lockguard_safe_migration.py';
+      fileContent = (plan.ormSnippets && plan.ormSnippets[0]) 
+        ? plan.ormSnippets.map(s => s.code).join('\n\n')
+        : plan.phases.map(p => p.sql).join('\n\n');
+    } else if (this.currentOrm === 'alembic') {
+      fileName = 'alembic_safe_migration.py';
+      fileContent = (plan.ormSnippets && plan.ormSnippets[0]) 
+        ? plan.ormSnippets.map(s => s.code).join('\n\n')
+        : plan.phases.map(p => p.sql).join('\n\n');
+    } else {
+      fileName = `${this.currentOrm}_safe_migration.sql`;
+      fileContent = plan.phases.map((p, idx) => {
+        const code = (plan.ormSnippets && plan.ormSnippets[idx]) ? plan.ormSnippets[idx].code : (p.sql || p.code || '');
+        return `-- ==========================================\n-- [PHASE ${p.phaseNumber || (idx + 1)}]: ${p.title}\n-- ${p.description}\n-- ==========================================\n${code}`;
+      }).join('\n\n');
+    }
+
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   exportPdfReport() {
