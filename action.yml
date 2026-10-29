@@ -1,5 +1,5 @@
-name: 'LockGuard: PostgreSQL Zero-Downtime Migration Gatekeeper'
-description: 'Detect fatal PostgreSQL table locks (ACCESS EXCLUSIVE, non-concurrent index, heavy FK validation) and block PRs before production outages.'
+name: 'LockGuard: PostgreSQL Zero-Downtime Gatekeeper'
+description: 'Detect fatal PostgreSQL table locks (ACCESS EXCLUSIVE) and block PRs before production outages.'
 author: 'LockGuard Team'
 branding:
   icon: 'shield'
