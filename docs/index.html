@@ -48,18 +48,31 @@
           Интерактивный AST-анализатор блокировок PostgreSQL. Проверяет DDL-миграции на наличие опасных замков (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>), рассчитывает риск простоя продакшена и автоматически генерирует безопасные многоэтапные паттерны.
         </p>
       </div>
-      <div class="preset-bar">
-        <label for="preset-select">Готовый сценарий:</label>
-        <select id="preset-select" class="select-input">
-          <option value="catastrophic">🚨 Катастрофический PR (Набор фатальных блокировок)</option>
-          <option value="add_column">⚠️ Опасный ADD COLUMN с volatile DEFAULT (now())</option>
-          <option value="blocking_index">⛔ Блокирующий CREATE INDEX (без CONCURRENTLY)</option>
-          <option value="unsafe_fk">⏳ Тяжелый Foreign Key без NOT VALID</option>
-          <option value="alter_type">🔄 Полный rewrite таблицы: ALTER COLUMN TYPE</option>
-          <option value="direct_unique">🔒 Прямой UNIQUE Constraint</option>
-          <option value="missing_timeout">⏱️ Пропущенный SET lock_timeout</option>
-          <option value="safe_migration">✅ 100% Безопасная Zero-Downtime миграция</option>
-        </select>
+      <div class="preset-bar" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <label for="preset-select">Готовый сценарий:</label>
+          <select id="preset-select" class="select-input">
+            <option value="catastrophic">🚨 Катастрофический PR (Набор фатальных блокировок)</option>
+            <option value="add_column">⚠️ Опасный ADD COLUMN с volatile DEFAULT (now())</option>
+            <option value="blocking_index">⛔ Блокирующий CREATE INDEX (без CONCURRENTLY)</option>
+            <option value="unsafe_fk">⏳ Тяжелый Foreign Key без NOT VALID</option>
+            <option value="alter_type">🔄 Полный rewrite таблицы: ALTER COLUMN TYPE</option>
+            <option value="direct_unique">🔒 Прямой UNIQUE Constraint</option>
+            <option value="missing_timeout">⏱️ Пропущенный SET lock_timeout</option>
+            <option value="safe_migration">✅ 100% Безопасная Zero-Downtime миграция</option>
+          </select>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <label for="version-select">Версия / Форк PostgreSQL:</label>
+          <select id="version-select" class="select-input">
+            <option value="17" selected>🐘 PostgreSQL 17 (Latest Vanilla)</option>
+            <option value="16">🐘 PostgreSQL 14 – 16 (Standard)</option>
+            <option value="11">🐘 PostgreSQL 11 – 13</option>
+            <option value="pgpro">🚀 Postgres Pro Enterprise (64TB+)</option>
+            <option value="citus">🌐 Citus Distributed Postgres</option>
+            <option value="10">⚠️ PostgreSQL ≤ 10 (Legacy: All DEFAULTs rewrite)</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -238,6 +251,9 @@
                   <button class="splitter-tab" data-orm="drizzle">Drizzle</button>
                   <button class="splitter-tab" data-orm="django">Django ORM</button>
                   <button class="splitter-tab" data-orm="alembic">SQLAlchemy / Alembic</button>
+                  <button id="btn-download-migration" class="btn-secondary btn-sm" style="border-color: #10B981; color: #34D399; font-weight: 700; margin-left: 0.5rem; display:inline-flex; align-items:center; gap:4px;">
+                    <span>📥 Скачать файл миграции</span>
+                  </button>
                 </div>
               </div>
               <div id="splitter-phases"></div>

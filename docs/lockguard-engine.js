@@ -572,16 +572,17 @@ return {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Adding a column with a volatile default (now(), uuid(), functions) rewrites the whole table under an ACCESS EXCLUSIVE lock, blocking all SELECT, INSERT, UPDATE, and DELETE queries.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const isLegacyPostgres = context.pgVersion && parseInt(context.pgVersion, 10) < 11;
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_COLUMN' && sub.hasDefault) {
-            // Flag if volatile or has non-constant default
-            const isCritical = sub.isVolatileDefault;
-            const isPhysicalRewrite = !!sub.isPhysicalTableRewrite;
+            // Flag if volatile or has non-constant default or running on Postgres < 11
+            const isPhysicalRewrite = isLegacyPostgres || !!sub.isPhysicalTableRewrite;
+            const isCritical = sub.isVolatileDefault || isLegacyPostgres;
             violations.push({
               ruleId: this.id,
               ruleCode: this.code,
@@ -592,11 +593,13 @@ return {
               column: sub.column,
               defaultValue: sub.defaultValue,
               isPhysicalTableRewrite: isPhysicalRewrite,
-              rewriteReason: sub.rewriteReason || 'UNKNOWN',
+              rewriteReason: isLegacyPostgres ? 'LEGACY_POSTGRES_ALL_DEFAULTS_REWRITE' : (sub.rewriteReason || 'UNKNOWN'),
               line: stmt.line,
               raw: sub.raw,
               message: isPhysicalRewrite 
-                ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`
+                ? (isLegacyPostgres 
+                    ? `PostgreSQL < 11 does not support fast default evaluation! Adding DEFAULT '${sub.defaultValue}' rewrites the entire table on disk under ACCESS EXCLUSIVE lock!`
+                    : `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`)
                 : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. In Postgres 11+ metadata is fast, but statement still takes ACCESS EXCLUSIVE lock, risking Head-of-Line queue blocking!`
             });
           }
@@ -740,25 +743,35 @@ return {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Changing a column data type (e.g. INT to BIGINT, VARCHAR to INT) requires a complete rewrite of the table and all its indexes under an ACCESS EXCLUSIVE lock.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ALTER_COLUMN_TYPE') {
+            const newTypeUpper = (sub.newType || '').toUpperCase().trim();
+            
+            // Check for binary-compatible conversion in PostgreSQL (e.g. TEXT or unconstrained VARCHAR)
+            const isTextOrVarchar = newTypeUpper === 'TEXT' || newTypeUpper === 'VARCHAR';
+            const isPhysicalRewrite = !isTextOrVarchar;
+
             violations.push({
               ruleId: this.id,
               ruleCode: this.code,
               ruleName: this.name,
-              severity: Severity.CRITICAL,
+              severity: isPhysicalRewrite ? Severity.CRITICAL : Severity.HIGH,
               lockLevel: this.lockLevel,
               table: sub.table,
               column: sub.column,
               newType: sub.newType,
+              isPhysicalTableRewrite: isPhysicalRewrite,
+              isBinaryCompatible: isTextOrVarchar,
               line: stmt.line,
               raw: sub.raw,
-              message: `Altering column '${sub.column}' type to '${sub.newType}' on table '${sub.table}' requires full table rewrite and index rebuilds under ACCESS EXCLUSIVE lock!`
+              message: isPhysicalRewrite
+                ? `Altering column '${sub.column}' type to '${sub.newType}' on table '${sub.table}' requires full table rewrite and index rebuilds under ACCESS EXCLUSIVE lock!`
+                : `Altering column '${sub.column}' type to '${sub.newType}' is binary-compatible in Postgres 9.2+ (no disk rewrite), but still takes ACCESS EXCLUSIVE lock risking queue starvation!`
             });
           }
         }
@@ -1098,7 +1111,7 @@ class RuleEngine {
 
     for (const rule of activeRules) {
       try {
-        const found = rule.check(astStatements, { filename, sqlText });
+        const found = rule.check(astStatements, { filename, sqlText, ...options });
         for (const v of found) {
           const safeFix = rule.generateSafeFix ? rule.generateSafeFix(v) : null;
           violations.push({

@@ -59,7 +59,7 @@ class RuleEngine {
 
     for (const rule of activeRules) {
       try {
-        const found = rule.check(astStatements, { filename, sqlText });
+        const found = rule.check(astStatements, { filename, sqlText, ...options });
         for (const v of found) {
           const safeFix = rule.generateSafeFix ? rule.generateSafeFix(v) : null;
           violations.push({

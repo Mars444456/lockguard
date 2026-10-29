@@ -8,16 +8,17 @@ module.exports = {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Adding a column with a volatile default (now(), uuid(), functions) rewrites the whole table under an ACCESS EXCLUSIVE lock, blocking all SELECT, INSERT, UPDATE, and DELETE queries.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const isLegacyPostgres = context.pgVersion && parseInt(context.pgVersion, 10) < 11;
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_COLUMN' && sub.hasDefault) {
-            // Flag if volatile or has non-constant default
-            const isCritical = sub.isVolatileDefault;
-            const isPhysicalRewrite = !!sub.isPhysicalTableRewrite;
+            // Flag if volatile or has non-constant default or running on Postgres < 11
+            const isPhysicalRewrite = isLegacyPostgres || !!sub.isPhysicalTableRewrite;
+            const isCritical = sub.isVolatileDefault || isLegacyPostgres;
             violations.push({
               ruleId: this.id,
               ruleCode: this.code,
@@ -28,11 +29,13 @@ module.exports = {
               column: sub.column,
               defaultValue: sub.defaultValue,
               isPhysicalTableRewrite: isPhysicalRewrite,
-              rewriteReason: sub.rewriteReason || 'UNKNOWN',
+              rewriteReason: isLegacyPostgres ? 'LEGACY_POSTGRES_ALL_DEFAULTS_REWRITE' : (sub.rewriteReason || 'UNKNOWN'),
               line: stmt.line,
               raw: sub.raw,
               message: isPhysicalRewrite 
-                ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`
+                ? (isLegacyPostgres 
+                    ? `PostgreSQL < 11 does not support fast default evaluation! Adding DEFAULT '${sub.defaultValue}' rewrites the entire table on disk under ACCESS EXCLUSIVE lock!`
+                    : `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`)
                 : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. In Postgres 11+ metadata is fast, but statement still takes ACCESS EXCLUSIVE lock, risking Head-of-Line queue blocking!`
             });
           }
