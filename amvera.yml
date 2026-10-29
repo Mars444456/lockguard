@@ -1,0 +1,6 @@
+meta:
+  environment: dockerfile
+build:
+  dockerfile: Dockerfile
+run:
+  command: node bin/bot.js
