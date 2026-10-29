@@ -13,6 +13,7 @@ class ShadowReplaySimulator {
   static simulate(analysis, options = {}) {
     const rows = options.simulatedRows || 50000;
     const rps = options.concurrentRps || 250;
+    const poolSize = options.pgBouncerPoolSize || 100;
 
     const simulationResults = [];
     let totalContentionMs = 0;
@@ -60,9 +61,18 @@ class ShadowReplaySimulator {
       });
     }
 
+    const timeToExhaustSec = Number((poolSize / rps).toFixed(2));
+    const isPoolExhausted = totalContentionMs > (timeToExhaustSec * 1000);
+
     return {
       simulatedRows: rows,
       simulatedConcurrentRps: rps,
+      pgBouncerPoolSize: poolSize,
+      timeToPoolExhaustionSec: timeToExhaustSec,
+      isPoolExhausted,
+      poolExhaustionWarning: isPoolExhausted
+        ? `При трафике ${rps} RPS пул PgBouncer (${poolSize} коннектов) забьется за ${timeToExhaustSec} сек! Все последующие запросы встанут в очередь или отвалятся по HTTP 504.`
+        : `Пул PgBouncer (${poolSize} коннектов) успеет обслужить трафик в пределах нормы.`,
       totalLockWaitContentionMs: totalContentionMs,
       totalBlockedQueriesEstimated: simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0),
       tableSimulations: simulationResults,

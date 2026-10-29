@@ -125,10 +125,20 @@ class RuleEngine {
 
     const status = violations.length === 0 ? 'PASSED' : (passed ? 'WARNING' : 'FAILED');
 
+    const hasDdl = astStatements.some(s => 
+      s.type === 'ALTER_TABLE' || 
+      s.type === 'CREATE_INDEX' || 
+      s.type === 'DROP_TABLE' ||
+      s.type === 'VACUUM'
+    );
+    const isDmlOnly = !hasDdl && astStatements.length > 0;
+
     return {
       filename,
       status,
       passed,
+      isDmlOnly,
+      dmlDescription: isDmlOnly ? 'Операция не является DDL-миграцией схемы (SELECT / DML чтение/запись данных). Блокировок DDL нет, простой базы: 0.0 сек.' : null,
       violationsCount: violations.length,
       criticalCount,
       highCount,
