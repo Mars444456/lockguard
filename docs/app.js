@@ -101,6 +101,8 @@ class LockGuardWebPlayground {
     this.valRps = document.getElementById('val-rps');
     this.sliderPool = document.getElementById('slider-pool');
     this.valPool = document.getElementById('val-pool');
+    this.sliderGmv = document.getElementById('slider-gmv');
+    this.valGmv = document.getElementById('val-gmv');
 
     this.verdictBadge = document.getElementById('verdict-badge');
     this.emptyState = document.getElementById('empty-state');
@@ -118,6 +120,11 @@ class LockGuardWebPlayground {
     this.resBlockedQueries = document.getElementById('res-blocked-queries');
     this.resPoolTime = document.getElementById('res-pool-time');
     this.resPoolSub = document.getElementById('res-pool-sub');
+    this.resFinancialLoss = document.getElementById('res-financial-loss');
+    this.resFinancialSub = document.getElementById('res-financial-sub');
+
+    this.btnShare = document.getElementById('btn-share');
+    this.btnCopyBadge = document.getElementById('btn-copy-badge');
 
     this.violationsList = document.getElementById('violations-list');
     this.splitterPhases = document.getElementById('splitter-phases');
@@ -126,7 +133,24 @@ class LockGuardWebPlayground {
     this.lastAnalysis = null;
 
     this.initEventListeners();
-    this.loadPreset('catastrophic');
+    
+    // Check if permalink SQL is provided via URL hash
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#sql=')) {
+      try {
+        const decoded = decodeURIComponent(hash.substring(5));
+        if (decoded && decoded.trim()) {
+          this.sqlInput.value = decoded;
+          setTimeout(() => this.runAnalysis(), 100);
+        } else {
+          this.loadPreset('catastrophic');
+        }
+      } catch (err) {
+        this.loadPreset('catastrophic');
+      }
+    } else {
+      this.loadPreset('catastrophic');
+    }
   }
 
   initEventListeners() {
@@ -161,6 +185,48 @@ class LockGuardWebPlayground {
         const val = parseInt(e.target.value, 10);
         this.valPool.textContent = val + ' коннектов';
         if (this.lastAnalysis) this.runAnalysis();
+      });
+    }
+
+    if (this.sliderGmv) {
+      this.sliderGmv.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        const formatted = val >= 1000000 
+          ? (val / 1000000).toFixed(1) + 'M ₽ / день'
+          : (val / 1000).toFixed(0) + 'K ₽ / день';
+        this.valGmv.textContent = formatted;
+        if (this.lastAnalysis) this.runAnalysis();
+      });
+    }
+
+    if (this.btnShare) {
+      this.btnShare.addEventListener('click', () => {
+        const sql = this.sqlInput.value.trim();
+        if (!sql) return;
+        const url = `${window.location.origin}${window.location.pathname}#sql=${encodeURIComponent(sql)}`;
+        navigator.clipboard.writeText(url).then(() => {
+          const originalText = this.btnShare.textContent;
+          this.btnShare.textContent = '✔ Ссылка скопирована!';
+          this.btnShare.style.borderColor = '#10B981';
+          this.btnShare.style.color = '#34D399';
+          setTimeout(() => {
+            this.btnShare.textContent = originalText;
+            this.btnShare.style.borderColor = '';
+            this.btnShare.style.color = '';
+          }, 2500);
+        });
+      });
+    }
+
+    if (this.btnCopyBadge) {
+      this.btnCopyBadge.addEventListener('click', () => {
+        const badgeMd = '[![Protected by LockGuard](https://img.shields.io/badge/PostgreSQL-Zero--Downtime_Protected-10B981?style=flat-square&logo=postgresql&logoColor=white)](https://github.com/Mars444456/lockguard)';
+        navigator.clipboard.writeText(badgeMd).then(() => {
+          this.btnCopyBadge.textContent = '✔ Markdown скопирован!';
+          setTimeout(() => {
+            this.btnCopyBadge.textContent = '📋 Скопировать Markdown';
+          }, 2500);
+        });
       });
     }
 
@@ -273,6 +339,11 @@ class LockGuardWebPlayground {
         this.resPoolTime.className = 'metric-value text-emerald';
         this.resPoolSub.textContent = 'Пул не забивается';
       }
+      if (this.resFinancialLoss) {
+        this.resFinancialLoss.textContent = '0 ₽';
+        this.resFinancialLoss.className = 'metric-value text-emerald';
+        this.resFinancialSub.textContent = 'Потери бизнеса отсутствуют';
+      }
       return;
     }
 
@@ -308,6 +379,27 @@ class LockGuardWebPlayground {
       this.resPoolTime.textContent = `${simulation.timeToPoolExhaustionSec}s`;
       this.resPoolTime.className = simulation.isPoolExhausted ? 'metric-value text-amber' : 'metric-value text-emerald';
       this.resPoolSub.textContent = simulation.isPoolExhausted ? '⚠️ Пул будет исчерпан!' : 'В пределах нормы';
+    }
+
+    if (this.resFinancialLoss) {
+      const gmv = this.sliderGmv ? parseInt(this.sliderGmv.value, 10) : 1000000;
+      const lossPerSec = gmv / 86400;
+      const directLoss = lossPerSec * (delayMs / 1000);
+      const dropoffCost = simulation.isPoolExhausted 
+        ? Math.min(simulation.totalBlockedQueriesEstimated * 20, gmv * 0.15) 
+        : (simulation.totalBlockedQueriesEstimated * 5);
+      const totalLossRub = Math.round(directLoss + dropoffCost);
+      const approxUsd = Math.round(totalLossRub / 95);
+
+      if (totalLossRub > 0) {
+        this.resFinancialLoss.textContent = `~${totalLossRub.toLocaleString('ru-RU')} ₽`;
+        this.resFinancialLoss.className = totalLossRub > 30000 ? 'metric-value text-red' : 'metric-value text-amber';
+        this.resFinancialSub.textContent = `≈ $${approxUsd.toLocaleString('en-US')} отток клиентов`;
+      } else {
+        this.resFinancialLoss.textContent = '0 ₽';
+        this.resFinancialLoss.className = 'metric-value text-emerald';
+        this.resFinancialSub.textContent = 'Потери бизнеса отсутствуют';
+      }
     }
   }
 
@@ -403,13 +495,20 @@ class LockGuardWebPlayground {
       return;
     }
 
-    plan.phases.forEach(p => {
+    plan.phases.forEach((p, idx) => {
       const card = document.createElement('div');
       card.className = 'phase-card';
+      const snippet = (plan.ormSnippets && plan.ormSnippets[idx]) 
+        ? plan.ormSnippets[idx].code 
+        : (p.sql || p.code || '');
+      const instruction = (plan.ormSnippets && plan.ormSnippets[idx] && plan.ormSnippets[idx].instruction)
+        ? `<div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:0.4rem; font-family:monospace;">${plan.ormSnippets[idx].instruction}</div>`
+        : '';
       card.innerHTML = `
-        <div class="phase-title">📦 [PHASE ${p.phase}]: ${p.title}</div>
+        <div class="phase-title">📦 [PHASE ${p.phaseNumber || (idx + 1)}]: ${p.title}</div>
         <div class="phase-desc">${p.description}</div>
-        <pre class="phase-code">${p.code}</pre>
+        ${instruction}
+        <pre class="phase-code">${snippet}</pre>
       `;
       this.splitterPhases.appendChild(card);
     });
@@ -423,12 +522,20 @@ class LockGuardWebPlayground {
     const rows = parseInt(this.sliderRows.value, 10);
     const rps = parseInt(this.sliderRps.value, 10);
     const poolSize = this.sliderPool ? parseInt(this.sliderPool.value, 10) : 100;
+    const gmv = this.sliderGmv ? parseInt(this.sliderGmv.value, 10) : 1000000;
     const simulation = window.LockGuard.simulate(analysis, { 
       simulatedRows: rows, 
       concurrentRps: rps,
       pgBouncerPoolSize: poolSize 
     });
     const splitPlan = window.LockGuard.generatePlan(analysis, 'sql');
+
+    const lossPerSec = gmv / 86400;
+    const directLoss = lossPerSec * (simulation.totalLockWaitContentionMs / 1000);
+    const dropoffCost = simulation.isPoolExhausted 
+      ? Math.min(simulation.totalBlockedQueriesEstimated * 20, gmv * 0.15) 
+      : (simulation.totalBlockedQueriesEstimated * 5);
+    const totalLossRub = analysis.isDmlOnly ? 0 : Math.round(directLoss + dropoffCost);
 
     const formattedRows = rows >= 1000000 
       ? (rows / 1000000).toFixed(1) + 'M строк (~' + (rows * 0.0006).toFixed(1) + ' GB)'
@@ -541,7 +648,7 @@ ${v.safeFix}
         : 'В миграционном скрипте обнаружены операции с блокировкой <b>ACCESS EXCLUSIVE</b>. Выкатка приведет к полной заморозке таблицы, накоплению очереди входящих транзакций и лавинообразным ошибкам 504 Gateway Timeout.')}</div>
   </div>
 
-  <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
+  <div class="stats-grid" style="grid-template-columns: repeat(6, 1fr);">
     <div class="stat-box">
       <div class="stat-label">Макс. Блокировка</div>
       <div class="stat-val ${analysis.highestLockLevel === 'ACCESS EXCLUSIVE' && !analysis.isDmlOnly ? 'red' : ''}">${analysis.isDmlOnly ? 'ACCESS SHARE' : (analysis.highestLockLevel || 'ACCESS SHARE')}</div>
@@ -557,6 +664,10 @@ ${v.safeFix}
     <div class="stat-box">
       <div class="stat-label">Пул PgBouncer (${poolSize})</div>
       <div class="stat-val ${simulation.isPoolExhausted && !analysis.isDmlOnly ? 'red' : ''}">${analysis.isDmlOnly ? 'Safe' : simulation.timeToPoolExhaustionSec + 's'}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Убыток бизнеса</div>
+      <div class="stat-val ${totalLossRub > 0 ? 'red' : ''}">${analysis.isDmlOnly ? '0 ₽' : '~' + totalLossRub.toLocaleString('ru-RU') + ' ₽'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Нарушений в коде</div>
