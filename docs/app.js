@@ -90,6 +90,7 @@ class LockGuardWebPlayground {
   constructor() {
     this.sqlInput = document.getElementById('sql-input');
     this.presetSelect = document.getElementById('preset-select');
+    this.btnExportPdf = document.getElementById('btn-export-pdf');
     this.btnAnalyze = document.getElementById('btn-analyze');
     this.btnSplit = document.getElementById('btn-split');
     this.btnClear = document.getElementById('btn-clear-sql');
@@ -126,6 +127,9 @@ class LockGuardWebPlayground {
     this.presetSelect.addEventListener('change', (e) => this.loadPreset(e.target.value));
     this.btnAnalyze.addEventListener('click', () => this.runAnalysis());
     this.btnSplit.addEventListener('click', () => this.runSplitter());
+    if (this.btnExportPdf) {
+      this.btnExportPdf.addEventListener('click', () => this.exportPdfReport());
+    }
     this.btnClear.addEventListener('click', () => {
       this.sqlInput.value = '';
       this.showEmptyState();
@@ -338,6 +342,188 @@ class LockGuardWebPlayground {
       `;
       this.splitterPhases.appendChild(card);
     });
+  }
+
+  exportPdfReport() {
+    if (!this.lastAnalysis) {
+      this.runAnalysis();
+    }
+    const analysis = this.lastAnalysis;
+    if (!analysis) return;
+
+    const rows = parseInt(this.sliderRows.value, 10);
+    const rps = parseInt(this.sliderRps.value, 10);
+    const simulation = window.LockGuard.simulate(analysis, { simulatedRows: rows, concurrentRps: rps });
+    const splitPlan = window.LockGuard.generatePlan(analysis, 'sql');
+
+    const formattedRows = rows >= 1000000 
+      ? (rows / 1000000).toFixed(1) + 'M строк (~' + (rows * 0.0006).toFixed(1) + ' GB)'
+      : (rows / 1000).toFixed(0) + 'K строк';
+
+    const isSafe = analysis.passed;
+    const dateStr = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const estDowntimeSec = (simulation.totalLockWaitContentionMs / 1000).toFixed(1);
+
+    const violationsHtml = (analysis.violations || []).map((v, idx) => `
+      <div style="border:1px solid #CBD5E1; border-left:4px solid ${v.severity === 'CRITICAL' ? '#DC2626' : '#D97706'}; border-radius:6px; padding:14px; margin-bottom:14px; background:#F8FAFC; page-break-inside:avoid;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <strong style="color:#0F172A; font-size:15px;">#${idx + 1}. ${v.ruleName} (<code>${v.ruleId}</code>)</strong>
+          <span style="background:${v.severity === 'CRITICAL' ? '#FEE2E2' : '#FEF3C7'}; color:${v.severity === 'CRITICAL' ? '#991B1B' : '#92400E'}; padding:2px 8px; border-radius:4px; font-weight:700; font-size:12px;">
+            ${v.severity} • ${v.lockLevel}
+          </span>
+        </div>
+        <div style="font-size:13px; color:#334155; margin-bottom:8px;">
+          <b>Таблица:</b> <code>${v.table || 'default'}</code> | <b>Строка:</b> L${v.line || '1'}
+          <br>${v.message}
+        </div>
+        ${v.safeFix ? `
+          <div style="background:#0F172A; color:#E2E8F0; padding:10px 14px; border-radius:6px; font-family:Consolas, monospace; font-size:12px; line-height:1.5; white-space:pre-wrap;">
+<span style="color:#38BDF8; font-weight:bold;">-- Безопасный альтернативный Zero-Downtime код:</span>
+${v.safeFix}
+          </div>
+        ` : ''}
+      </div>
+    `).join('');
+
+    const phasesHtml = (splitPlan.phases || []).map(p => `
+      <div style="border:1px solid #E2E8F0; border-radius:6px; padding:12px; margin-bottom:10px; background:#F8FAFC; page-break-inside:avoid;">
+        <div style="font-weight:700; color:#0F172A; font-size:14px; margin-bottom:4px;">📦 [ЭТАП ${p.phase}]: ${p.title}</div>
+        <div style="font-size:12px; color:#475569; margin-bottom:8px;">${p.description}</div>
+        <pre style="background:#0F172A; color:#4ADE80; padding:10px; border-radius:4px; font-family:Consolas, monospace; font-size:12px; line-height:1.4; margin:0; white-space:pre-wrap;">${p.code}</pre>
+      </div>
+    `).join('');
+
+    const reportHtml = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>LockGuard Production Readiness Audit Report</title>
+  <style>
+    @page { margin: 15mm 20mm; size: A4; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0F172A; line-height: 1.5; margin: 0; padding: 20px; font-size: 13px; }
+    .header { border-bottom: 2px solid #0F172A; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .title { font-size: 22px; font-weight: 800; color: #0F172A; margin: 0; }
+    .subtitle { font-size: 13px; color: #475569; margin-top: 4px; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+    .meta-table td { padding: 6px 10px; border: 1px solid #CBD5E1; }
+    .meta-table td.label { font-weight: 700; background: #F1F5F9; width: 25%; color: #334155; }
+    .banner { padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; border-left: 6px solid; }
+    .banner.critical { background: #FEF2F2; border-color: #DC2626; color: #991B1B; }
+    .banner.safe { background: #F0FDF4; border-color: #16A34A; color: #166534; }
+    .banner-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 24px; }
+    .stat-box { border: 1px solid #CBD5E1; background: #F8FAFC; border-radius: 6px; padding: 10px; text-align: center; }
+    .stat-label { font-size: 11px; text-transform: uppercase; color: #64748B; font-weight: 700; }
+    .stat-val { font-size: 18px; font-weight: 800; color: #0F172A; font-family: Consolas, monospace; margin-top: 4px; }
+    .stat-val.red { color: #DC2626; }
+    h2 { font-size: 16px; font-weight: 800; border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; margin-top: 24px; margin-bottom: 14px; color: #0F172A; }
+    .footer { margin-top: 30px; border-top: 1px solid #CBD5E1; padding-top: 12px; font-size: 11px; color: #64748B; display: flex; justify-content: space-between; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="background:#EFF6FF; border:1px solid #93C5FD; padding:12px; border-radius:6px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+    <span><b>Предварительный просмотр PDF:</b> Нажмите кнопку справа, чтобы сохранить официальный PDF-отчет или распечатать.</span>
+    <button onclick="window.print()" style="background:#2563EB; color:#FFF; border:none; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer;">Сохранить как PDF</button>
+  </div>
+
+  <div class="header">
+    <div>
+      <h1 class="title">🛡️ LockGuard Production Readiness Audit</h1>
+      <div class="subtitle">PostgreSQL DDL Lock Impact & Downtime Risk Assessment</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-weight:700; font-size:12px;">Дата отчета: ${dateStr}</div>
+      <div style="font-size:11px; color:#64748B;">SLA: 99.99% High Availability</div>
+    </div>
+  </div>
+
+  <table class="meta-table">
+    <tr>
+      <td class="label">Объект аудита:</td>
+      <td>Миграционный DDL-скрипт (PostgreSQL 11 – 17+)</td>
+      <td class="label">Аудитор:</td>
+      <td>LockGuard Automated AST Gatekeeper</td>
+    </tr>
+    <tr>
+      <td class="label">Параметры прод-базы:</td>
+      <td>Таблица: ${formattedRows} | Трафик: ${rps} RPS</td>
+      <td class="label">Контакты команды:</td>
+      <td>Telegram: <b>@marswwu</b> | GitHub: Mars444456/lockguard</td>
+    </tr>
+  </table>
+
+  <div class="banner ${isSafe ? 'safe' : 'critical'}">
+    <div class="banner-title">${isSafe ? '✅ СТАТУС: МИГРАЦИЯ БЕЗОПАСНА (ZERO-DOWNTIME COMPLIANT)' : '⚠️ СТАТУС: КРИТИЧЕСКИЙ РИСК ПРОСТОЯ ПРОДАКШЕНА (OUTAGE IMMINENT)'}</div>
+    <div>${isSafe 
+      ? 'Анализ AST-дерева подтвердил: запрошенные операции не вызывают длительных эксклюзивных блокировок. Миграция безопасна для боевого деплоя под живым трафиком.' 
+      : 'В миграционном скрипте обнаружены операции с блокировкой <b>ACCESS EXCLUSIVE</b>. Выкатка приведет к полной заморозке таблицы, накоплению очереди входящих транзакций и лавинообразным ошибкам 504 Gateway Timeout.'}</div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-box">
+      <div class="stat-label">Макс. Блокировка</div>
+      <div class="stat-val ${analysis.highestLockLevel === 'ACCESS EXCLUSIVE' ? 'red' : ''}">${analysis.highestLockLevel || 'ACCESS SHARE'}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Расчетный простой</div>
+      <div class="stat-val red">${estDowntimeSec} сек</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Зависнет запросов</div>
+      <div class="stat-val">${simulation.totalBlockedQueriesEstimated.toLocaleString()}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Нарушений в коде</div>
+      <div class="stat-val ${analysis.violationsCount > 0 ? 'red' : ''}">${analysis.violationsCount}</div>
+    </div>
+  </div>
+
+  <h2>1. Анализ блокировок и найденные антипаттерны (${analysis.violationsCount})</h2>
+  ${violationsHtml || '<p style="color:#16A34A;">Антипаттернов блокировок не обнаружено.</p>'}
+
+  ${splitPlan.phases && splitPlan.phases.length > 0 ? `
+    <h2 style="page-break-before:always;">2. Рекомендуемый безопасный план релиза (4 этапа Auto-Splitter)</h2>
+    <p style="font-size:12px; color:#475569; margin-bottom:12px;">Для предотвращения простоя опасная миграция автоматически разделена на изолированные неблокирующие шаги:</p>
+    ${phasesHtml}
+  ` : ''}
+
+  <h2>3. Заключение и экспертные рекомендации</h2>
+  <ol style="padding-left:18px; font-size:12px; color:#334155; line-height:1.6;">
+    <li><b>Интеграция в CI/CD:</b> Рекомендуется подключить автоматический линтер <code>uses: Mars444456/lockguard@v1</code> в GitHub Actions для автоматической блокировки PR с опасным DDL.</li>
+    <li><b>Обязательный таймаут:</b> Каждая транзакция DDL должна начинаться с директивы <code>SET lock_timeout = '3s';</code> во избежание Head-of-Line блокировок.</li>
+    <li><b>Фоновое построение индексов:</b> Все индексы должны создаваться с модификатором <code>CONCURRENTLY</code> вне транзакционных блоков.</li>
+  </ol>
+
+  <div class="footer">
+    <div>Официальный аудит LockGuard Engine • Конфиденциально для руководства команды</div>
+    <div>Заказать аудит всей инфраструктуры баз данных: <b>@marswwu</b></div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      // Auto open print dialog after short render delay
+      setTimeout(function() {
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.open();
+      printWin.document.write(reportHtml);
+      printWin.document.close();
+    } else {
+      alert('Пожалуйста, разрешите открытие всплывающего окна в браузере, чтобы сформировать PDF-отчет.');
+    }
   }
 }
 

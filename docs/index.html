@@ -108,8 +108,15 @@
       <!-- Right: Real-time Analysis Card -->
       <div class="analysis-card">
         <div class="card-header">
-          <span class="card-title">Вердикт безопасности & Анализ блокировок</span>
-          <div id="verdict-badge" class="verdict-pill pending">Awaiting Analysis</div>
+          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <span class="card-title">Вердикт безопасности & Анализ блокировок</span>
+            <div id="verdict-badge" class="verdict-pill pending">Awaiting Analysis</div>
+          </div>
+          <div class="header-actions">
+            <button id="btn-export-pdf" class="btn-secondary btn-sm" style="border-color: #EF4444; color: #F87171; font-weight: 700; display:inline-flex; align-items:center; gap:0.35rem;">
+              <span>📄 Скачать PDF-отчет для руководства</span>
+            </button>
+          </div>
         </div>
 
         <div class="results-body">
