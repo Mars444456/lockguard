@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LockGuard - PostgreSQL CI/CD Gatekeeper & Migration AST Playground</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <div class="brand-logo">🛡️</div>
+        <div>
+          <div class="brand-title">LockGuard <span class="brand-tag">v1.1.0</span></div>
+          <div class="brand-subtitle">PostgreSQL DDL Lock Analyzer & CI Gatekeeper</div>
+        </div>
+      </a>
+
+      <div class="nav-links">
+        <a href="https://github.com/Mars444456/lockguard" target="_blank" class="nav-btn">
+          <span>⭐ GitHub (v1.1.0)</span>
+        </a>
+        <a href="habr_article.html" target="_blank" class="nav-btn">
+          <span>📖 Статья на Хабре</span>
+        </a>
+        <a href="https://t.me/marswwu" target="_blank" class="nav-btn btn-tg">
+          <span>💬 Аудит миграций (@marswwu)</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    <!-- Hero / Intro -->
+    <div class="hero-section">
+      <div>
+        <h1 class="hero-title">Zero-Downtime <span>PostgreSQL Gatekeeper</span></h1>
+        <p class="hero-desc">
+          Интерактивный AST-анализатор блокировок PostgreSQL. Проверяет DDL-миграции на наличие опасных замков (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>), рассчитывает риск простоя продакшена и автоматически генерирует безопасные многоэтапные паттерны.
+        </p>
+      </div>
+      <div class="preset-bar">
+        <label for="preset-select">Готовый сценарий:</label>
+        <select id="preset-select" class="select-input">
+          <option value="catastrophic">🚨 Катастрофический PR (Набор фатальных блокировок)</option>
+          <option value="add_column">⚠️ Опасный ADD COLUMN с volatile DEFAULT (now())</option>
+          <option value="blocking_index">⛔ Блокирующий CREATE INDEX (без CONCURRENTLY)</option>
+          <option value="unsafe_fk">⏳ Тяжелый Foreign Key без NOT VALID</option>
+          <option value="alter_type">🔄 Полный rewrite таблицы: ALTER COLUMN TYPE</option>
+          <option value="direct_unique">🔒 Прямой UNIQUE Constraint</option>
+          <option value="missing_timeout">⏱️ Пропущенный SET lock_timeout</option>
+          <option value="safe_migration">✅ 100% Безопасная Zero-Downtime миграция</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Simulation Parameters Bar -->
+    <div class="sim-controls-bar">
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">📊 Размер боевой таблицы в базе:</span>
+          <span class="slider-value" id="val-rows">14.2M строк (~8.4 GB)</span>
+        </div>
+        <input type="range" id="slider-rows" min="10000" max="50000000" step="100000" value="14200000">
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">⚡ Фоновый клиентский трафик (RPS):</span>
+          <span class="slider-value" id="val-rps">250 RPS</span>
+        </div>
+        <input type="range" id="slider-rps" min="10" max="1000" step="10" value="250">
+      </div>
+    </div>
+
+    <!-- Playground Workspace -->
+    <div class="playground-grid">
+      <!-- Left: Editor Card -->
+      <div class="editor-card">
+        <div class="card-header">
+          <div class="header-left">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+            <span class="card-filename">migration.sql</span>
+          </div>
+          <div class="header-actions">
+            <button id="btn-split" class="btn-secondary btn-sm btn-cyan">🔀 Auto-Splitter</button>
+            <button id="btn-clear-sql" class="btn-secondary btn-sm">Очистить</button>
+            <button id="btn-analyze" class="btn-primary btn-sm">⚡ Проверить DDL</button>
+          </div>
+        </div>
+        <div class="editor-wrapper">
+          <textarea id="sql-input" spellcheck="false" placeholder="Вставьте ваши SQL-миграции PostgreSQL сюда..."></textarea>
+        </div>
+        <div class="editor-footer">
+          <span>Движок: <b>LockGuard AST In-Browser Engine (0 dependencies)</b></span>
+          <span>Совместимость: <b>PostgreSQL 11 – 17+</b></span>
+        </div>
+      </div>
+
+      <!-- Right: Real-time Analysis Card -->
+      <div class="analysis-card">
+        <div class="card-header">
+          <span class="card-title">Вердикт безопасности & Анализ блокировок</span>
+          <div id="verdict-badge" class="verdict-pill pending">Awaiting Analysis</div>
+        </div>
+
+        <div class="results-body">
+          <!-- Empty State -->
+          <div class="empty-state" id="empty-state">
+            <div class="empty-icon">🛡️</div>
+            <h3>Нажмите «Проверить DDL»</h3>
+            <p>LockGuard мгновенно разберет SQL в абстрактное синтаксическое дерево (AST), сопоставит операции с матрицей блокировок Postgres и покажет задержки в миллисекундах.</p>
+          </div>
+
+          <!-- Analysis Details -->
+          <div id="analysis-details" class="analysis-details hidden">
+            <!-- Key Metric Tiles -->
+            <div class="metric-tiles">
+              <div class="metric-tile">
+                <div class="metric-label">Макс. Блокировка</div>
+                <div class="metric-value" id="res-max-lock">ACCESS EXCLUSIVE</div>
+                <div class="metric-sub" id="res-lock-sub">Замораживает всю таблицу</div>
+              </div>
+
+              <div class="metric-tile">
+                <div class="metric-label">Время простоя (Downtime)</div>
+                <div class="metric-value text-red" id="res-downtime">45.2s</div>
+                <div class="metric-sub" id="res-downtime-sub">Расчет на 14.2M строк</div>
+              </div>
+
+              <div class="metric-tile">
+                <div class="metric-label">Зависнет запросов</div>
+                <div class="metric-value text-cyan" id="res-blocked-queries">~11,300</div>
+                <div class="metric-sub">504 Gateway Timeout</div>
+              </div>
+            </div>
+
+            <!-- Lock Conflict Matrix Grid -->
+            <div class="lock-matrix-card">
+              <div class="lock-matrix-title">Матрица конфликта блокировок (Доступность операций)</div>
+              <div class="lock-matrix-grid">
+                <div class="matrix-item" id="matrix-select">
+                  <div class="matrix-cmd">SELECT</div>
+                  <div class="matrix-status">...</div>
+                </div>
+                <div class="matrix-item" id="matrix-insert">
+                  <div class="matrix-cmd">INSERT</div>
+                  <div class="matrix-status">...</div>
+                </div>
+                <div class="matrix-item" id="matrix-update">
+                  <div class="matrix-cmd">UPDATE</div>
+                  <div class="matrix-status">...</div>
+                </div>
+                <div class="matrix-item" id="matrix-delete">
+                  <div class="matrix-cmd">DELETE</div>
+                  <div class="matrix-status">...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Auto-Splitter Panel (Conditional) -->
+            <div id="splitter-panel" class="splitter-panel hidden">
+              <div class="splitter-header">
+                <div>
+                  <div style="font-size:0.95rem; font-weight:800; color:#FFF;">🔀 Auto-Splitter: Безопасный 4-этапный план релиза</div>
+                  <div style="font-size:0.75rem; color:var(--text-muted);">Разбивает монолитный опасный DDL на неблокирующие фазы без простоя базы</div>
+                </div>
+                <div class="splitter-tabs">
+                  <button class="splitter-tab active" data-orm="sql">Raw SQL</button>
+                  <button class="splitter-tab" data-orm="prisma">Prisma ORM</button>
+                  <button class="splitter-tab" data-orm="drizzle">Drizzle ORM</button>
+                </div>
+              </div>
+              <div id="splitter-phases"></div>
+            </div>
+
+            <!-- Violations List -->
+            <div class="violations-section">
+              <h3 class="violations-title">Найденные антипаттерны и безопасные альтернативы:</h3>
+              <div id="violations-list" class="violations-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commercial B2B Callout -->
+    <div class="b2b-card">
+      <div class="b2b-content">
+        <h4>🚀 Нужен профессиональный аудит миграций для вашей команды?</h4>
+        <p>Поможем настроить Zero-Downtime пайплайн в GitHub Actions / GitLab CI, исключить 504 Gateway Timeouts и защитить базу под высокими нагрузками.</p>
+      </div>
+      <a href="https://t.me/marswwu" target="_blank" class="nav-btn btn-tg" style="padding: 0.65rem 1.25rem; font-size: 0.9rem;">
+        <span>💬 Написать автору в Telegram: @marswwu</span>
+      </a>
+    </div>
+  </main>
+
+  <!-- Scripts -->
+  <script src="lockguard-engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
