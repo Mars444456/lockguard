@@ -104,6 +104,32 @@ function registerRoutes(router) {
     });
   });
 
+  router.post('/api/v1/organization', async (req, res) => {
+    const { name, plan } = req.body || {};
+    const patch = {};
+    if (name) patch.name = name;
+    if (plan) patch.plan = plan;
+    const updated = db.updateOrganization(patch);
+    return res.status(200).json({ success: true, organization: updated });
+  });
+
+  // 4.1 B2B Invoice Generation for Legal Entities
+  router.post('/api/v1/billing/b2b-invoice', async (req, res) => {
+    const { companyName, inn, plan = 'team', email } = req.body || {};
+    const invoice = StripeService.generateB2BInvoice({ companyName, inn, plan, email });
+    return res.status(200).json(invoice);
+  });
+
+  router.get('/api/v1/billing/invoice', async (req, res) => {
+    const url = new URL(req.url || '/', 'http://localhost');
+    const company = url.searchParams.get('company') || 'ООО "Компания"';
+    const inn = url.searchParams.get('inn') || '7700000000';
+    const plan = url.searchParams.get('plan') || 'team';
+    const invoice = StripeService.generateB2BInvoice({ companyName: company, inn, plan });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(invoice.html);
+  });
+
   // 5. API Keys Management
   router.get('/api/v1/keys', async (req, res) => {
     return res.status(200).json({
@@ -158,10 +184,19 @@ function registerRoutes(router) {
     return res.status(200).json(portal);
   });
 
-  // 8. GitHub PR Webhook simulation
+  // 8. GitHub PR Webhook (Real & Simulated)
   router.post('/api/v1/github/webhook', async (req, res) => {
-    const { prNumber = 422, branch = 'feat/db-upgrade', sql } = req.body || {};
-    const sampleSql = sql || `
+    const isRealGithub = !!(req.headers && req.headers['x-github-event']);
+    const prData = req.body && req.body.pull_request ? req.body.pull_request : null;
+    const repoData = req.body && req.body.repository ? req.body.repository : null;
+
+    const repo = repoData ? repoData.full_name : (req.body && req.body.repo ? req.body.repo : 'acme/ecommerce-api');
+    const prNumber = prData ? prData.number : (req.body && req.body.prNumber ? Number(req.body.prNumber) : 422);
+    const branch = prData && prData.head ? prData.head.ref : (req.body && req.body.branch ? req.body.branch : 'feat/db-upgrade');
+    const commit = prData && prData.head && prData.head.sha ? prData.head.sha.substring(0, 7) : (req.body && req.body.commit ? req.body.commit : 'e92a10c');
+    const author = req.body && req.body.sender ? req.body.sender.login : (req.body && req.body.author ? req.body.author : 'developer');
+
+    const sampleSql = (req.body && req.body.sql) || `
       BEGIN;
       CREATE INDEX idx_products_sku ON products (sku);
       ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT 'unverified' NOT NULL;
@@ -170,12 +205,12 @@ function registerRoutes(router) {
     const analysis = ruleEngine.analyze(sampleSql, { filename: 'migration_pr_' + prNumber + '.sql' });
     const markdown = GitHubPrFormatter.format([analysis]);
 
-    db.addRun({
-      repo: 'acme/ecommerce-api',
+    const runRecord = db.addRun({
+      repo,
       prNumber: Number(prNumber),
       branch,
-      commit: 'e92a10c',
-      author: 'pr-developer',
+      commit,
+      author,
       status: analysis.passed ? 'PASSED' : 'BLOCKED',
       highestLockLevel: analysis.highestLockLevel,
       violationsCount: analysis.violationsCount,
@@ -188,6 +223,8 @@ function registerRoutes(router) {
       success: true,
       action: analysis.passed ? 'approved' : 'blocked',
       prNumber,
+      runId: runRecord.id,
+      isRealGithub,
       markdownComment: markdown
     });
   });
