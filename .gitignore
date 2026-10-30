@@ -12,5 +12,7 @@ coverage/
 tmp*/
 private/
 tools/
+data/
+*.db.json
 .idea/
 .vscode/
