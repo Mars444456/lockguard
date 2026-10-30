@@ -625,3 +625,204 @@ class LockGuardApp {
 
 const app = new LockGuardApp();
 window.app = app;
+
+// ==============================================================================
+// Terminal Snippet Copy
+// ==============================================================================
+window.copyHeroTerminalCommand = function() {
+  const cmd = 'npx lockguard check ./migrations --strict';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cmd).then(() => {
+      const label = document.getElementById('copy-terminal-label');
+      if (label) {
+        const orig = label.textContent;
+        label.textContent = '✔ Скопировано!';
+        setTimeout(() => { label.textContent = orig; }, 2500);
+      }
+    }).catch(() => fallbackCopy(cmd));
+  } else {
+    fallbackCopy(cmd);
+  }
+};
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  const label = document.getElementById('copy-terminal-label');
+  if (label) {
+    const orig = label.textContent;
+    label.textContent = '✔ Скопировано!';
+    setTimeout(() => { label.textContent = orig; }, 2500);
+  }
+}
+
+// ==============================================================================
+// Interactive PostgreSQL Lock Compatibility Matrix Explorer
+// ==============================================================================
+const PG_LOCK_MODES = [
+  'ACCESS SHARE',
+  'ROW SHARE',
+  'ROW EXCLUSIVE',
+  'SHARE UPDATE EXCLUSIVE',
+  'SHARE',
+  'SHARE ROW EXCLUSIVE',
+  'EXCLUSIVE',
+  'ACCESS EXCLUSIVE'
+];
+
+const PG_LOCK_CONFLICTS = {
+  'ACCESS SHARE': ['ACCESS EXCLUSIVE'],
+  'ROW SHARE': ['EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'ROW EXCLUSIVE': ['SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE UPDATE EXCLUSIVE': ['SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE ROW EXCLUSIVE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'EXCLUSIVE': ['ROW SHARE', 'ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'ACCESS EXCLUSIVE': [
+    'ACCESS SHARE', 'ROW SHARE', 'ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE',
+    'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'
+  ]
+};
+
+const PG_LOCK_DETAILS = {
+  'ACCESS EXCLUSIVE': {
+    title: '🚨 ACCESS EXCLUSIVE: Fatal Table Lock (Full Outage Risk)',
+    desc: 'Blocks <b>all table operations</b>: reads (<code>SELECT</code>), writes (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), indexes, and schema modifications. If a slow query is running, DDL queues behind it, and subsequent <code>SELECT</code> queries pile up (Head-of-Line Blocking), crashing connection pools and triggering <b>HTTP 504 Gateway Timeouts</b>.',
+    blocked: ['SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'VACUUM / ANALYZE'],
+    safe: []
+  },
+  'SHARE': {
+    title: '⛔ SHARE: Write Freeze Lock (INSERT/UPDATE Blocked)',
+    desc: 'Allows concurrent reads (<code>SELECT</code>), but <b>completely freezes all write operations</b>: <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>! All active user mutations will block until the index generation finishes.',
+    blocked: ['INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'Any ALTER TABLE (ACCESS EXCLUSIVE)'],
+    safe: ['Parallel SELECT (ACCESS SHARE)', 'SELECT FOR UPDATE (ROW SHARE)']
+  },
+  'SHARE UPDATE EXCLUSIVE': {
+    title: '✅ SHARE UPDATE EXCLUSIVE: Safe Non-Blocking Mode (Zero-Downtime)',
+    desc: '<b>The gold standard for zero-downtime PostgreSQL operations!</b> Conflicts ONLY with other concurrent schema modifications or autovacuum, but is <b>100% compatible with user reads (<code>SELECT</code>) and writes (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>)</b>! Production traffic operates at full speed.',
+    blocked: ['Parallel VACUUM / ANALYZE', 'Another CREATE INDEX CONCURRENTLY', 'ALTER TABLE (ACCESS EXCLUSIVE)'],
+    safe: ['User SELECT (ACCESS SHARE)', 'User INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'SELECT FOR UPDATE']
+  },
+  'ROW EXCLUSIVE': {
+    title: '⚡ ROW EXCLUSIVE: Normal High-Volume Write Traffic',
+    desc: 'Acquired by standard row mutation operations (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>). Compatible with other writes to different rows, but immediately blocked by dangerous DDL.',
+    blocked: ['CREATE INDEX (SHARE)', 'ALTER TABLE (ACCESS EXCLUSIVE)', 'TRUNCATE'],
+    safe: ['Concurrent SELECT (ACCESS SHARE)', 'Concurrent INSERT/UPDATE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
+  },
+  'ACCESS SHARE': {
+    title: '📖 ACCESS SHARE: Normal High-Volume Read Traffic',
+    desc: 'Acquired by standard <code>SELECT</code> queries. Compatible with everything except the heaviest lock — <code>ACCESS EXCLUSIVE</code>. This is why a monolithic ALTER TABLE freezes an entire web application.',
+    blocked: ['ALTER TABLE (ACCESS EXCLUSIVE)', 'DROP TABLE', 'TRUNCATE'],
+    safe: ['Concurrent SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
+  },
+  'EXCLUSIVE': {
+    title: '🔒 EXCLUSIVE: Exclusive Write and Concurrent Index Lock',
+    desc: 'Blocks all writes and concurrent index operations, while permitting non-blocking <code>SELECT</code> queries.',
+    blocked: ['INSERT / UPDATE / DELETE', 'SELECT FOR UPDATE', 'Parallel CREATE INDEX'],
+    safe: ['Simple SELECT (ACCESS SHARE)']
+  }
+};
+
+function initLockMatrixExplorer() {
+  const tbody = document.getElementById('pg-lock-matrix-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  PG_LOCK_MODES.forEach(reqLock => {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-row-lock', reqLock);
+
+    const th = document.createElement('th');
+    th.style.textAlign = 'left';
+    th.style.paddingLeft = '0.75rem';
+    th.textContent = reqLock;
+    tr.appendChild(th);
+
+    PG_LOCK_MODES.forEach(existLock => {
+      const td = document.createElement('td');
+      const isConflict = PG_LOCK_CONFLICTS[reqLock] && PG_LOCK_CONFLICTS[reqLock].includes(existLock);
+      td.setAttribute('data-col-lock', existLock);
+      td.className = isConflict ? 'cell-conflict' : 'cell-safe';
+      td.textContent = isConflict ? '⛔ BLOCK' : '✔ OK';
+      td.title = `${reqLock} vs ${existLock}: ${isConflict ? 'CONFLICT' : 'COMPATIBLE'}`;
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  const buttons = document.querySelectorAll('#matrix-quick-filters .matrix-filter-btn');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const lock = btn.getAttribute('data-lock');
+      selectLockMode(lock);
+    });
+  });
+
+  tbody.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const lock = tr.getAttribute('data-row-lock');
+    if (lock) {
+      buttons.forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-lock') === lock);
+      });
+      selectLockMode(lock);
+    }
+  });
+
+  selectLockMode('ACCESS EXCLUSIVE');
+}
+
+function selectLockMode(lockMode) {
+  const tbody = document.getElementById('pg-lock-matrix-body');
+  if (!tbody) return;
+
+  const rows = tbody.querySelectorAll('tr');
+  rows.forEach(tr => {
+    const rLock = tr.getAttribute('data-row-lock');
+    const isTarget = rLock === lockMode;
+    tr.classList.toggle('highlight-row', isTarget);
+    const cells = tr.querySelectorAll('td');
+    cells.forEach(td => {
+      td.classList.toggle('highlight-active', isTarget);
+    });
+  });
+
+  const details = PG_LOCK_DETAILS[lockMode] || {
+    title: `ℹ️ ${lockMode}: Lock Mode`,
+    desc: `Blocks operations that conflict with this lock level per PostgreSQL specification.`,
+    blocked: PG_LOCK_CONFLICTS[lockMode] || [],
+    safe: []
+  };
+
+  const titleEl = document.getElementById('explainer-title');
+  const descEl = document.getElementById('explainer-desc');
+  const tagsEl = document.getElementById('explainer-tags');
+
+  if (titleEl) titleEl.innerHTML = `<span>${details.title}</span>`;
+  if (descEl) descEl.innerHTML = details.desc;
+  if (tagsEl) {
+    let html = '';
+    (details.blocked || []).forEach(item => {
+      html += `<span class="explainer-tag tag-blocked">⛔ Blocks: ${item}</span>`;
+    });
+    (details.safe || []).forEach(item => {
+      html += `<span class="explainer-tag tag-safe">✔ Compatible: ${item}</span>`;
+    });
+    tagsEl.innerHTML = html;
+  }
+}
+
+// Initialize on load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initLockMatrixExplorer);
+} else {
+  initLockMatrixExplorer();
+}

@@ -66,6 +66,37 @@
               <span>🤖 Telegram Bot 24/7</span>
             </a>
           </div>
+
+          <!-- Terminal One-Liner Snippet -->
+          <div class="hero-terminal-container">
+            <div class="hero-terminal">
+              <div class="terminal-bar">
+                <div class="terminal-dots">
+                  <span class="dot dot-red"></span>
+                  <span class="dot dot-yellow"></span>
+                  <span class="dot dot-green"></span>
+                </div>
+                <div class="terminal-title">bash — npx lockguard</div>
+                <button class="terminal-copy-btn" id="btn-copy-terminal" onclick="copyHeroTerminalCommand()" title="Скопировать команду в буфер">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span id="copy-terminal-label">Копировать</span>
+                </button>
+              </div>
+              <div class="terminal-body">
+                <div class="terminal-line">
+                  <span class="terminal-prompt">$</span>
+                  <span class="terminal-cmd">npx lockguard check ./migrations --strict</span>
+                </div>
+                <div class="terminal-output">
+                  <span class="term-dim">🛡️  LockGuard AST Gatekeeper v1.1.0</span><br>
+                  <span class="term-red">✖ [LG-002] CREATE INDEX idx_orders_user without CONCURRENTLY</span><br>
+                  <span class="term-yellow">  Lock Level: SHARE (Blocks all INSERT/UPDATE/DELETE)</span><br>
+                  <span class="term-cyan">💡 Safe Fix: CREATE INDEX CONCURRENTLY idx_orders_user ON orders(user_id);</span><br>
+                  <span class="term-red">🚨 1 Critical Violation found. Deployment halted (Exit 1).</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="preset-selector">
           <label for="preset-select">Load Preset Scenario:</label>
@@ -164,6 +195,62 @@
                 <pre class="pr-markdown-box" id="pr-markdown-box"></pre>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PostgreSQL Lock Compatibility Matrix Explorer -->
+      <div id="lock-matrix-explorer" class="lock-matrix-section">
+        <div class="matrix-header">
+          <h2>🛡️ Interactive PostgreSQL Lock Compatibility Matrix</h2>
+          <p>
+            Why do migrations crash production? In PostgreSQL, locks are acquired on whole table catalogs. 
+            Select any lock mode or standard operation below to inspect real-time conflicts and understand why DDL can trigger 504 Gateway Timeouts.
+          </p>
+        </div>
+
+        <div class="matrix-quick-filters" id="matrix-quick-filters">
+          <button class="matrix-filter-btn active" data-lock="ACCESS EXCLUSIVE">🚨 ACCESS EXCLUSIVE (ALTER / DROP)</button>
+          <button class="matrix-filter-btn" data-lock="SHARE">⛔ SHARE (CREATE INDEX)</button>
+          <button class="matrix-filter-btn" data-lock="SHARE UPDATE EXCLUSIVE">✅ SHARE UPDATE EXCL (CONCURRENTLY)</button>
+          <button class="matrix-filter-btn" data-lock="ROW EXCLUSIVE">⚡ ROW EXCLUSIVE (INSERT / UPDATE / DELETE)</button>
+          <button class="matrix-filter-btn" data-lock="ACCESS SHARE">📖 ACCESS SHARE (SELECT)</button>
+          <button class="matrix-filter-btn" data-lock="EXCLUSIVE">🔒 EXCLUSIVE (REFRESH MATVIEW)</button>
+        </div>
+
+        <div class="matrix-table-wrapper">
+          <table class="matrix-table" id="pg-lock-matrix-table">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding-left:1rem;">Requested Lock (Row) \ Existing Lock (Column)</th>
+                <th data-col="ACCESS SHARE">ACCESS SHARE</th>
+                <th data-col="ROW SHARE">ROW SHARE</th>
+                <th data-col="ROW EXCLUSIVE">ROW EXCL</th>
+                <th data-col="SHARE UPDATE EXCLUSIVE">SHARE UPD EXCL</th>
+                <th data-col="SHARE">SHARE</th>
+                <th data-col="SHARE ROW EXCLUSIVE">SHARE ROW EXCL</th>
+                <th data-col="EXCLUSIVE">EXCLUSIVE</th>
+                <th data-col="ACCESS EXCLUSIVE">ACCESS EXCL</th>
+              </tr>
+            </thead>
+            <tbody id="pg-lock-matrix-body">
+              <!-- Dynamic interactive rows -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="matrix-explainer-card" id="matrix-explainer">
+          <div class="explainer-title" id="explainer-title">
+            <span>🚨 ACCESS EXCLUSIVE: Fatal Table Lock (Full Outage Risk)</span>
+          </div>
+          <div class="explainer-desc" id="explainer-desc">
+            Blocks <b>all table operations</b>: reads (<code>SELECT</code>), writes (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), indexes, and schema modifications. If a slow query is running, DDL queues behind it, and subsequent <code>SELECT</code> queries pile up (Head-of-Line Blocking), crashing connection pools and triggering <b>HTTP 504 Gateway Timeouts</b>.
+          </div>
+          <div class="explainer-tags" id="explainer-tags">
+            <span class="explainer-tag tag-blocked">⛔ Blocks: SELECT</span>
+            <span class="explainer-tag tag-blocked">⛔ Blocks: INSERT / UPDATE / DELETE</span>
+            <span class="explainer-tag tag-blocked">⛔ Blocks: CREATE INDEX</span>
+            <span class="explainer-tag tag-blocked">⛔ Blocks: VACUUM</span>
           </div>
         </div>
       </div>

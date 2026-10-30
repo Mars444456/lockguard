@@ -35,7 +35,7 @@ class LockGuardCLI {
       return this.handleRulesCommand(args);
     }
 
-    if (args.command === 'init') {
+    if (args.command === 'init' || args.command === 'action') {
       return this.handleInitCommand(args);
     }
 
@@ -190,6 +190,7 @@ USAGE:
   lockguard watchdog
   lockguard simulate <file.sql>
   lockguard rules
+  lockguard action
   lockguard init
 
 COMMANDS:
@@ -199,6 +200,7 @@ COMMANDS:
   watchdog      Post-deploy watchdog: Detect invalid/broken indexes from failed CONCURRENTLY runs
   simulate      Shadow replay: Simulate concurrent query traffic and measure lock latency
   rules         Display the catalog of Top-12 fatal PostgreSQL lock rules
+  action        Generate GitHub Action CI workflow (.github/workflows/lockguard.yml) in 1 second
   init          Scaffold GitHub Action workflow and configuration
 
 OPTIONS:
@@ -286,7 +288,7 @@ jobs:
       fs.writeFileSync(configPath, JSON.stringify(sampleConfig, null, 2) + '\n', 'utf8');
       console.log(`✔ Created configuration file at: ${configPath}`);
     }
-    console.log(`✔ Created GitHub Action workflow at: ${workflowFile}`);
+    console.log(`✅ Generated .github/workflows/lockguard.yml in 1 second!`);
     return 0;
   }
 

@@ -901,4 +901,199 @@ ${v.safeFix}
 // Boot on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new LockGuardWebPlayground();
+  initLockMatrixExplorer();
 });
+
+// ==============================================================================
+// Terminal Snippet Copy
+// ==============================================================================
+window.copyHeroTerminalCommand = function() {
+  const cmd = 'npx lockguard check ./migrations --strict';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cmd).then(() => {
+      const label = document.getElementById('copy-terminal-label');
+      if (label) {
+        const orig = label.textContent;
+        label.textContent = '✔ Скопировано!';
+        setTimeout(() => { label.textContent = orig; }, 2500);
+      }
+    }).catch(() => fallbackCopy(cmd));
+  } else {
+    fallbackCopy(cmd);
+  }
+};
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  const label = document.getElementById('copy-terminal-label');
+  if (label) {
+    const orig = label.textContent;
+    label.textContent = '✔ Скопировано!';
+    setTimeout(() => { label.textContent = orig; }, 2500);
+  }
+}
+
+// ==============================================================================
+// Interactive PostgreSQL Lock Compatibility Matrix Explorer
+// ==============================================================================
+const PG_LOCK_MODES = [
+  'ACCESS SHARE',
+  'ROW SHARE',
+  'ROW EXCLUSIVE',
+  'SHARE UPDATE EXCLUSIVE',
+  'SHARE',
+  'SHARE ROW EXCLUSIVE',
+  'EXCLUSIVE',
+  'ACCESS EXCLUSIVE'
+];
+
+const PG_LOCK_CONFLICTS = {
+  'ACCESS SHARE': ['ACCESS EXCLUSIVE'],
+  'ROW SHARE': ['EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'ROW EXCLUSIVE': ['SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE UPDATE EXCLUSIVE': ['SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE ROW EXCLUSIVE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'EXCLUSIVE': ['ROW SHARE', 'ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'ACCESS EXCLUSIVE': [
+    'ACCESS SHARE', 'ROW SHARE', 'ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE',
+    'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'
+  ]
+};
+
+const PG_LOCK_DETAILS = {
+  'ACCESS EXCLUSIVE': {
+    title: '🚨 ACCESS EXCLUSIVE: Фатальная блокировка таблицы (Full Outage)',
+    desc: 'Блокирует <b>абсолютно все операции</b>: чтение (<code>SELECT</code>), запись (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), создание индексов и любые другие DDL/DML. Если в этот момент выполняется долгий аналитический запрос, DDL встает в очередь, а все последующие <code>SELECT</code> выстраиваются за ним (Head-of-Line Blocking), исчерпывая пул соединений и приводя к массовым ошибкам <b>HTTP 504 Gateway Timeout</b>.',
+    blocked: ['SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'VACUUM / ANALYZE'],
+    safe: []
+  },
+  'SHARE': {
+    title: '⛔ SHARE: Блокировка пользовательской записи (Write Freeze)',
+    desc: 'Позволяет продолжать чтение (<code>SELECT</code>), но <b>полностью блокирует все операции изменения данных</b>: <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>! Все пользовательские транзакции записи встают колом до тех пор, пока не построится весь индекс.',
+    blocked: ['INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'Любой ALTER TABLE (ACCESS EXCLUSIVE)'],
+    safe: ['Параллельные SELECT (ACCESS SHARE)', 'SELECT FOR UPDATE (ROW SHARE)']
+  },
+  'SHARE UPDATE EXCLUSIVE': {
+    title: '✅ SHARE UPDATE EXCLUSIVE: Безопасный параллельный режим (Zero-Downtime)',
+    desc: '<b>Золотой стандарт Zero-Downtime в PostgreSQL!</b> Конфликтует ТОЛЬКО с другими параллельными изменениями схемы или VACUUM, но <b>100% совместим с клиентским чтением (<code>SELECT</code>) и записью (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>)</b>! Таблица работает на полной скорости без зависаний.',
+    blocked: ['Параллельный VACUUM / ANALYZE', 'Другой CREATE INDEX CONCURRENTLY', 'ALTER TABLE (ACCESS EXCLUSIVE)'],
+    safe: ['Клиентские SELECT (ACCESS SHARE)', 'Клиентские INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'SELECT FOR UPDATE']
+  },
+  'ROW EXCLUSIVE': {
+    title: '⚡ ROW EXCLUSIVE: Стандартный рабочий поток записи данных',
+    desc: 'Этот лок берется каждой стандартной операцией изменения данных на уровне строки (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>). Не мешает другим транзакциям читать или писать в другие строки, но мгновенно блокируется опасными DDL-миграциями.',
+    blocked: ['CREATE INDEX (SHARE)', 'ALTER TABLE (ACCESS EXCLUSIVE)', 'TRUNCATE'],
+    safe: ['Параллельные SELECT (ACCESS SHARE)', 'Параллельные INSERT/UPDATE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
+  },
+  'ACCESS SHARE': {
+    title: '📖 ACCESS SHARE: Стандартный рабочий поток чтения',
+    desc: 'Этот лок берется обычным <code>SELECT</code> запросом. Совместим со всеми остальными режимами, кроме самого тяжелого — <code>ACCESS EXCLUSIVE</code>. Именно поэтому любая монолитная миграция замораживает сайт целиком.',
+    blocked: ['ALTER TABLE (ACCESS EXCLUSIVE)', 'DROP TABLE', 'TRUNCATE'],
+    safe: ['Параллельные SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
+  },
+  'EXCLUSIVE': {
+    title: '🔒 EXCLUSIVE: Эксклюзивная блокировка записи и чтения с блокировками',
+    desc: 'Блокирует все операции записи и параллельные индексы, но позволяет простое неблокирующее чтение <code>SELECT</code>.',
+    blocked: ['INSERT / UPDATE / DELETE', 'SELECT FOR UPDATE', 'Параллельные CREATE INDEX'],
+    safe: ['Простой SELECT (ACCESS SHARE)']
+  }
+};
+
+function initLockMatrixExplorer() {
+  const tbody = document.getElementById('pg-lock-matrix-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  PG_LOCK_MODES.forEach(reqLock => {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-row-lock', reqLock);
+
+    const th = document.createElement('th');
+    th.style.textAlign = 'left';
+    th.style.paddingLeft = '0.75rem';
+    th.textContent = reqLock;
+    tr.appendChild(th);
+
+    PG_LOCK_MODES.forEach(existLock => {
+      const td = document.createElement('td');
+      const isConflict = PG_LOCK_CONFLICTS[reqLock] && PG_LOCK_CONFLICTS[reqLock].includes(existLock);
+      td.setAttribute('data-col-lock', existLock);
+      td.className = isConflict ? 'cell-conflict' : 'cell-safe';
+      td.textContent = isConflict ? '⛔ БЛОК' : '✔ ОК';
+      td.title = `${reqLock} vs ${existLock}: ${isConflict ? 'КОНФЛИКТ' : 'СОВМЕСТИМЫ'}`;
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  const buttons = document.querySelectorAll('#matrix-quick-filters .matrix-filter-btn');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const lock = btn.getAttribute('data-lock');
+      selectLockMode(lock);
+    });
+  });
+
+  tbody.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const lock = tr.getAttribute('data-row-lock');
+    if (lock) {
+      buttons.forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-lock') === lock);
+      });
+      selectLockMode(lock);
+    }
+  });
+
+  selectLockMode('ACCESS EXCLUSIVE');
+}
+
+function selectLockMode(lockMode) {
+  const tbody = document.getElementById('pg-lock-matrix-body');
+  if (!tbody) return;
+
+  const rows = tbody.querySelectorAll('tr');
+  rows.forEach(tr => {
+    const rLock = tr.getAttribute('data-row-lock');
+    const isTarget = rLock === lockMode;
+    tr.classList.toggle('highlight-row', isTarget);
+    const cells = tr.querySelectorAll('td');
+    cells.forEach(td => {
+      td.classList.toggle('highlight-active', isTarget);
+    });
+  });
+
+  const details = PG_LOCK_DETAILS[lockMode] || {
+    title: `ℹ️ ${lockMode}: Режим блокировки таблицы`,
+    desc: `Блокирует операции, конфликтующие с данным уровнем блокировки согласно официальной спецификации PostgreSQL.`,
+    blocked: PG_LOCK_CONFLICTS[lockMode] || [],
+    safe: []
+  };
+
+  const titleEl = document.getElementById('explainer-title');
+  const descEl = document.getElementById('explainer-desc');
+  const tagsEl = document.getElementById('explainer-tags');
+
+  if (titleEl) titleEl.innerHTML = `<span>${details.title}</span>`;
+  if (descEl) descEl.innerHTML = details.desc;
+  if (tagsEl) {
+    let html = '';
+    (details.blocked || []).forEach(item => {
+      html += `<span class="explainer-tag tag-blocked">⛔ Блокирует: ${item}</span>`;
+    });
+    (details.safe || []).forEach(item => {
+      html += `<span class="explainer-tag tag-safe">✔ Совместим: ${item}</span>`;
+    });
+    tagsEl.innerHTML = html;
+  }
+}
