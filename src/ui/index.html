@@ -11,11 +11,12 @@
 </head>
 <body class="bg-dark text-light antialiased">
   <!-- Top Announcement Banner -->
-  <div style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(139, 92, 246, 0.15)); border-bottom: 1px solid rgba(245, 158, 11, 0.3); padding: 0.5rem 1rem; text-align: center; font-size: 0.88rem; color: #F3F4F6;">
-    ☕ <b>Поддержите разработку LockGuard:</b> Развиваем независимый инструмент для безопасных миграций PostgreSQL. 
-    <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="color: #FBBF24; font-weight: 700; text-decoration: underline; margin-left: 6px;">Отправить донат автору (любая сумма) 🧡</a> 
+  <div style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.12)); border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 0.55rem 1rem; text-align: center; font-size: 0.88rem; color: #F3F4F6;">
+    🛡️ <b>LockGuard v1.1.0:</b> Zero-Downtime PostgreSQL Gatekeeper • 12 правил предотвращения аварий 
     <span style="margin: 0 8px; color: var(--text-dim);">|</span>
-    <a href="#pricing" style="color: #C084FC; font-weight: 700; text-decoration: none;">💎 Лицензия Pro со скидкой 50% (2 490 ₽)</a>
+    <a href="#tab-billing" onclick="app.switchTab('billing')" style="color: #A5B4FC; font-weight: 700; text-decoration: none;">💎 Командная подписка: 15 000 ₽/мес (30 дней бесплатно)</a>
+    <span style="margin: 0 8px; color: var(--text-dim);">|</span>
+    <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="color: #38BDF8; font-weight: 700; text-decoration: none;">💬 Аудит миграций под ключ: 30 000 ₽</a>
   </div>
 
   <!-- Top Navigation Bar -->
@@ -41,7 +42,7 @@
         <div class="org-badge">
           <span class="org-dot"></span>
           <span id="org-name">Acme SaaS Engineering</span>
-          <span id="org-plan-badge" class="plan-pill team">Team ($39/mo)</span>
+          <span id="org-plan-badge" class="plan-pill team">Pro Team (15 000 ₽/mo)</span>
         </div>
       </div>
     </div>
@@ -55,8 +56,11 @@
           <h1 class="page-title">Interactive Migration AST Playground</h1>
           <p class="page-desc">Paste raw PostgreSQL DDL or load a preset to detect dangerous table locks (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>) before production outage.</p>
           <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0.85rem; flex-wrap: wrap;">
-            <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #000; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
-              <span>☕ Поддержать автора (DonationAlerts)</span>
+            <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%82%D0%B8%D0%BC%20%D0%BE%D1%84%D0%BE%D1%80%D0%BC%D0%B8%D1%82%D1%8C%20%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D1%83%20LockGuard%20Pro%20Team%20(15%20000%20%D1%80%D1%83%D0%B1%2F%D0%BC%D0%B5%D1%81)." target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); color: #FFF; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
+              <span>💎 Оформить подписку Pro (15 000 ₽)</span>
+            </a>
+            <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: rgba(56, 189, 248, 0.15); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
+              <span>💬 Аудит миграций (30 000 ₽)</span>
             </a>
             <a href="https://t.me/lockguard_audit_bot" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.8rem; background: rgba(59, 130, 246, 0.15); border: 1px solid #3B82F6; color: #60A5FA; font-weight: 700; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
               <span>🤖 Telegram Bot 24/7</span>
@@ -67,12 +71,15 @@
           <label for="preset-select">Load Preset Scenario:</label>
           <select id="preset-select" class="select-input">
             <option value="catastrophic">🚨 Catastrophic E-Commerce PR (Multiple Fatal Locks)</option>
-            <option value="add_column">⚠️ Unsafe ADD COLUMN with volatile DEFAULT (now())</option>
-            <option value="blocking_index">⛔ Blocking CREATE INDEX (without CONCURRENTLY)</option>
-            <option value="unsafe_fk">⏳ Heavy Foreign Key Scan without NOT VALID</option>
-            <option value="alter_type">🔄 Table Rewrite: ALTER COLUMN TYPE</option>
-            <option value="direct_unique">🔒 Direct UNIQUE Constraint</option>
-            <option value="missing_timeout">⏱️ Missing SET lock_timeout</option>
+            <option value="add_column">⚠️ Unsafe ADD COLUMN with volatile DEFAULT (LG-001)</option>
+            <option value="blocking_index">⛔ Blocking CREATE INDEX (LG-002)</option>
+            <option value="unsafe_fk">⏳ Heavy Foreign Key Scan without NOT VALID (LG-003)</option>
+            <option value="alter_type">🔄 Table Rewrite: ALTER COLUMN TYPE (LG-004)</option>
+            <option value="direct_unique">🔒 Direct UNIQUE Constraint (LG-005)</option>
+            <option value="drop_column">💥 Immediate DROP COLUMN (LG-006)</option>
+            <option value="missing_timeout">⏱️ Missing SET lock_timeout (LG-008)</option>
+            <option value="unindexed_fk">🔗 Unindexed Foreign Key child lock (LG-011)</option>
+            <option value="truncate_matview">⚡ TRUNCATE TABLE & Unconcurrent MatView (LG-012)</option>
             <option value="safe_migration">✅ 100% Safe Zero-Downtime Migration</option>
           </select>
         </div>
@@ -260,50 +267,53 @@
         <div class="pricing-card" id="card-plan-free">
           <div class="pricing-badge">DEVELOPER</div>
           <h3 class="plan-name">Developer Free</h3>
-          <div class="plan-price">$0 <span class="per-month">/ forever</span></div>
+          <div class="plan-price">0 ₽ <span class="per-month">/ forever</span></div>
           <p class="plan-desc">For local CLI linting and personal developer projects.</p>
           <ul class="plan-features">
             <li>✔ Local CLI linting tool (<code>lockguard check</code>)</li>
-            <li>✔ Top-8 fatal anti-pattern rules</li>
-            <li>✔ Up to 3 checks / day</li>
-            <li>✖ GitHub App / CI PR Gatekeeper</li>
-            <li>✖ Safe SQL fix snippets in PR comments</li>
-            <li>✖ Staging replica live table stats</li>
+            <li>✔ Top-12 fatal anti-pattern rules (LG-001 — LG-012)</li>
+            <li>✔ Unlimited local runs</li>
+            <li>✖ Automated CI PR Gatekeeper</li>
+            <li>✖ Slack & Telegram incident alerts</li>
+            <li>✖ Live replica schema stats integration</li>
           </ul>
           <button class="btn-plan btn-secondary" onclick="app.selectPlan('free')">Current Plan</button>
         </div>
 
         <!-- Team Card -->
-        <div class="pricing-card featured" id="card-plan-team">
-          <div class="pricing-badge popular">RECOMMENDED FOR TEAMS</div>
-          <h3 class="plan-name">Team Gatekeeper</h3>
-          <div class="plan-price">$39 <span class="per-month">/ month</span></div>
+        <div class="pricing-card featured" id="card-plan-team" style="border: 2px solid #6366F1; box-shadow: 0 0 35px rgba(99, 102, 241, 0.25);">
+          <div class="pricing-badge popular" style="background: linear-gradient(135deg, #6366F1, #EC4899);">RECOMMENDED FOR TEAMS</div>
+          <h3 class="plan-name">Pro Team Gatekeeper</h3>
+          <div class="plan-price">15 000 ₽ <span class="per-month">/ month</span></div>
           <p class="plan-desc">Automated CI/CD gatekeeper blocking dangerous PRs before production merge.</p>
           <ul class="plan-features">
             <li>✔ <b>Unlimited</b> GitHub Action & GitLab CI PR checks</li>
-            <li>✔ Automated rich PR comments with lock matrix</li>
-            <li>✔ Ready-to-copy safe multi-step SQL fixes</li>
+            <li>✔ Automated rich PR comments with lock conflict matrix</li>
+            <li>✔ <b>Auto-Splitter:</b> multi-phase safe migrations (Django, Prisma, Drizzle, SQLAlchemy)</li>
             <li>✔ Unlimited team members & API keys</li>
-            <li>✔ Slack & Discord outage alerts</li>
-            <li>✔ Priority rule customization</li>
+            <li>✔ Telegram & Slack outage alerts</li>
+            <li>✔ 30 days full free trial</li>
           </ul>
-          <button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Upgrade to Team ($39)</button>
+          <button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Upgrade to Pro Team (15 000 ₽)</button>
         </div>
 
         <!-- Business Card -->
-        <div class="pricing-card" id="card-plan-business">
-          <div class="pricing-badge">ENTERPRISE SCALE</div>
-          <h3 class="plan-name">Business</h3>
-          <div class="plan-price">$99 <span class="per-month">/ month</span></div>
-          <p class="plan-desc">For high-throughput SaaS with tables exceeding 5M+ rows and strict SLAs.</p>
+        <div class="pricing-card" id="card-plan-business" style="border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, rgba(15, 23, 42, 0.95) 100%);">
+          <div class="pricing-badge" style="background: linear-gradient(135deg, #0284C7, #06B6D4);">EXPERT DBA SERVICE</div>
+          <h3 class="plan-name">Migration Audit & DBA</h3>
+          <div class="plan-price">30 000 ₽ <span class="per-month">/ fixed turn-key</span></div>
+          <p class="plan-desc">Turn-key personal database audit and zero-downtime migration guarantee.</p>
           <ul class="plan-features">
-            <li>✔ Everything in Team Gatekeeper</li>
-            <li>✔ Read-only replica connection for live row stats</li>
-            <li>✔ Table bloat factor & dynamic lock duration estimation</li>
-            <li>✔ Custom company-wide lock policies</li>
-            <li>✔ Dedicated DBA architecture support</li>
+            <li>✔ <b>Personal audit</b> of full schema, FKs, and migration history</li>
+            <li>✔ CascadeGraph unindexed FK and deadlock resolution</li>
+            <li>✔ PgBouncer / Odyssey pool and connection tuning</li>
+            <li>✔ Multi-phase migration plan with safe SQL recipes</li>
+            <li>✔ 1-on-1 Zoom architecture consultation with Senior DBA</li>
+            <li>✔ Formal invoice, contract, and closing acts for legal entities</li>
           </ul>
-          <button class="btn-plan btn-secondary" id="btn-subscribe-biz" onclick="app.selectPlan('business')">Upgrade to Business ($99)</button>
+          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" class="btn-plan btn-secondary" style="border-color: #38BDF8; color: #38BDF8; text-align: center; text-decoration: none; display: block; font-weight: 700;">
+            🚀 Заказать аудит (30 000 ₽)
+          </a>
         </div>
       </div>
     </section>

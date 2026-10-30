@@ -65,6 +65,29 @@ ALTER TABLE subscriptions ADD CONSTRAINT uq_subscriptions_user_plan UNIQUE (user
 -- If an ALTER TABLE is delayed, this blocks all incoming queries behind it!
 ALTER TABLE users ADD COLUMN is_verified BOOLEAN;`,
 
+  drop_column: `-- Direct DROP COLUMN on production table (LG-006)
+-- ACCESS EXCLUSIVE lock crashes active ORM models and replica queries!
+SET lock_timeout = '3s';
+
+ALTER TABLE users DROP COLUMN legacy_pin;`,
+
+  unindexed_fk: `-- Unindexed Foreign Key causing cascading table locks (LG-011)
+-- Any UPDATE or DELETE on parent 'accounts' will lock and sequentially scan 'transactions'!
+SET lock_timeout = '3s';
+
+ALTER TABLE transactions 
+  ADD CONSTRAINT fk_tx_account 
+  FOREIGN KEY (account_id) 
+  REFERENCES accounts(id) 
+  NOT VALID;`,
+
+  truncate_matview: `-- Fatal TRUNCATE TABLE & Unconcurrent Materialized View Refresh (LG-012)
+-- Takes ACCESS EXCLUSIVE lock, completely freezing all reading queries!
+SET lock_timeout = '3s';
+
+TRUNCATE TABLE audit_logs;
+REFRESH MATERIALIZED VIEW mv_user_summaries;`,
+
   safe_migration: `-- 100% Safe Zero-Downtime PostgreSQL Migration Pattern
 -- 1. Mandatory Safeguard: fail fast instead of queueing locks
 SET lock_timeout = '3s';
@@ -577,7 +600,7 @@ class LockGuardApp {
         btn.disabled = true;
       } else {
         btn.disabled = false;
-        btn.textContent = p === 'team' ? 'Upgrade to Team ($39)' : (p === 'business' ? 'Upgrade to Business ($99)' : 'Downgrade to Free');
+        btn.textContent = p === 'team' ? 'Upgrade to Pro Team (15 000 ₽)' : (p === 'business' ? 'Заказать аудит миграций (30 000 ₽)' : 'Downgrade to Free');
         btn.className = p === 'team' ? 'btn-plan btn-primary' : 'btn-plan btn-secondary';
       }
     });

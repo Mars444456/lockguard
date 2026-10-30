@@ -11,11 +11,14 @@
 </head>
 <body>
   <!-- Top Announcement Banner -->
-  <div style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(139, 92, 246, 0.15)); border-bottom: 1px solid rgba(245, 158, 11, 0.3); padding: 0.5rem 1rem; text-align: center; font-size: 0.88rem; color: #F3F4F6;">
-    ☕ <b>Поддержите разработку LockGuard:</b> Развиваем независимый инструмент для безопасных миграций PostgreSQL. 
-    <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="color: #FBBF24; font-weight: 700; text-decoration: underline; margin-left: 6px;">Отправить донат автору (любая сумма) 🧡</a> 
+  <div style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.12)); border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 0.55rem 1rem; text-align: center; font-size: 0.88rem; color: #F3F4F6;">
+    🛡️ <b>LockGuard v1.1.0:</b> Zero-Downtime PostgreSQL Gatekeeper • 12 правил предотвращения аварий 
     <span style="margin: 0 8px; color: var(--text-dim);">|</span>
-    <a href="#pricing" style="color: #C084FC; font-weight: 700; text-decoration: none;">💎 Лицензия Pro со скидкой 50% (2 490 ₽)</a>
+    <a href="#pricing" style="color: #A5B4FC; font-weight: 700; text-decoration: none;">💎 Командная подписка: 15 000 ₽/мес (30 дней бесплатно)</a>
+    <span style="margin: 0 8px; color: var(--text-dim);">|</span>
+    <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="color: #38BDF8; font-weight: 700; text-decoration: none;">💬 Аудит миграций под ключ: 30 000 ₽</a>
+    <span style="margin: 0 8px; color: var(--text-dim);">|</span>
+    <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="color: #FBBF24; font-weight: 700; text-decoration: underline; margin-left: 4px;">Донат автору 🧡</a>
   </div>
 
   <!-- Top Navigation Bar -->
@@ -61,17 +64,20 @@
 
         <!-- Hero Actions -->
         <div class="hero-cta-group" style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.15rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-          <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.35rem; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #000; font-weight: 800; font-size: 0.95rem; border-radius: 8px; text-decoration: none; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.45); transition: transform 0.2s;">
-            <span>☕ Поддержать автора (Донат)</span>
-            <span style="background: rgba(0,0,0,0.25); color: #000; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">Любая сумма</span>
+          <a href="#tab-playground" class="btn-primary" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.35rem; font-weight: 800; font-size: 0.95rem; border-radius: 8px; text-decoration: none;">
+            <span>⚡ Запустить AST-анализ</span>
+          </a>
+          <a href="#pricing" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.15rem; background: rgba(99, 102, 241, 0.15); border: 1px solid #6366F1; color: #A5B4FC; font-weight: 700; font-size: 0.95rem; border-radius: 8px; text-decoration: none; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.25);">
+            <span>💎 Подписка Pro (15 000 ₽/мес)</span>
+            <span style="background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">30 ДНЕЙ ТРИАЛ</span>
+          </a>
+          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.15rem; background: rgba(56, 189, 248, 0.12); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 700; font-size: 0.95rem; border-radius: 8px; text-decoration: none;">
+            <span>💬 Экспресс-аудит (30 000 ₽)</span>
+            <span style="background: rgba(56, 189, 248, 0.2); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">ПОД КЛЮЧ</span>
           </a>
           <a href="https://t.me/lockguard_audit_bot" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.15rem; background: rgba(59, 130, 246, 0.15); border: 1px solid #3B82F6; color: #60A5FA; font-weight: 700; font-size: 0.95rem; border-radius: 8px; text-decoration: none;">
             <span>🤖 Телеграм Бот</span>
             <span style="background: #10B981; color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 800;">24/7 ONLINE</span>
-          </a>
-          <a href="#pricing" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.15rem; background: rgba(139, 92, 246, 0.15); border: 1px solid #8B5CF6; color: #C084FC; font-weight: 700; font-size: 0.95rem; border-radius: 8px; text-decoration: none;">
-            <span>💎 Купить Pro (2 490 ₽)</span>
-            <span style="background: rgba(239, 68, 68, 0.25); color: #F87171; border: 1px solid rgba(239,68,68,0.5); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">-50%</span>
           </a>
         </div>
       </div>
@@ -80,15 +86,18 @@
           <label for="preset-select">Готовый сценарий:</label>
           <select id="preset-select" class="select-input">
             <option value="catastrophic">🚨 Катастрофический PR (Набор фатальных блокировок)</option>
-            <option value="add_column">⚠️ Опасный ADD COLUMN с volatile DEFAULT (now())</option>
-            <option value="blocking_index">⛔ Блокирующий CREATE INDEX (без CONCURRENTLY)</option>
-            <option value="unsafe_fk">⏳ Тяжелый Foreign Key без NOT VALID</option>
-            <option value="alter_type">🔄 Полный rewrite таблицы: ALTER COLUMN TYPE</option>
-            <option value="direct_unique">🔒 Прямой UNIQUE Constraint</option>
-            <option value="missing_timeout">⏱️ Пропущенный SET lock_timeout</option>
+            <option value="add_column">⚠️ Опасный ADD COLUMN с volatile DEFAULT (LG-001)</option>
+            <option value="blocking_index">⛔ Блокирующий CREATE INDEX без CONCURRENTLY (LG-002)</option>
+            <option value="unsafe_fk">⏳ Тяжелый Foreign Key без NOT VALID (LG-003)</option>
+            <option value="alter_type">🔄 Полный rewrite таблицы: ALTER COLUMN TYPE (LG-004)</option>
+            <option value="direct_unique">🔒 Прямой UNIQUE Constraint (LG-005)</option>
+            <option value="drop_column">💥 Опасный DROP COLUMN на проде (LG-006)</option>
+            <option value="missing_timeout">⏱️ Пропущенный SET lock_timeout (LG-008)</option>
             <option value="unsafe_not_null">🚫 Опасный ALTER COLUMN SET NOT NULL (LG-009)</option>
             <option value="concurrent_in_tx">⛔ CONCURRENTLY внутри транзакции (LG-010)</option>
-            <option value="safe_migration">✅ 100% Безопасная Zero-Downtime миграция</option>
+            <option value="unindexed_fk">🔗 Неиндексированный Foreign Key: локи дочерней таблицы (LG-011)</option>
+            <option value="truncate_matview">⚡ TRUNCATE TABLE & REFRESH MATVIEW без CONCURRENTLY (LG-012)</option>
+            <option value="safe_migration">✅ 100% Безопасная Zero-Downtime миграция (Fixture 10)</option>
           </select>
         </div>
         <div style="display:flex; flex-direction:column; gap:4px;">
@@ -363,48 +372,53 @@
         </div>
 
         <!-- Tier 2: Pro Team -->
-        <div class="pricing-card featured">
-          <div class="pricing-badge" style="background: linear-gradient(135deg, #EF4444, #F59E0B);">🔥 Скидка 50% (Early Bird)</div>
-          <div class="pricing-name" style="color: #C084FC;">Pro Team</div>
+        <div class="pricing-card featured" style="border: 2px solid #6366F1; box-shadow: 0 0 35px rgba(99, 102, 241, 0.25);">
+          <div class="pricing-badge" style="background: linear-gradient(135deg, #6366F1, #EC4899);">🔥 ПОПУЛЯРНО ДЛЯ B2B & SAAS</div>
+          <div class="pricing-name" style="color: #C084FC;">Командная подписка (Pro Team)</div>
           <div class="pricing-price">
-            <span style="font-size: 1.1rem; text-decoration: line-through; color: #9CA3AF; margin-right: 6px;">4 990 ₽</span>
-            2 490 ₽ <span class="pricing-period">/ месяц ($25)</span>
+            <span style="font-size: 1.1rem; text-decoration: line-through; color: #9CA3AF; margin-right: 6px;">25 000 ₽</span>
+            15 000 ₽ <span class="pricing-period">/ месяц</span>
           </div>
-          <div class="pricing-desc">Для продуктовых команд с непрерывными релизами и высокими требованиями к SLA.</div>
+          <div class="pricing-desc">Автоматизированный CI/CD гейткипер для продуктовых команд с непрерывными релизами и высокими требованиями к SLA.</div>
           <ul class="pricing-features">
             <li><span class="check">✔</span> <b>Все функции Community</b></li>
-            <li><span class="check">✔</span> Неограниченные репозитории и микросервисы</li>
+            <li><span class="check">✔</span> <b>Неограниченные репозитории</b> и микросервисы (GitHub Actions & GitLab CI)</li>
+            <li><span class="check">✔</span> Полный AST-анализ всех <b>12 фатальных правил блокировок</b></li>
             <li><span class="check">✔</span> <b>Auto-Splitter:</b> автогенерация безопасных миграций для <b>Django, Prisma, Drizzle, SQLAlchemy</b></li>
-            <li><span class="check">✔</span> <b>Telegram & Slack боты:</b> моментальные алерты команде дежурных</li>
-            <li><span class="check">✔</span> Генерация брендированных <b>PDF-отчетов для CTO</b></li>
-            <li><span class="check">✔</span> Приоритетная поддержка в закрытом чате</li>
+            <li><span class="check">✔</span> <b>Telegram & Slack боты:</b> моментальные алерты дежурным при обнаружении <code>ACCESS EXCLUSIVE</code></li>
+            <li><span class="check">✔</span> <b>Shadow Replay Simulator:</b> расчет риска взрыва пула PgBouncer и 504 Gateway Timeout</li>
+            <li><span class="check">✔</span> Multi-Developer API ключи для всей команды и закрытый чат поддержки</li>
           </ul>
-          <button id="btn-open-trial" class="pricing-btn btn-pro" style="margin-bottom: 0.6rem; width: 100%; border: none; cursor: pointer;">
+          <button id="btn-open-trial" class="pricing-btn btn-pro" style="margin-bottom: 0.6rem; width: 100%; border: none; cursor: pointer; padding: 0.85rem; font-size: 0.95rem;">
             🎁 Активировать 30 дней Pro бесплатно
           </button>
-          <a href="https://www.donationalerts.com/r/marswwu" target="_blank" class="pricing-btn btn-free" style="border-color: #F59E0B; color: #FBBF24; margin-bottom: 0.5rem; text-decoration: none; font-size: 0.85rem; font-weight: 700; display:flex; align-items:center; justify-content:center; gap:0.4rem;">
-            🧡 Оплатить 2 490 ₽ через DonationAlerts
+          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%82%D0%B8%D0%BC%20%D0%BE%D1%84%D0%BE%D1%80%D0%BC%D0%B8%D1%82%D1%8C%20%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D1%83%20LockGuard%20Pro%20Team%20(15%20000%20%D1%80%D1%83%D0%B1%2F%D0%BC%D0%B5%D1%81)." target="_blank" class="pricing-btn btn-free" style="border-color: #6366F1; color: #A5B4FC; margin-bottom: 0.5rem; text-decoration: none; font-size: 0.88rem; font-weight: 700; display:flex; align-items:center; justify-content:center; gap:0.4rem;">
+            ⚡ Оформить подписку 15 000 ₽ / мес
           </a>
           <a href="#payment-methods" id="btn-pay-details" class="pricing-btn btn-free" style="border-color: rgba(139, 92, 246, 0.4); color: #C084FC; font-size: 0.8rem;">
-            💳 Все способы оплаты (СБП / Счет / Карта)
+            💳 Все способы оплаты (СБП / Счет для юрлиц / Карта)
           </a>
         </div>
 
         <!-- Tier 3: Enterprise -->
-        <div class="pricing-card">
-          <div class="pricing-name" style="color: #38BDF8;">Enterprise & Аудит</div>
-          <div class="pricing-price">99 000 ₽ <span class="pricing-period">/ аудит под ключ</span></div>
-          <div class="pricing-desc">Полный аудит существующей базы, архитектуры миграций и On-premise внедрение.</div>
+        <div class="pricing-card" style="border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, rgba(15, 23, 42, 0.95) 100%);">
+          <div class="pricing-badge" style="background: linear-gradient(135deg, #0284C7, #06B6D4);">⚡ РАЗОВЫЙ АУДИТ ПОД КЛЮЧ</div>
+          <div class="pricing-name" style="color: #38BDF8;">Аудит миграций & DBA Экспертиза</div>
+          <div class="pricing-price">
+            <span style="font-size: 1.1rem; text-decoration: line-through; color: #9CA3AF; margin-right: 6px;">60 000 ₽</span>
+            30 000 ₽ <span class="pricing-period">/ аудит под ключ</span>
+          </div>
+          <div class="pricing-desc">Персональный аудит существующей базы, архитектуры миграций и устранение рисков блокировок с гарантией.</div>
           <ul class="pricing-features">
-            <li><span class="check">✔</span> <b>Персональный аудит</b> всей структуры БД и истории миграций</li>
-            <li><span class="check">✔</span> <b>On-Premise:</b> изолированная установка в GitLab CI / Bitbucket</li>
-            <li><span class="check">✔</span> Тюнинг пулеров PgBouncer / Odyssey под высокий RPS</li>
-            <li><span class="check">✔</span> Поддержка шардинга (Citus), партиций и реплик</li>
-            <li><span class="check">✔</span> Индивидуальный SLA 99.99% и договор</li>
-            <li><span class="check">✔</span> Прямой контакт с ведущим DBA-архитектором</li>
+            <li><span class="check">✔</span> <b>Персональный аудит</b> всей структуры БД, истории миграций и индексов</li>
+            <li><span class="check">✔</span> Выявление скрытых каскадных блокировок (<code>CascadeGraph</code>, unindexed FKs)</li>
+            <li><span class="check">✔</span> Тюнинг пулеров PgBouncer / Odyssey и параметров репликации под высокий RPS</li>
+            <li><span class="check">✔</span> <b>Гарантия Zero-Downtime</b> выкатки от ведущего PostgreSQL Core инженера</li>
+            <li><span class="check">✔</span> Пошаговый план релиза (Multi-Phase Rollout Plan) с готовым SQL и автотестами</li>
+            <li><span class="check">✔</span> 1-on-1 Zoom-сессия разбора архитектуры и закрывающий PDF-отчет для CTO</li>
           </ul>
-          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%98%D0%BD%D1%82%D0%B5%D1%80%D0%B5%D1%81%D1%83%D0%B5%D1%82%20Enterprise%20%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%B2%D0%BD%D0%B5%D0%B4%D1%80%D0%B5%D0%BD%D0%B8%D0%B5." target="_blank" class="pricing-btn btn-enterprise">
-            🚀 Заказать Enterprise аудит
+          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" class="pricing-btn btn-enterprise" style="background: linear-gradient(135deg, #0284C7, #0EA5E9); color: #FFF; border: none; box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4); padding: 0.85rem; font-size: 0.95rem;">
+            🚀 Заказать аудит (30 000 ₽)
           </a>
         </div>
       </div>
@@ -412,49 +426,49 @@
       <!-- Payment & Direct Card/SBP Billing Info -->
       <div id="payment-methods" class="payment-methods-box">
         <h3 style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.5rem;">
-          💳 Прием оплаты и способы продления подписки
+          💳 Официальные способы оплаты (Подписка 15 000 ₽ / Аудит 30 000 ₽)
         </h3>
         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-          После окончания 30-дневного пробного периода вы можете продлить подписку любым удобным способом напрямую автору проекта:
+          Оплачивайте командную лицензию или разовый аудит удобным для вас способом — по безналичному расчету с закрывающими документами, по СБП, картой РФ или зарубежного банка:
         </p>
 
         <div class="payment-methods-grid">
-          <div class="payment-method-item" style="border-color: #F59E0B; background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, rgba(15, 23, 42, 0.95) 100%);">
-            <h5 style="color: #FBBF24;">🧡 DonationAlerts (Карты РФ, СБП, ЮMoney)</h5>
-            <p>Моментальная оплата картой любого банка РФ, через СБП или кошелек без очередей и ручных сверок.</p>
+          <div class="payment-method-item" style="border-color: #6366F1; background: linear-gradient(180deg, rgba(99, 102, 241, 0.12) 0%, rgba(15, 23, 42, 0.95) 100%);">
+            <h5 style="color: #A5B4FC;">🏢 Безналичный расчет для юрлиц (ООО / ИП)</h5>
+            <p>Официальный договор, счет на оплату (15 000 ₽ / 30 000 ₽) и закрывающие акты (ЭДО Диадок / СБИС) для бухгалтерии компании.</p>
             <div style="margin-top: 0.75rem;">
-              <a href="https://www.donationalerts.com/r/marswwu" target="_blank" class="btn-secondary btn-xs" style="color: #FBBF24; border-color: #F59E0B; font-weight: 700; text-decoration: none; display: inline-block;">
-                ⚡ Перейти к оплате на DonationAlerts
+              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%9D%D1%83%D0%B6%D0%B5%D0%BD%20%D1%81%D1%87%D0%B5%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%8E%D1%80%D0%BB%D0%B8%D1%86%D0%B0%20%D0%BD%D0%B0%20LockGuard." target="_blank" class="btn-secondary btn-xs" style="color: #A5B4FC; border-color: #6366F1; text-decoration: none; display: inline-block;">
+                📄 Запросить счет для юрлица (@marswwu)
               </a>
             </div>
           </div>
 
-          <div class="payment-method-item">
-            <h5>⚡ Перевод по СБП / Карте РФ</h5>
-            <p>Оплата на карту или по СБП (Сбер / Тинькофф / Альфа-Банк). Без комиссии, моментальная активация лицензии.</p>
+          <div class="payment-method-item" style="border-color: #10B981; background: linear-gradient(180deg, rgba(16, 185, 129, 0.1) 0%, rgba(15, 23, 42, 0.95) 100%);">
+            <h5 style="color: #34D399;">⚡ Перевод по СБП / Карте РФ</h5>
+            <p>Моментальная оплата по номеру телефона / QR-коду СБП (Сбер, Т-Банк, Альфа). Без комиссии, лицензия активируется сразу.</p>
             <div style="margin-top: 0.75rem;">
-              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B8%D1%82%D1%8C%20LockGuard%20Pro%20%D0%BF%D0%BE%20%D0%A1%D0%91%D0%9F%20%D0%B8%D0%BB%D0%B8%20%D0%BA%D0%B0%D1%80%D1%82%D0%B5." target="_blank" class="btn-secondary btn-xs" style="color: #34D399; border-color: #10B981; text-decoration: none; display: inline-block;">
-                Получить реквизиты СБП (@marswwu)
+              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B8%D1%82%D1%8C%20LockGuard%20%D0%BF%D0%BE%20%D0%A1%D0%91%D0%9F%20%D0%B8%D0%BB%D0%B8%20%D0%BA%D0%B0%D1%80%D1%82%D0%B5." target="_blank" class="btn-secondary btn-xs" style="color: #34D399; border-color: #10B981; text-decoration: none; display: inline-block;">
+                💬 Реквизиты СБП (@marswwu)
               </a>
             </div>
           </div>
 
-          <div class="payment-method-item">
-            <h5>🏢 Безналичный расчет для юрлиц (ООО / ИП)</h5>
-            <p>Официальный договор, счет на оплату и закрывающие акты (ЭДО Диадок / СБИС) для бухгалтерии компании.</p>
+          <div class="payment-method-item" style="border-color: #0284C7; background: linear-gradient(180deg, rgba(2, 132, 199, 0.1) 0%, rgba(15, 23, 42, 0.95) 100%);">
+            <h5 style="color: #38BDF8;">🛡️ Заказ аудита базы (30 000 ₽)</h5>
+            <p>Индивидуальный аудит миграций, устранение узких мест в PgBouncer и персональный разбор с автором в Zoom / Google Meet.</p>
             <div style="margin-top: 0.75rem;">
-              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%9D%D1%83%D0%B6%D0%B5%D0%BD%20%D1%81%D1%87%D0%B5%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%8E%D1%80%D0%BB%D0%B8%D1%86%D0%B0%20%D0%BD%D0%B0%20LockGuard%20Pro." target="_blank" class="btn-secondary btn-xs" style="color: #38BDF8; border-color: #38BDF8; text-decoration: none; display: inline-block;">
-                Запросить счет для юрлица
+              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" class="btn-secondary btn-xs" style="color: #38BDF8; border-color: #0284C7; text-decoration: none; display: inline-block;">
+                🚀 Написать автору в Telegram
               </a>
             </div>
           </div>
 
-          <div class="payment-method-item">
-            <h5>🌐 Зарубежные карты / Crypto</h5>
-            <p>Оплата картами Visa/Mastercard иностранных банков (Stripe), а также USDT (TRC-20) для международных команд.</p>
+          <div class="payment-method-item" style="border-color: #F59E0B; background: linear-gradient(180deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.95) 100%);">
+            <h5 style="color: #FBBF24;">🌐 Зарубежные карты / USDT / DonationAlerts</h5>
+            <p>Оплата картами Visa/Mastercard иностранных банков, USDT (TRC-20), а также через платформу DonationAlerts.</p>
             <div style="margin-top: 0.75rem;">
-              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%9D%D1%83%D0%B6%D0%BD%D0%B0%20%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20LockGuard%20Pro%20%D0%B7%D0%B0%D1%80%D1%83%D0%B1%D0%B5%D0%B6%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%B0%D1%80%D1%82%D0%BE%D0%B9%20%D0%B8%D0%BB%D0%B8%20USDT." target="_blank" class="btn-secondary btn-xs" style="color: #F87171; border-color: #EF4444; text-decoration: none; display: inline-block;">
-                Запросить международную ссылку
+              <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%9D%D1%83%D0%B6%D0%BD%D0%B0%20%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20LockGuard%20%D0%B7%D0%B0%D1%80%D1%83%D0%B1%D0%B5%D0%B6%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%B0%D1%80%D1%82%D0%BE%D0%B9%20%D0%B8%D0%BB%D0%B8%20USDT." target="_blank" class="btn-secondary btn-xs" style="color: #FBBF24; border-color: #F59E0B; text-decoration: none; display: inline-block;">
+                🌍 Запросить международную ссылку
               </a>
             </div>
           </div>
