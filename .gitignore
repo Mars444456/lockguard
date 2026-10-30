@@ -7,3 +7,10 @@ npm-debug.log*
 dist/
 coverage/
 .turbo/
+*.zip
+*.tar.gz
+tmp*/
+private/
+tools/
+.idea/
+.vscode/
