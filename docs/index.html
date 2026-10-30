@@ -36,6 +36,9 @@
         <a href="https://www.donationalerts.com/r/marswwu" target="_blank" class="nav-btn" style="border-color: #F59E0B; color: #FBBF24; font-weight: 700;">
           <span>☕ Донат</span>
         </a>
+        <a href="#lock-matrix-explorer" class="nav-btn" style="border-color: #6366F1; color: #A5B4FC; font-weight: 700;">
+          <span>🔒 Матрица локов</span>
+        </a>
         <a href="#pricing" class="nav-btn" style="border-color: #8B5CF6; color: #C084FC; font-weight: 700;">
           <span>💎 Тарифы</span>
         </a>
@@ -79,6 +82,37 @@
             <span>🤖 Телеграм Бот</span>
             <span style="background: #10B981; color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 800;">24/7 ONLINE</span>
           </a>
+        </div>
+
+        <!-- Terminal One-Liner Snippet -->
+        <div class="hero-terminal-container">
+          <div class="hero-terminal">
+            <div class="terminal-bar">
+              <div class="terminal-dots">
+                <span class="dot dot-red"></span>
+                <span class="dot dot-yellow"></span>
+                <span class="dot dot-green"></span>
+              </div>
+              <div class="terminal-title">bash — npx lockguard</div>
+              <button class="terminal-copy-btn" id="btn-copy-terminal" onclick="copyHeroTerminalCommand()" title="Скопировать команду в буфер">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span id="copy-terminal-label">Копировать</span>
+              </button>
+            </div>
+            <div class="terminal-body">
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">npx lockguard check ./migrations --strict</span>
+              </div>
+              <div class="terminal-output">
+                <span class="term-dim">🛡️  LockGuard AST Gatekeeper v1.1.0</span><br>
+                <span class="term-red">✖ [LG-002] CREATE INDEX idx_orders_user without CONCURRENTLY</span><br>
+                <span class="term-yellow">  Lock Level: SHARE (Blocks all INSERT/UPDATE/DELETE)</span><br>
+                <span class="term-cyan">💡 Safe Fix: CREATE INDEX CONCURRENTLY idx_orders_user ON orders(user_id);</span><br>
+                <span class="term-red">🚨 1 Critical Violation found. Deployment halted (Exit 1).</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="preset-bar" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
@@ -306,6 +340,62 @@
         </div>
       </div>
     </div>
+
+    <!-- PostgreSQL Lock Compatibility Matrix Explorer -->
+    <section id="lock-matrix-explorer" class="lock-matrix-section">
+      <div class="matrix-header">
+        <h2>🛡️ Интерактивная матрица совместимости блокировок PostgreSQL</h2>
+        <p>
+          Почему падает продакшен при накатывании миграций? В PostgreSQL блокировки берутся не только на строки, но и на всю таблицу целиком. 
+          Выберите любой уровень блокировки или типовую операцию, чтобы увидеть конфликты в реальном времени и понять, почему ваш DDL может вызвать лавину 504 ошибок.
+        </p>
+      </div>
+
+      <div class="matrix-quick-filters" id="matrix-quick-filters">
+        <button class="matrix-filter-btn active" data-lock="ACCESS EXCLUSIVE">🚨 ACCESS EXCLUSIVE (ALTER / DROP)</button>
+        <button class="matrix-filter-btn" data-lock="SHARE">⛔ SHARE (CREATE INDEX)</button>
+        <button class="matrix-filter-btn" data-lock="SHARE UPDATE EXCLUSIVE">✅ SHARE UPDATE EXCL (CONCURRENTLY)</button>
+        <button class="matrix-filter-btn" data-lock="ROW EXCLUSIVE">⚡ ROW EXCLUSIVE (INSERT / UPDATE / DELETE)</button>
+        <button class="matrix-filter-btn" data-lock="ACCESS SHARE">📖 ACCESS SHARE (SELECT)</button>
+        <button class="matrix-filter-btn" data-lock="EXCLUSIVE">🔒 EXCLUSIVE (REFRESH MATVIEW)</button>
+      </div>
+
+      <div class="matrix-table-wrapper">
+        <table class="matrix-table" id="pg-lock-matrix-table">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding-left:1rem;">Запрашиваемый Lock (Строка) \ Существующий (Столбец)</th>
+              <th data-col="ACCESS SHARE">ACCESS SHARE</th>
+              <th data-col="ROW SHARE">ROW SHARE</th>
+              <th data-col="ROW EXCLUSIVE">ROW EXCL</th>
+              <th data-col="SHARE UPDATE EXCLUSIVE">SHARE UPD EXCL</th>
+              <th data-col="SHARE">SHARE</th>
+              <th data-col="SHARE ROW EXCLUSIVE">SHARE ROW EXCL</th>
+              <th data-col="EXCLUSIVE">EXCLUSIVE</th>
+              <th data-col="ACCESS EXCLUSIVE">ACCESS EXCL</th>
+            </tr>
+          </thead>
+          <tbody id="pg-lock-matrix-body">
+            <!-- Dynamic interactive rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="matrix-explainer-card" id="matrix-explainer">
+        <div class="explainer-title" id="explainer-title">
+          <span>🚨 ACCESS EXCLUSIVE: Фатальная блокировка таблицы (Full Outage Risk)</span>
+        </div>
+        <div class="explainer-desc" id="explainer-desc">
+          Блокирует <b>абсолютно все операции</b>: чтение (<code>SELECT</code>), запись (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), создание индексов и любые другие DDL/DML. Если в этот момент выполняется долгий аналитический запрос, DDL встает в очередь, а все последующие <code>SELECT</code> выстраиваются за ним (Head-of-Line Blocking), исчерпывая пул соединений и приводя к массовым ошибкам <b>HTTP 504 Gateway Timeout</b>.
+        </div>
+        <div class="explainer-tags" id="explainer-tags">
+          <span class="explainer-tag tag-blocked">⛔ Блокирует: SELECT</span>
+          <span class="explainer-tag tag-blocked">⛔ Блокирует: INSERT / UPDATE / DELETE</span>
+          <span class="explainer-tag tag-blocked">⛔ Блокирует: CREATE INDEX</span>
+          <span class="explainer-tag tag-blocked">⛔ Блокирует: VACUUM</span>
+        </div>
+      </div>
+    </section>
 
     <!-- Commercial B2B Callout -->
     <div class="b2b-card">

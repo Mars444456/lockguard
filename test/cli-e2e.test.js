@@ -301,6 +301,21 @@ test('CLI E2E - lockguard init creates .lockguardrc.json in target directory', (
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+test('CLI E2E - lockguard action generates .github/workflows/lockguard.yml in 1 second and exits 0', () => {
+  const tmpDir = createTempDir('lockguard-action-');
+  const res = runCli(['action'], { cwd: tmpDir });
+  assert.equal(res.status, 0);
+  assert.ok(res.stdout.includes('lockguard.yml'));
+
+  const generatedWorkflow = path.join(tmpDir, '.github', 'workflows', 'lockguard.yml');
+  assert.ok(fs.existsSync(generatedWorkflow));
+  const content = fs.readFileSync(generatedWorkflow, 'utf8');
+  assert.ok(content.includes('LockGuard Migration Gatekeeper'));
+  assert.ok(content.includes('lockguard check'));
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
 test('CLI E2E - lockguard --version and --help print info and exit 0', () => {
   const verRes = runCli(['--version']);
   assert.equal(verRes.status, 0);

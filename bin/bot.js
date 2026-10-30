@@ -8,7 +8,7 @@
 const https = require('node:https');
 const { RuleEngine, AutoSplitter, ShadowReplaySimulator, ContextAnalyzer } = require('../src/core');
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || (require.main === module ? null : 'MOCK_TOKEN');
 if (!BOT_TOKEN) {
   console.error('❌ Error: TELEGRAM_BOT_TOKEN is not defined in environment variables.');
   console.error('Please configure TELEGRAM_BOT_TOKEN in your .env file or hosting provider environment.');
@@ -88,6 +88,9 @@ function downloadFile(filePath) {
   return new Promise((resolve, reject) => {
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
     https.get(fileUrl, (res) => {
+      if (res.statusCode && res.statusCode >= 400) {
+        return reject(new Error(`Telegram download failed with status ${res.statusCode}`));
+      }
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => resolve(data));
@@ -451,7 +454,7 @@ async function handleUpdate(update) {
       `💡 <i>Пример для проверки:</i>`,
       `<pre><code>ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT '+7';</code></pre>`,
       ``,
-      `Бот за секунду проверит код по 8 правилам блокировок PostgreSQL и предложит безопасный Zero-Downtime вариант!`
+      `Бот за секунду проверит код по 12 правилам блокировок PostgreSQL и предложит безопасный Zero-Downtime вариант!`
     ].join('\n');
 
     await sendMessage(chatId, help, {
@@ -467,18 +470,25 @@ async function handleUpdate(update) {
 
   // Handle Attached .sql File
   if (msg.document) {
-    const fileName = msg.document.file_name || 'migration.sql';
-    if (!fileName.endsWith('.sql') && !fileName.endsWith('.txt')) {
+    const rawFileName = msg.document.file_name || 'migration.sql';
+    const lowerName = rawFileName.toLowerCase();
+    const mime = (msg.document.mime_type || '').toLowerCase();
+    const isSqlFile = lowerName.endsWith('.sql') || lowerName.endsWith('.txt') || mime.includes('sql') || mime.includes('text');
+
+    if (!isSqlFile) {
       await sendMessage(chatId, '⚠️ Пожалуйста, отправьте файл с расширением <code>.sql</code> или обычный текст миграции.');
       return;
     }
 
     try {
-      await sendMessage(chatId, `⏳ Анализирую файл <code>${fileName}</code> через LockGuard AST Engine...`);
+      await sendMessage(chatId, `⏳ Анализирую файл <code>${rawFileName}</code> через LockGuard AST Engine...`);
       const fileInfo = await tgRequest('getFile', { file_id: msg.document.file_id });
+      if (!fileInfo || !fileInfo.file_path) {
+        throw new Error('Telegram API не вернул file_path. Проверьте размер файла (до 20 МБ).');
+      }
       const sqlContent = await downloadFile(fileInfo.file_path);
 
-      const analysis = engine.analyze(sqlContent, { filename: fileName });
+      const analysis = engine.analyze(sqlContent, { filename: rawFileName });
       const reply = formatAuditMessage(analysis, sqlContent);
       await sendMessage(chatId, reply);
     } catch (err) {
@@ -491,7 +501,7 @@ async function handleUpdate(update) {
   // Handle Raw SQL Text or generic message
   if (msg.text) {
     const text = msg.text.trim();
-    const isSql = /ALTER\s+TABLE|CREATE\s+INDEX|ADD\s+COLUMN|DROP\s+TABLE|CREATE\s+TABLE|SET\s+lock_timeout|DROP\s+COLUMN|ALTER\s+COLUMN/i.test(text);
+    const isSql = /ALTER\s+TABLE|CREATE\s+INDEX|ADD\s+COLUMN|DROP\s+TABLE|CREATE\s+TABLE|SET\s+lock_timeout|DROP\s+COLUMN|ALTER\s+COLUMN|TRUNCATE|REFRESH\s+MATERIALIZED|VACUUM/i.test(text);
 
     if (isSql) {
       try {

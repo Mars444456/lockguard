@@ -19,6 +19,8 @@ const rule07 = readFile('src/core/rules/rule07-vacuum-in-transaction.js');
 const rule08 = readFile('src/core/rules/rule08-missing-lock-timeout.js');
 const rule09 = readFile('src/core/rules/rule09-unsafe-set-not-null.js');
 const rule10 = readFile('src/core/rules/rule10-concurrently-in-transaction.js');
+const rule11 = readFile('src/core/rules/rule11-unindexed-foreign-key.js');
+const rule12 = readFile('src/core/rules/rule12-truncate-and-matview.js');
 const engineSrc = readFile('src/core/rule-engine.js');
 const autoSplitterSrc = readFile('src/core/auto-splitter.js');
 const contextSrc = readFile('src/core/context-analyzer.js');
@@ -51,6 +53,8 @@ const browserBundle = `(function(window) {
   const rule08 = (function() { ${stripRule(rule08)} })();
   const rule09 = (function() { ${stripRule(rule09)} })();
   const rule10 = (function() { ${stripRule(rule10)} })();
+  const rule11 = (function() { ${stripRule(rule11)} })();
+  const rule12 = (function() { ${stripRule(rule12)} })();
 
   // 4. Rule Engine
   ${engineSrc
@@ -80,7 +84,7 @@ const browserBundle = `(function(window) {
     .replace(/module\.exports\s*=\s*CascadeGraph;?/g, '')}
 
   // Default instances
-  const allRules = [rule01, rule02, rule03, rule04, rule05, rule06, rule07, rule08, rule09, rule10];
+  const allRules = [rule01, rule02, rule03, rule04, rule05, rule06, rule07, rule08, rule09, rule10, rule11, rule12];
   const defaultEngine = new RuleEngine(allRules);
 
   window.LockGuard = {
