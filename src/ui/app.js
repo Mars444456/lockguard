@@ -600,7 +600,7 @@ class LockGuardApp {
         btn.disabled = true;
       } else {
         btn.disabled = false;
-        btn.textContent = p === 'team' ? 'Upgrade to Pro Team (15 000 ₽)' : (p === 'business' ? 'Заказать аудит миграций (30 000 ₽)' : 'Downgrade to Free');
+        btn.textContent = p === 'team' ? 'Upgrade to Pro Team (1 500 ₽)' : (p === 'business' ? 'Заказать аудит миграций (30 000 ₽)' : 'Downgrade to Free');
         btn.className = p === 'team' ? 'btn-plan btn-primary' : 'btn-plan btn-secondary';
       }
     });

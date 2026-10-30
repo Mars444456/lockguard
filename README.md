@@ -349,7 +349,7 @@ Visit **`http://localhost:3000`** to:
 - 🧪 Paste raw SQL or load presets to visually inspect AST lock trees.
 - 🚀 View live Pull Request audit logs and simulate webhook checks.
 - 🔑 Manage Team API keys and configure rule thresholds.
-- 💳 Manage subscription tiers (Free, Pro Team 15 000 ₽/mo, On-Demand Audit 30 000 ₽).
+- 💳 Manage subscription tiers (Free, Pro Team 1 500 ₽/mo, On-Demand Audit 30 000 ₽).
 
 ---
 
