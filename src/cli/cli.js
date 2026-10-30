@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const {
   RuleEngine,
   TerminalFormatter,
@@ -15,6 +15,7 @@ const {
   PgParser
 } = require('../core');
 const GitHookManager = require('./git-hook');
+const GitStaged = require('./git-staged');
 
 class LockGuardCLI {
   static run(argv = process.argv.slice(2)) {
@@ -260,7 +261,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
 
     steps:
       - name: Checkout Code
@@ -269,11 +269,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Run LockGuard CI Gatekeeper
-        run: |
-          npx lockguard check --changed origin/main --format=github-pr-comment --output=lockguard-pr-report.md
+        uses: Mars444456/lockguard@main
+        with:
+          migrations_dir: ./migrations
+          format: github-pr-comment
+          output_file: lockguard-pr-report.md
 `;
 
     const sampleConfig = {
@@ -283,7 +286,7 @@ jobs:
       strict: false
     };
 
-    fs.writeFileSync(workflowFile, workflowContent, 'utf8');
+    fs.writeFileSync(workflowFile, workflowContent, { encoding: 'utf8', flag: 'wx' });
     if (!fs.existsSync(configPath)) {
       fs.writeFileSync(configPath, JSON.stringify(sampleConfig, null, 2) + '\n', 'utf8');
       console.log(`✔ Created configuration file at: ${configPath}`);
@@ -308,102 +311,70 @@ jobs:
   }
 
   static getGitChangedFiles(base = 'origin/main') {
+    if (base.startsWith('-')) throw new Error('Invalid git base revision');
     try {
-      const out = execSync(`git diff --name-only --diff-filter=AM ${base}`, {
+      const out = execFileSync('git', ['diff', '--name-only', '-z', '--diff-filter=AM', base, '--'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore']
       });
-      return out.split(/\r?\n/).map(s => s.trim()).filter(s => s.endsWith('.sql') && fs.existsSync(s));
+      return out.split('\0').filter(s => s.endsWith('.sql') && fs.existsSync(s));
     } catch {
-      try {
-        const out = execSync(`git diff --name-only --diff-filter=AM HEAD~1`, {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'ignore']
-        });
-        return out.split(/\r?\n/).map(s => s.trim()).filter(s => s.endsWith('.sql') && fs.existsSync(s));
-      } catch {
-        return [];
-      }
+      throw new Error('Cannot determine changed migrations. Check the git base revision.');
     }
   }
 
   static getGitStagedFiles() {
-    try {
-      const out = execSync('git diff --cached --name-only --diff-filter=AM', {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore']
-      });
-      return out.split(/\r?\n/).map(s => s.trim()).filter(s => s.endsWith('.sql') && fs.existsSync(s));
-    } catch {
-      return [];
-    }
+    return GitStaged.list();
   }
 
   static applyAutoFix(filePath, defaultLockTimeout = '3s') {
-    try {
-      let content = fs.readFileSync(filePath, 'utf8');
-      const ast = PgParser.parse(content);
-      let changed = false;
+    let content = fs.readFileSync(filePath, 'utf8');
+    const ast = PgParser.parse(content);
+    const hasDdl = ast.some(s => ['ALTER_TABLE', 'CREATE_INDEX', 'DROP_TABLE'].includes(s.type));
+    const hasLockTimeout = ast.some(s => s.type === 'SET_VARIABLE' && s.variable === 'lock_timeout');
+    const hasTransaction = ast.some(s => s.pgKind === 'TransactionStmt');
+    let bytes = Buffer.from(content, 'utf8');
+    let changed = false;
 
-      // Fix LG-008: Missing lock_timeout
-      const hasDdl = ast.some(s => s.type === 'ALTER_TABLE' || s.type === 'CREATE_INDEX' || s.type === 'DROP_TABLE');
-      const hasLockTimeout = ast.some(s => s.type === 'SET_VARIABLE' && s.variable === 'lock_timeout');
-      const hasTransaction = ast.some(s => s.type === 'TRANSACTION_START');
-
-      if (hasDdl && !hasLockTimeout) {
-        const timeoutPrefix = `-- Auto-fixed by LockGuard: Prevent queue lockups\nSET lock_timeout = '${defaultLockTimeout}';\nSET statement_timeout = '30s';\n\n`;
-        content = timeoutPrefix + content;
-        if (!hasTransaction) {
-          if (!content.endsWith('\n')) content += '\n';
-          content += `\nRESET lock_timeout;\nRESET statement_timeout;\n`;
-        }
+    // Byte offsets come from PostgreSQL; never rewrite comments, strings or function bodies.
+    if (!hasTransaction) {
+      const pg = require('libpg-query');
+      const edits = ast.filter(s => s.pgKind === 'IndexStmt' && !s.isConcurrent).map(stmt => {
+        const source = bytes.subarray(stmt.sourceStart, stmt.sourceEnd).toString('utf8');
+        const token = pg.scanSync(source).tokens.find(t => t.keywordKind > 0 && t.text.toUpperCase() === 'INDEX');
+        if (!token) throw new Error('Cannot locate CREATE INDEX keyword for auto-fix.');
+        return stmt.sourceStart + token.end;
+      }).sort((a, b) => b - a);
+      for (const offset of edits) {
+        bytes = Buffer.concat([bytes.subarray(0, offset), Buffer.from(' CONCURRENTLY'), bytes.subarray(offset)]);
         changed = true;
       }
-
-      // Fix LG-002: Add CONCURRENTLY if no transaction block (preserving SQL comments)
-      if (!hasTransaction) {
-        let inBlockComment = false;
-        const lines = content.split('\n');
-        const newLines = lines.map(line => {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('/*') && trimmed.endsWith('*/')) return line;
-          if (trimmed.startsWith('/*')) { inBlockComment = true; return line; }
-          if (inBlockComment) {
-            if (trimmed.includes('*/')) inBlockComment = false;
-            return line;
-          }
-          if (trimmed.startsWith('--')) return line;
-
-          const commentIdx = line.indexOf('--');
-          let codePart = commentIdx !== -1 ? line.slice(0, commentIdx) : line;
-          const commentPart = commentIdx !== -1 ? line.slice(commentIdx) : '';
-
-          const nonConcurrentRegex = /\bCREATE\s+(UNIQUE\s+)?INDEX\s+(?!CONCURRENTLY\b)/gi;
-          if (nonConcurrentRegex.test(codePart)) {
-            codePart = codePart.replace(nonConcurrentRegex, (match, unique) => {
-              changed = true;
-              return unique ? 'CREATE UNIQUE INDEX CONCURRENTLY ' : 'CREATE INDEX CONCURRENTLY ';
-            });
-          }
-          return codePart + commentPart;
-        });
-
-        if (changed) {
-          content = newLines.join('\n');
-        }
+    }
+    content = bytes.toString('utf8');
+    if (hasDdl && !hasLockTimeout && !hasTransaction) {
+      if (!/^\d+(?:\.\d+)?(?:us|ms|s|min|h|d)$/i.test(defaultLockTimeout) || parseFloat(defaultLockTimeout) <= 0) {
+        throw new Error('defaultLockTimeout must be a positive duration such as 3s or 500ms.');
       }
-
-      if (changed) {
-        fs.writeFileSync(filePath, content, 'utf8');
-        console.log(`✔ [AUTO-FIX] Applied safe zero-downtime fixes to ${path.relative(process.cwd(), filePath)}`);
-      }
-    } catch (err) {
-      console.warn(`⚠️ Warning: Auto-fix failed on ${filePath}: ${err.message}`);
+      content = `-- Auto-fixed by LockGuard: review before applying\nSET lock_timeout = '${defaultLockTimeout}';\nSET statement_timeout = '30s';\n\n` + content;
+      if (!content.endsWith('\n')) content += '\n';
+      content += '\nRESET lock_timeout;\nRESET statement_timeout;\n';
+      changed = true;
+    }
+    if (changed) {
+      // Validate the complete result before touching the original file.
+      PgParser.parse(content);
+      fs.writeFileSync(filePath, content, 'utf8');
+      console.log(`✔ [AUTO-FIX] Updated ${path.relative(process.cwd(), filePath)}; review the SQL diff.`);
     }
   }
 
   static handleCheckCommand(args, config = {}) {
     let sqlFiles = [];
+
+    if (args.staged && args.fix) {
+      console.error('Cannot auto-fix the Git index. Fix working files, review them and stage them again.');
+      return 2;
+    }
 
     if (args.staged) {
       sqlFiles = this.getGitStagedFiles();
@@ -419,11 +390,15 @@ jobs:
       }
     } else {
       if (args.files.length === 0) {
-        args.files = ['migrations', 'fixtures', '.'];
+        args.files = ['migrations', 'fixtures', '.'].filter(target => fs.existsSync(target));
       }
 
       for (const target of args.files) {
         const fullPath = path.resolve(process.cwd(), target);
+        if (!fs.existsSync(fullPath)) {
+          console.error(`Migration path does not exist: ${target}`);
+          return 2;
+        }
         if (fs.existsSync(fullPath)) {
           const stat = fs.statSync(fullPath);
           if (stat.isDirectory()) {
@@ -469,7 +444,7 @@ jobs:
 
     for (const filePath of sqlFiles) {
       const relativeName = path.relative(process.cwd(), filePath);
-      const sqlContent = fs.readFileSync(filePath, 'utf8');
+      const sqlContent = args.staged ? GitStaged.read(filePath) : fs.readFileSync(filePath, 'utf8');
       let analysis = engine.analyze(sqlContent, {
         filename: relativeName,
         failOnSeverity: args.failOn,

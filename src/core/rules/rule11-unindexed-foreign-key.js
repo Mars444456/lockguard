@@ -10,14 +10,12 @@ module.exports = {
 
   check(astStatements, context = {}) {
     const violations = [];
-    const createdIndexes = new Set(context.createdIndexes || (context.sharedState && context.sharedState.createdIndexes) || []);
+    const indexes = [];
 
     // Gather indexes created in the current migration file
     for (const stmt of astStatements) {
       if (stmt.type === 'CREATE_INDEX' && stmt.table && stmt.columns) {
-        for (const col of stmt.columns) {
-          createdIndexes.add(`${stmt.table.toLowerCase()}:${col.toLowerCase()}`);
-        }
+        if (!stmt.isPartial && stmt.accessMethod === 'btree' && !stmt.columns.includes('(expression)')) indexes.push(stmt);
       }
     }
 
@@ -25,11 +23,12 @@ module.exports = {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_FOREIGN_KEY' && sub.columns && sub.columns.length > 0) {
-            const table = sub.table.toLowerCase();
-            const cols = sub.columns.map(c => c.toLowerCase());
+            const table = sub.table;
+            const cols = sub.columns.map(c => c);
 
             // Check if all FK columns have an index
-            const hasIndex = cols.every(col => createdIndexes.has(`${table}:${col}`));
+            const hasIndex = indexes.some(index => index.table === table &&
+              cols.every((col, i) => index.columns[i] === col));
 
             if (!hasIndex) {
               const colList = sub.columns.join(', ');

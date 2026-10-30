@@ -14,7 +14,7 @@ module.exports = {
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
-        if (createdTables.has(stmt.table.toLowerCase())) {
+        if (createdTables.has(stmt.table)) {
           continue;
         }
 

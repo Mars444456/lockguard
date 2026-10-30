@@ -15,7 +15,7 @@ module.exports = {
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         // Safe context: If table was created in this same migration, it is empty
-        if (createdTables.has(stmt.table.toLowerCase())) {
+        if (createdTables.has(stmt.table)) {
           continue;
         }
 
@@ -31,6 +31,7 @@ module.exports = {
               constraintName: sub.constraintName,
               foreignTable: sub.foreignTable,
               columns: sub.columns,
+              foreignColumns: sub.foreignColumns,
               line: sub.line || stmt.line,
               raw: sub.raw,
               message: `Foreign Key '${sub.constraintName}' on '${sub.table}' referencing '${sub.foreignTable}' lacks 'NOT VALID'. It blocks all reads/writes during table validation!`
@@ -51,7 +52,9 @@ module.exports = {
 
     return [
       `-- Step 1: Add foreign key with NOT VALID (instant lock acquisition, no full table scan)`,
-      `ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${cols}) REFERENCES ${foreignTable}(id) NOT VALID;`,
+      violation.raw
+        ? `${/^ALTER\s+TABLE/i.test(violation.raw) ? violation.raw : `ALTER TABLE ${table} ${violation.raw}`} NOT VALID;`
+        : `ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${cols}) REFERENCES ${foreignTable}${violation.foreignColumns?.length ? `(${violation.foreignColumns.join(', ')})` : ''} NOT VALID;`,
       ``,
       `-- Step 2: Validate existing rows in a separate statement (acquires only SHARE UPDATE EXCLUSIVE - writes proceed!)`,
       `ALTER TABLE ${table} VALIDATE CONSTRAINT ${constraint};`

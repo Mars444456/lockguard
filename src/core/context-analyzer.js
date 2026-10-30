@@ -146,7 +146,7 @@ class ContextAnalyzer {
     }
 
     let riskLevel = 'LOW';
-    if (seconds > 30) riskLevel = 'CRITICAL (OUTAGE GUARANTEED)';
+    if (seconds > 30) riskLevel = 'CRITICAL (ESTIMATED HIGH CONTENTION)';
     else if (seconds > 5) riskLevel = 'HIGH (SEVERE SPIKE)';
     else if (seconds > 1) riskLevel = 'MEDIUM (LATENCY ELEVATED)';
 
@@ -216,10 +216,11 @@ class ContextAnalyzer {
     const dbUrl = options.databaseUrl || process.env.DATABASE_URL;
     if (options.useLiveDb && dbUrl) {
       try {
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         const sql = `SELECT c.relname, c.reltuples::bigint, pg_total_relation_size(c.oid) / (1024*1024) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r';`;
-        const cmd = `psql "${dbUrl}" -t -A -F"," -c "${sql}"`;
-        const output = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+        const output = execFileSync('psql', ['-X', '-w', '-d', dbUrl, '-t', '-A', '-F', ',', '-c', sql], {
+          encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'pipe']
+        });
         const stats = {};
         for (const line of output.trim().split('\n')) {
           if (!line.trim()) continue;

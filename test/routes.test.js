@@ -1,5 +1,8 @@
+require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+process.env.LOCKGUARD_DB_FILE = require('node:path').join(require('node:os').tmpdir(), `lockguard-routes-${process.pid}.json`);
+process.env.LOCKGUARD_ADMIN_TOKEN = 'test-admin-only';
 const registerRoutes = require('../src/server/routes');
 const db = require('../src/server/db-mock');
 
@@ -70,7 +73,7 @@ test('Routes - POST /api/v1/verify-key validates license token', async () => {
   registerRoutes(router);
 
   const route = router.routes.find(r => r.method === 'POST' && r.path === '/api/v1/verify-key');
-  const req = { body: { apiKey: 'lg_live_demo998877665544332211' } };
+  const req = { body: { apiKey: db.createApiKey('test').key } };
   const res = createMockRes();
 
   await route.handler(req, res);
@@ -78,17 +81,17 @@ test('Routes - POST /api/v1/verify-key validates license token', async () => {
   assert.equal(res.data.valid, true);
 });
 
-test('Routes - POST /api/v1/billing/checkout upgrades plan', async () => {
+test('Routes - POST /api/v1/billing/checkout does not activate an unpaid plan', async () => {
   const router = createMockRouter();
   registerRoutes(router);
 
   const route = router.routes.find(r => r.method === 'POST' && r.path === '/api/v1/billing/checkout');
-  const req = { body: { plan: 'business' } };
+  const originalPlan = db.getOrganization().plan;
+  const req = { body: { plan: 'business', email: 'qa@example.com', requestId: require('node:crypto').randomUUID() }, headers: { authorization: 'Bearer test-admin-only' } };
   const res = createMockRes();
 
   await route.handler(req, res);
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.data.plan, 'business');
-  assert.equal(res.data.amount, 99);
-  assert.equal(db.getOrganization().plan, 'business');
+  assert.equal(res.statusCode, 503);
+  assert.equal(db.getOrganization().plan, originalPlan);
+  assert.match(res.data.error, /Robokassa/);
 });

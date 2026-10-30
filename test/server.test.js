@@ -1,8 +1,10 @@
+require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+process.env.LOCKGUARD_DB_FILE = path.join(os.tmpdir(), `lockguard-server-${process.pid}.json`);
 const server = require('../src/server/server');
 
 function makeRequest(target, options, postData) {

@@ -26,10 +26,39 @@ module.exports = {
       return violations;
     }
 
-    // Look for SET lock_timeout in the statements
-    const hasLockTimeout = astStatements.some(s => 
-      s.type === 'SET_VARIABLE' && s.variable === 'lock_timeout' && s.value
-    );
+    // Evaluate the setting at each DDL, respecting order and transaction scope.
+    let sessionTimeout = false;
+    let localTimeout;
+    let transactionStart;
+    let unsafeStatement;
+    const ddlTypes = new Set(['ALTER_TABLE', 'CREATE_INDEX', 'DROP_TABLE', 'CREATE_TABLE', 'DROP_INDEX', 'TRUNCATE_TABLE', 'REFRESH_MATVIEW']);
+    for (const stmt of astStatements) {
+      if (stmt.type === 'TRANSACTION_START') {
+        transactionStart = sessionTimeout;
+      } else if (stmt.type === 'TRANSACTION_COMMIT') {
+        if (/^ROLLBACK\b/i.test(stmt.raw) && transactionStart !== undefined) sessionTimeout = transactionStart;
+        transactionStart = undefined;
+        localTimeout = undefined;
+      } else if (stmt.type === 'SET_VARIABLE' && stmt.variable === 'lock_timeout') {
+        const match = String(stmt.value || '').trim().match(/^(\d+(?:\.\d+)?)\s*(us|ms|s|min|h|d)?$/i);
+        const scale = { us: 0.001, ms: 1, s: 1000, min: 60000, h: 3600000, d: 86400000 };
+        const milliseconds = match ? Number(match[1]) * scale[(match[2] || 'ms').toLowerCase()] : 0;
+        const enabled = milliseconds >= 1 && milliseconds <= 2147483647;
+        if (stmt.isLocal) {
+          if (transactionStart !== undefined) localTimeout = enabled;
+        } else {
+          sessionTimeout = enabled;
+          localTimeout = undefined;
+        }
+      } else if (stmt.type === 'RESET_VARIABLE' && ['lock_timeout', 'all'].includes(stmt.variable)) {
+        sessionTimeout = false;
+        localTimeout = undefined;
+      } else if (ddlTypes.has(stmt.type) && !(localTimeout ?? sessionTimeout)) {
+        unsafeStatement = stmt;
+        break;
+      }
+    }
+    const hasLockTimeout = !unsafeStatement;
 
     if (!hasLockTimeout) {
       violations.push({
@@ -39,9 +68,9 @@ module.exports = {
         severity: Severity.HIGH,
         lockLevel: LockLevel.ACCESS_EXCLUSIVE,
         table: 'global',
-        line: 1,
-        raw: '-- (Header of migration file)',
-        message: 'No `SET lock_timeout` found in migration! If table locks cannot be acquired immediately, this migration will block all production traffic behind it.'
+        line: unsafeStatement.line,
+        raw: unsafeStatement.raw,
+        message: 'No effective positive `SET lock_timeout` before this DDL statement. A missing, disabled, reset or expired timeout can allow lock waits to block production traffic.'
       });
     }
 

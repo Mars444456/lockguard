@@ -565,6 +565,7 @@ async function sendDonateMessage(chatId) {
 let lastUpdateId = 0;
 
 async function startPolling() {
+  await RuleEngine.initialize();
   console.log('✅ LockGuard Telegram Bot is online and listening for migrations...');
 
   while (true) {

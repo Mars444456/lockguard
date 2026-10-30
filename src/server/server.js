@@ -81,6 +81,7 @@ const MIME_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.wasm': 'application/wasm',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
@@ -99,9 +100,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = parsedUrl.pathname;
-
   // Add JSON response helper
   res.json = (data) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -112,31 +110,57 @@ const server = http.createServer(async (req, res) => {
     return res;
   };
 
+  let parsedUrl;
+  let matched;
+  try {
+    parsedUrl = new URL(req.url, 'http://localhost');
+    decodeURIComponent(parsedUrl.pathname);
+    matched = router.match(req.method, parsedUrl.pathname);
+  } catch {
+    return res.status(400).json({ error: 'Malformed request URL' });
+  }
+  const pathname = parsedUrl.pathname;
+
   // Match API routes
-  const matched = router.match(req.method, pathname);
   if (matched) {
     req.params = matched.params;
     req.query = Object.fromEntries(parsedUrl.searchParams.entries());
 
     if (req.method === 'POST' || req.method === 'PUT') {
-      let bodyData = '';
+      const chunks = [];
+      let bodyBytes = 0;
       const MAX_BODY_SIZE = 1024 * 1024; // 1 MB limit
       let sizeExceeded = false;
 
       req.on('data', chunk => {
-        bodyData += chunk;
-        if (bodyData.length > MAX_BODY_SIZE) {
+        if (sizeExceeded) return;
+        bodyBytes += chunk.length;
+        if (bodyBytes > MAX_BODY_SIZE) {
           sizeExceeded = true;
+          chunks.length = 0;
           res.status(413).json({ error: 'Payload Too Large: maximum body size is 1MB' });
-          req.destroy();
+          return;
         }
+        chunks.push(chunk);
       });
       req.on('end', async () => {
         if (sizeExceeded) return;
         try {
-          req.body = bodyData ? JSON.parse(bodyData) : {};
+          const bodyData = Buffer.concat(chunks).toString('utf8');
+          req.rawBody = Buffer.concat(chunks);
+          if (pathname === '/api/v1/billing/robokassa/result' && (req.headers['content-type'] || '').split(';')[0] === 'application/x-www-form-urlencoded') {
+            const form = new URLSearchParams(bodyData);
+            const entries = [...form.entries()];
+            if (entries.length > 20 || new Set(entries.map(([key]) => key)).size !== entries.length) {
+              return res.status(400).json({ error: 'Duplicate or excessive payment parameters' });
+            }
+            req.body = Object.fromEntries(entries);
+          } else req.body = bodyData ? JSON.parse(bodyData) : {};
+          if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+            return res.status(400).json({ error: 'JSON body must be an object' });
+          }
         } catch {
-          req.body = {};
+          return res.status(400).json({ error: 'Malformed JSON body' });
         }
         try {
           await matched.handler(req, res);
@@ -156,6 +180,10 @@ const server = http.createServer(async (req, res) => {
       }
       return;
     }
+  }
+
+  if (pathname.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API route not found' });
   }
 
   // Static File Serving from src/ui/

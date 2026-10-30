@@ -15,7 +15,7 @@ module.exports = {
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         // Safe context: If table was created in this same migration, it is empty
-        if (createdTables.has(stmt.table.toLowerCase())) {
+        if (createdTables.has(stmt.table)) {
           continue;
         }
 

@@ -1,3 +1,4 @@
+require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -69,7 +70,7 @@ test('CLI E2E - File with only WARN returns exit code 0 by default and exit code
 test('CLI E2E - Non-existent path or empty directory outputs message without crashing', () => {
   // Non-existent path
   const resNonExistent = runCli(['check', 'non_existent_migration_dir_xyz_123']);
-  assert.equal(resNonExistent.status, 0);
+  assert.equal(resNonExistent.status, 2);
   assert.ok(!resNonExistent.stderr.includes('ReferenceError'), 'Must not throw ReferenceError');
   assert.ok(!resNonExistent.stderr.includes('TypeError'), 'Must not throw TypeError');
 
@@ -311,7 +312,7 @@ test('CLI E2E - lockguard action generates .github/workflows/lockguard.yml in 1 
   assert.ok(fs.existsSync(generatedWorkflow));
   const content = fs.readFileSync(generatedWorkflow, 'utf8');
   assert.ok(content.includes('LockGuard Migration Gatekeeper'));
-  assert.ok(content.includes('lockguard check'));
+  assert.ok(content.includes('uses: Mars444456/lockguard@main'));
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -327,7 +328,7 @@ test('CLI E2E - lockguard --version and --help print info and exit 0', () => {
   assert.ok(helpRes.stdout.includes('COMMANDS'));
 });
 
-test('CLI E2E - lockguard split --write creates phase files on disk that pass RuleEngine with 0 violations', () => {
+test('CLI E2E - split writes reviewable drafts and preserves warnings for procedural SQL', () => {
   const tmpDir = createTempDir('lockguard-split-write-');
   const catSql = path.resolve(__dirname, '../fixtures/09_catastrophic_combined.sql');
 
@@ -345,18 +346,14 @@ test('CLI E2E - lockguard split --write creates phase files on disk that pass Ru
     const fullPath = path.join(tmpDir, f);
     const sql = fs.readFileSync(fullPath, 'utf8');
     const analysis = engine.analyze(sql, { filename: f });
-    assert.equal(
-      analysis.violations.length,
-      0,
-      `Generated file ${f} must have 0 violations, but had: ${JSON.stringify(analysis.violations.map(v => v.ruleId))}`
-    );
-    assert.equal(analysis.passed, true);
+    assert.ok(sql.includes('DRAFT: manual review required'));
+    if (analysis.analysisComplete === false) assert.equal(analysis.passed, false);
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-test('CLI E2E - Inter-file sharedState context suppresses false positives across migration chain', () => {
+test('CLI E2E - Earlier migration does not prove a table is still empty', () => {
   const tmpDir = createTempDir('lockguard-chain-');
   const m1 = path.join(tmpDir, '001_create_orders.sql');
   const m2 = path.join(tmpDir, '002_add_index.sql');
@@ -371,12 +368,12 @@ test('CLI E2E - Inter-file sharedState context suppresses false positives across
     CREATE INDEX idx_orders_amount ON orders (amount);
   `, 'utf8');
 
-  // Without --isolated, table created in 001 suppresses LG-002 in 002
+  // The first migration may already be deployed and its table populated.
   const res = runCli(['check', tmpDir, '--format=json']);
-  assert.equal(res.status, 0);
+  assert.equal(res.status, 1);
   const parsed = JSON.parse(res.stdout);
-  assert.equal(parsed.summary.passed, true);
-  assert.equal(parsed.summary.totalViolations, 0);
+  assert.equal(parsed.summary.passed, false);
+  assert.ok(parsed.violations.some(v => v.ruleId === 'LG-002'));
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
