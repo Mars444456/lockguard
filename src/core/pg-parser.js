@@ -246,8 +246,8 @@ class PgParser {
 
     // 1. SET lock_timeout / statement_timeout
     if (upper.startsWith('SET ') || upper.startsWith('SET LOCAL ')) {
-      const lockTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?lock_timeout\s*=\s*['"]?([^'";]+)['"]?/i);
-      const statementTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?statement_timeout\s*=\s*['"]?([^'";]+)['"]?/i);
+      const lockTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?lock_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
+      const statementTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?statement_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
       const isLocal = /SET\s+LOCAL\b/i.test(cleanSql);
 
       return {
@@ -297,8 +297,9 @@ class PgParser {
       const nameMatch = cleanSql.match(/INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_."]+)/i);
 
       const table = onMatch ? this.cleanIdentifier(onMatch[1]) : 'unknown_table';
-      const indexName = nameMatch ? this.cleanIdentifier(nameMatch[1]) : 'idx_' + table;
+      const rawIndexName = (nameMatch && nameMatch[1].toUpperCase() !== 'ON') ? this.cleanIdentifier(nameMatch[1]) : null;
       const columns = onMatch ? onMatch[2].split(',').map(s => s.trim()) : [];
+      const indexName = rawIndexName || ('idx_' + table.replace(/[^a-zA-Z0-9_]/g, '_') + (columns.length > 0 ? '_' + columns[0].replace(/[^a-zA-Z0-9_]/g, '') : ''));
 
       return {
         ...baseMeta,
@@ -391,6 +392,36 @@ class PgParser {
       };
     }
 
+    // 13. TRUNCATE [TABLE]
+    if (upper.startsWith('TRUNCATE')) {
+      const tableMatch = cleanSql.match(/TRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?([a-zA-Z0-9_.",\s]+?)(?:\s+RESTART\s+IDENTITY|\s+CONTINUE\s+IDENTITY|\s+CASCADE|\s+RESTRICT|;|$)/i);
+      const tables = tableMatch
+        ? tableMatch[1].split(',').map(t => this.cleanIdentifier(t.trim())).filter(Boolean)
+        : ['unknown_table'];
+
+      return {
+        ...baseMeta,
+        type: 'TRUNCATE_TABLE',
+        table: tables[0] || 'unknown_table',
+        tables
+      };
+    }
+
+    // 14. REFRESH MATERIALIZED VIEW [CONCURRENTLY]
+    if (upper.startsWith('REFRESH MATERIALIZED VIEW')) {
+      const isConcurrent = /REFRESH\s+MATERIALIZED\s+VIEW\s+CONCURRENTLY/i.test(cleanSql);
+      const viewMatch = cleanSql.match(/REFRESH\s+MATERIALIZED\s+VIEW\s+(?:CONCURRENTLY\s+)?([a-zA-Z0-9_."]+)/i);
+      const view = viewMatch ? this.cleanIdentifier(viewMatch[1]) : 'unknown_view';
+
+      return {
+        ...baseMeta,
+        type: 'REFRESH_MATVIEW',
+        view,
+        table: view,
+        isConcurrent
+      };
+    }
+
     // Default unrecognized statement
     return {
       ...baseMeta,
@@ -404,7 +435,8 @@ class PgParser {
    */
   static parseAlterSubcommands(sql, table, line) {
     const subcommands = [];
-    const parts = sql.replace(/^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?[a-zA-Z0-9_."]+\s+/i, '').trim();
+    let parts = sql.replace(/^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?[a-zA-Z0-9_."]+\s+/i, '').trim();
+    parts = parts.replace(/;+\s*$/, '');
 
     // Split top-level subcommands by comma, ignoring commas inside parentheses or quotes
     const clauses = this.splitClauses(parts);
@@ -424,6 +456,7 @@ class PgParser {
           hasDefault: colDetails.hasDefault,
           defaultValue: colDetails.defaultValue,
           isVolatileDefault: colDetails.isVolatileDefault,
+          isTrulyVolatile: colDetails.isTrulyVolatile,
           isPhysicalTableRewrite: colDetails.isPhysicalTableRewrite,
           rewriteReason: colDetails.rewriteReason,
           isNotNull: colDetails.isNotNull,
@@ -613,15 +646,21 @@ class PgParser {
     let current = '';
     let parenDepth = 0;
     let inQuote = false;
+    let inDoubleQuote = false;
 
     for (let i = 0; i < str.length; i++) {
       const char = str[i];
-      if (char === "'") {
+      if (char === "'" && !inDoubleQuote) {
         inQuote = !inQuote;
         current += char;
         continue;
       }
-      if (!inQuote) {
+      if (char === '"' && !inQuote) {
+        inDoubleQuote = !inDoubleQuote;
+        current += char;
+        continue;
+      }
+      if (!inQuote && !inDoubleQuote) {
         if (char === '(') parenDepth++;
         else if (char === ')') parenDepth--;
         else if (char === ',' && parenDepth === 0) {
@@ -658,6 +697,7 @@ class PgParser {
     const hasDefault = /DEFAULT\s+/i.test(clean);
     let defaultValue = null;
     let isVolatileDefault = false;
+    let isTrulyVolatile = false;
     let isPhysicalTableRewrite = false;
     let rewriteReason = 'NONE';
 
@@ -685,7 +725,7 @@ class PgParser {
           /\btransaction_timestamp\s*\(/i
         ];
 
-        const isTrulyVolatile = volatilePatterns.some(p => p.test(defaultValue));
+        isTrulyVolatile = volatilePatterns.some(p => p.test(defaultValue));
         const isStableTimestamp = stablePatterns.some(p => p.test(defaultValue));
 
         // isVolatileDefault flags dynamic expressions (including now() and volatile funcs)
@@ -705,7 +745,7 @@ class PgParser {
       hasDefault,
       defaultValue,
       isVolatileDefault,
-      isTrulyVolatile: typeof isTrulyVolatile !== 'undefined' ? isTrulyVolatile : false,
+      isTrulyVolatile,
       isPhysicalTableRewrite,
       rewriteReason,
       isNotNull
@@ -714,7 +754,11 @@ class PgParser {
 
   static cleanIdentifier(ident) {
     if (!ident) return '';
-    return ident.replace(/^["'`]|["'`]$/g, '').trim();
+    return ident
+      .split('.')
+      .map(part => part.replace(/^["'`]|["'`]$/g, '').trim())
+      .join('.')
+      .trim();
   }
 }
 

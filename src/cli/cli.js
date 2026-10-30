@@ -21,13 +21,13 @@ class LockGuardCLI {
     const config = this.loadConfig();
     const args = this.parseArgs(argv, config);
 
-    if (args.help || args.command === 'help' || !args.command) {
-      this.printHelp();
+    if (args.version) {
+      console.log('LockGuard v1.1.0');
       return 0;
     }
 
-    if (args.version) {
-      console.log('LockGuard v1.1.0');
+    if (args.help || args.command === 'help' || !args.command) {
+      this.printHelp();
       return 0;
     }
 
@@ -98,6 +98,11 @@ class LockGuardCLI {
       output: null,
       orm: 'sql',
       withContext: false,
+      context: false,
+      schemaStats: null,
+      write: false,
+      outDir: null,
+      isolated: false,
       help: false,
       version: false
     };
@@ -131,6 +136,19 @@ class LockGuardCLI {
         args.orm = argv[++i].toLowerCase();
       } else if (arg === '--context' || arg === '--with-context') {
         args.withContext = true;
+        args.context = true;
+      } else if (arg.startsWith('--schema-stats=')) {
+        args.schemaStats = arg.split('=')[1];
+      } else if (arg === '--schema-stats' && argv[i + 1]) {
+        args.schemaStats = argv[++i];
+      } else if (arg === '--write') {
+        args.write = true;
+      } else if (arg.startsWith('--out-dir=')) {
+        args.outDir = arg.split('=')[1];
+      } else if (arg === '--out-dir' && argv[i + 1]) {
+        args.outDir = argv[++i];
+      } else if (arg === '--isolated') {
+        args.isolated = true;
       } else if (arg === '--strict') {
         args.strict = true;
       } else if (arg === '--fix') {
@@ -167,7 +185,7 @@ class LockGuardCLI {
 
 USAGE:
   lockguard check [files-or-directory] [options]
-  lockguard split <file.sql> [--orm=sql|prisma|drizzle]
+  lockguard split <file.sql> [--write] [--out-dir=<dir>] [--orm=sql|prisma|drizzle|django|alembic]
   lockguard install-hook
   lockguard watchdog
   lockguard simulate <file.sql>
@@ -180,22 +198,26 @@ COMMANDS:
   install-hook  Install Git pre-commit hook to catch locks before pushing to GitHub
   watchdog      Post-deploy watchdog: Detect invalid/broken indexes from failed CONCURRENTLY runs
   simulate      Shadow replay: Simulate concurrent query traffic and measure lock latency
-  rules         Display the catalog of Top-10 fatal PostgreSQL lock rules
+  rules         Display the catalog of Top-12 fatal PostgreSQL lock rules
   init          Scaffold GitHub Action workflow and configuration
 
 OPTIONS:
-  --changed [base]      Check only new/modified .sql files against git base (default: origin/main)
-  --staged              Check only staged .sql files (for pre-commit hooks)
-  --fix                 Automatically apply safe fixes (e.g. insert lock_timeout, add CONCURRENTLY)
-  --format=<type>       Output format: 'table' (default), 'json', 'sarif', 'github-pr-comment', 'markdown'
-  --strict              Exit with code 1 on warnings as well as critical/high errors
-  --fail-on=<level>     Exit code 1 on severity: 'CRITICAL', 'HIGH' (default), 'MEDIUM'
-  --context             Enrich analysis with live table row count & estimated lock durations
-  --orm=<type>          Target ORM for Auto-Splitter: 'sql' (default), 'prisma', 'drizzle'
-  --api-key=<key>       LockGuard Team/Business API Key (or set LOCKGUARD_API_KEY env var)
-  --output=<file>       Write report output to specified file path
-  -h, --help            Show this help text
-  -v, --version         Show version
+  --changed [base]        Check only new/modified .sql files against git base (default: origin/main)
+  --staged                Check only staged .sql files (for pre-commit hooks)
+  --fix                   Automatically apply safe fixes (e.g. insert lock_timeout, add CONCURRENTLY)
+  --write                 Write generated split migration phases to disk (used with split)
+  --out-dir=<dir>         Output directory for generated migration files (used with split)
+  --isolated              Check each migration file in isolation without inter-file shared context
+  --schema-stats=<file>   Load real-world table size/row counts from JSON to enrich lock duration
+  --context               Enrich analysis with live table row count & estimated lock durations
+  --format=<type>         Output format: 'table' (default), 'json', 'sarif', 'github-pr-comment', 'markdown'
+  --strict                Exit with code 1 on warnings as well as critical/high errors
+  --fail-on=<level>       Exit code 1 on severity: 'CRITICAL', 'HIGH' (default), 'MEDIUM'
+  --orm=<type>            Target ORM for Auto-Splitter: 'sql' (default), 'prisma', 'drizzle', 'django', 'alembic'
+  --api-key=<key>         LockGuard Team/Business API Key (or set LOCKGUARD_API_KEY env var)
+  --output=<file>         Write report output to specified file path
+  -h, --help              Show this help text
+  -v, --version           Show version
 `);
   }
 
@@ -324,22 +346,48 @@ jobs:
       // Fix LG-008: Missing lock_timeout
       const hasDdl = ast.some(s => s.type === 'ALTER_TABLE' || s.type === 'CREATE_INDEX' || s.type === 'DROP_TABLE');
       const hasLockTimeout = ast.some(s => s.type === 'SET_VARIABLE' && s.variable === 'lock_timeout');
+      const hasTransaction = ast.some(s => s.type === 'TRANSACTION_START');
 
       if (hasDdl && !hasLockTimeout) {
         const timeoutPrefix = `-- Auto-fixed by LockGuard: Prevent queue lockups\nSET lock_timeout = '${defaultLockTimeout}';\nSET statement_timeout = '30s';\n\n`;
         content = timeoutPrefix + content;
+        if (!hasTransaction) {
+          if (!content.endsWith('\n')) content += '\n';
+          content += `\nRESET lock_timeout;\nRESET statement_timeout;\n`;
+        }
         changed = true;
       }
 
-      // Fix LG-002: Add CONCURRENTLY if no transaction block
-      const hasTransaction = ast.some(s => s.type === 'TRANSACTION_START');
+      // Fix LG-002: Add CONCURRENTLY if no transaction block (preserving SQL comments)
       if (!hasTransaction) {
-        const nonConcurrentRegex = /CREATE\s+(UNIQUE\s+)?INDEX\s+(?!CONCURRENTLY\b)/gi;
-        if (nonConcurrentRegex.test(content)) {
-          content = content.replace(nonConcurrentRegex, (match, unique) => {
-            return unique ? 'CREATE UNIQUE INDEX CONCURRENTLY ' : 'CREATE INDEX CONCURRENTLY ';
-          });
-          changed = true;
+        let inBlockComment = false;
+        const lines = content.split('\n');
+        const newLines = lines.map(line => {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('/*') && trimmed.endsWith('*/')) return line;
+          if (trimmed.startsWith('/*')) { inBlockComment = true; return line; }
+          if (inBlockComment) {
+            if (trimmed.includes('*/')) inBlockComment = false;
+            return line;
+          }
+          if (trimmed.startsWith('--')) return line;
+
+          const commentIdx = line.indexOf('--');
+          let codePart = commentIdx !== -1 ? line.slice(0, commentIdx) : line;
+          const commentPart = commentIdx !== -1 ? line.slice(commentIdx) : '';
+
+          const nonConcurrentRegex = /\bCREATE\s+(UNIQUE\s+)?INDEX\s+(?!CONCURRENTLY\b)/gi;
+          if (nonConcurrentRegex.test(codePart)) {
+            codePart = codePart.replace(nonConcurrentRegex, (match, unique) => {
+              changed = true;
+              return unique ? 'CREATE UNIQUE INDEX CONCURRENTLY ' : 'CREATE INDEX CONCURRENTLY ';
+            });
+          }
+          return codePart + commentPart;
+        });
+
+        if (changed) {
+          content = newLines.join('\n');
         }
       }
 
@@ -385,6 +433,8 @@ jobs:
       }
     }
 
+    sqlFiles = Array.from(new Set(sqlFiles)).sort((a, b) => a.localeCompare(b));
+
     if (sqlFiles.length === 0) {
       console.warn(`No .sql migration files found in: ${args.files.join(', ')}`);
       return 0;
@@ -399,6 +449,21 @@ jobs:
 
     const engine = new RuleEngine();
     const results = [];
+    const sharedState = args.isolated ? null : {
+      createdTables: new Set(),
+      createdIndexes: new Set(),
+      validatedChecks: new Set(),
+      candidateChecks: new Map()
+    };
+
+    let schemaStats = {};
+    if (args.schemaStats || (args.context && process.env.DATABASE_URL)) {
+      schemaStats = ContextAnalyzer.fetchSchemaStats({
+        schemaStatsPath: args.schemaStats,
+        useLiveDb: !!args.context,
+        databaseUrl: process.env.DATABASE_URL
+      });
+    }
 
     for (const filePath of sqlFiles) {
       const relativeName = path.relative(process.cwd(), filePath);
@@ -406,11 +471,12 @@ jobs:
       let analysis = engine.analyze(sqlContent, {
         filename: relativeName,
         failOnSeverity: args.failOn,
-        ignoreRules: args.ignoreRules
+        ignoreRules: args.ignoreRules,
+        sharedState
       });
 
-      if (args.withContext) {
-        analysis = ContextAnalyzer.enrich(analysis);
+      if (args.withContext || args.context || args.schemaStats) {
+        analysis = ContextAnalyzer.enrich(analysis, { tables: schemaStats });
       }
 
       results.push(analysis);
@@ -446,16 +512,11 @@ jobs:
     }
 
     // Severity Exit Code Determination:
-    // ERROR (Critical / High) -> exit code 1
-    // WARN (Medium / Warnings) -> exit code 0 unless --strict or failOnWarning is set
-    const hasCriticalOrHigh = results.some(r => r.criticalCount > 0 || r.highCount > 0);
-    const hasWarning = results.some(r => r.mediumCount > 0 || r.status === 'WARNING');
-
-    if (hasCriticalOrHigh) {
+    if (results.some(r => !r.passed)) {
       return 1;
     }
 
-    if (hasWarning && (args.strict || args.failOnWarning)) {
+    if (results.some(r => r.violationsCount > 0) && (args.strict || args.failOnWarning)) {
       return 1;
     }
 
@@ -491,6 +552,14 @@ jobs:
       console.log(`ℹ️  ${phase.description}`);
       console.log(`------------------------------------------------------------------------`);
       console.log(phase.sql + '\n');
+    }
+
+    if (args.write) {
+      const writtenFiles = AutoSplitter.writePhasesToDisk(plan, targetFile, args.outDir);
+      console.log(`\n💾 Written ${writtenFiles.length} split phase file(s) to disk:`);
+      for (const f of writtenFiles) {
+        console.log(`  ✔ Phase ${f.phase}: ${path.relative(process.cwd(), f.path)}`);
+      }
     }
 
     return 0;

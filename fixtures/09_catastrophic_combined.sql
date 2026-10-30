@@ -8,7 +8,7 @@ BEGIN;
 CREATE INDEX idx_transactions_created_at ON transactions (created_at);
 
 -- 2. Heavy ADD COLUMN with volatile DEFAULT
-ALTER TABLE accounts ADD COLUMN updated_at TIMESTAMP DEFAULT now() NOT NULL;
+ALTER TABLE accounts ADD COLUMN token UUID DEFAULT gen_random_uuid() NOT NULL;
 
 -- 3. Unvalidated Foreign Key
 ALTER TABLE transactions 

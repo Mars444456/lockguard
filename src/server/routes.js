@@ -35,7 +35,7 @@ function registerRoutes(router) {
       });
 
       if (withContext) {
-        result = ContextAnalyzer.enrich(result);
+        result = ContextAnalyzer.enrich(result, { demoMode: true });
       }
 
       // Optionally record into audit run history

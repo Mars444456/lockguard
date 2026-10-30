@@ -8,11 +8,16 @@ module.exports = {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Adding a UNIQUE constraint directly creates an underlying unique index under an ACCESS EXCLUSIVE lock. Writes and reads are blocked during index creation.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const createdTables = context.createdTables || new Set();
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_UNIQUE_CONSTRAINT' && !sub.isUsingIndex) {
             violations.push({

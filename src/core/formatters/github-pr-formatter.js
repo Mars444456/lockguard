@@ -20,7 +20,8 @@ class GitHubPrFormatter {
       if (!r.passed) anyFailed = true;
     }
 
-    // Header & Status Badge
+    // Marker for Sticky PR Comment tracking
+    md.push('<!-- lockguard-report -->');
     md.push('## 🛡️ LockGuard: PostgreSQL Migration Safety Gatekeeper');
     md.push('');
 
@@ -90,6 +91,10 @@ class GitHubPrFormatter {
             md.push('```sql');
             md.push(v.safeFix);
             md.push('```');
+            if (v.ruleId === 'LG-002' || v.ruleId === 'LG-008') {
+              md.push('');
+              md.push(`> 💡 **Auto-Fix Available:** You can apply this fix automatically with: \`npx lockguard check ${r.filename} --fix\``);
+            }
             md.push('</details>');
             md.push('');
           }

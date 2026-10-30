@@ -18,6 +18,9 @@ ALTER TABLE transactions
   REFERENCES accounts(id) 
   NOT VALID;
 
+-- 4b. Supporting index for Foreign Key (prevents table lock escalation on parent updates/deletes)
+CREATE INDEX CONCURRENTLY idx_transactions_account_id ON transactions (account_id);
+
 -- 5. Validate Foreign Key separately (takes only weak SHARE UPDATE EXCLUSIVE - writes proceed!)
 ALTER TABLE transactions VALIDATE CONSTRAINT fk_tx_account;
 

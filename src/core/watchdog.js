@@ -4,6 +4,8 @@
  * caused by interrupted or failed CREATE INDEX CONCURRENTLY migrations.
  */
 
+const { execSync } = require('child_process');
+
 class PostDeployWatchdog {
   /**
    * Generates watchdog diagnostic queries and evaluations.
@@ -27,8 +29,6 @@ class PostDeployWatchdog {
    */
   static evaluate(queryRows = []) {
     const invalidIndexes = [];
-
-    // If no rows passed, check for simulated test case
     const rows = Array.isArray(queryRows) ? queryRows : [];
 
     for (const row of rows) {
@@ -42,12 +42,12 @@ class PostDeployWatchdog {
           tableName,
           size,
           hazard: 'INVALID_INDEX_DEGRADATION',
-          impact: `Индекс '${indexName}' на таблице '${tableName}' остался в статусе INVALID после сбоя CONCURRENTLY! Он не ускоряет чтение, но замедляет каждую операцию INSERT/UPDATE и расходует диск (${size}).`,
+          impact: `Index '${indexName}' on table '${tableName}' remains in INVALID status after failed CONCURRENTLY! It does not speed up reads, but slows down every INSERT/UPDATE and consumes disk space (${size}).`,
           safeFix: [
-            `-- Вариант 1: Безопасное перестроение без блокировки чтения и записи`,
+            `-- Option 1: Rebuild index safely without blocking reads or writes`,
             `REINDEX INDEX CONCURRENTLY ${indexName};`,
             ``,
-            `-- Вариант 2: Безопасное удаление битого индекса`,
+            `-- Option 2: Safely drop invalid index`,
             `DROP INDEX CONCURRENTLY IF EXISTS ${indexName};`
           ].join('\n')
         });
@@ -59,6 +59,59 @@ class PostDeployWatchdog {
       totalInvalidCount: invalidIndexes.length,
       invalidIndexes,
       checkedAt: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Inspects production index health and formats a user-friendly report for CLI.
+   * If process.env.DATABASE_URL is set and queryRows is empty/not provided,
+   * queries live database via psql.
+   * @param {Array<object>} queryRows Optional database query rows
+   */
+  static inspectProduction(queryRows = []) {
+    let rows = queryRows;
+
+    if ((!rows || rows.length === 0) && process.env.DATABASE_URL) {
+      try {
+        const sql = this.getDiagnosticQuery().replace(/\r?\n/g, ' ');
+        const raw = execSync(`psql "${process.env.DATABASE_URL}" -t -A -F"," -c "${sql}"`, {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore']
+        });
+        rows = raw
+          .split(/\r?\n/)
+          .filter(line => line.trim().length > 0)
+          .map(line => {
+            const [index_name, table_name, is_valid, index_size] = line.split(',');
+            return {
+              index_name: index_name ? index_name.trim() : '',
+              table_name: table_name ? table_name.trim() : '',
+              is_valid: is_valid ? (is_valid.trim() === 't' || is_valid.trim() === 'true') : false,
+              index_size: index_size ? index_size.trim() : '0 bytes'
+            };
+          });
+      } catch {
+        rows = [];
+      }
+    }
+
+    const evalResult = this.evaluate(rows || []);
+    const hasBrokenIndexes = !evalResult.healthy;
+
+    let message = '';
+    if (hasBrokenIndexes) {
+      message = `❌ Detected ${evalResult.totalInvalidCount} INVALID/BROKEN index(es) on production!\n` +
+        evalResult.invalidIndexes.map(idx => 
+          `  • [BROKEN] ${idx.indexName} on ${idx.tableName} (${idx.size})\n    ${idx.impact}\n    Safe Fix:\n${idx.safeFix}`
+        ).join('\n\n');
+    } else {
+      message = '✔ Production index health: 100% healthy. No broken or invalid indexes found.';
+    }
+
+    return {
+      ...evalResult,
+      hasBrokenIndexes,
+      message
     };
   }
 }

@@ -69,7 +69,7 @@ class CascadeGraph {
             fkName: edge.fkName,
             columns: edge.columns,
             severity: 'HIGH',
-            warning: `Внимание: изменение таблицы '${targetTable}' заблокирует дочернюю таблицу '${edge.fromTable}', так как внешний ключ '${edge.fkName}' (${edge.fromTable}.${edge.columns.join(', ')}) не проиндексирован!`,
+            warning: `Warning: Altering parent table '${targetTable}' will cause lock escalation on child table '${edge.fromTable}' because foreign key '${edge.fkName}' (${edge.fromTable}.${edge.columns.join(', ')}) is not indexed!`,
             safeFix: `CREATE INDEX CONCURRENTLY idx_${edge.fromTable}_${edge.columns.join('_')} ON ${edge.fromTable} (${edge.columns.join(', ')});`
           });
         }
