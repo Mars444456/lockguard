@@ -1,3 +1,4 @@
+require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { RuleEngine, LockLevel, Severity } = require('../src/core');
@@ -257,7 +258,7 @@ test('Matrix LG-008 - Positive: DDL migration missing SET lock_timeout', () => {
   assert.equal(v.ruleId, 'LG-008');
   assert.equal(v.lockLevel, LockLevel.ACCESS_EXCLUSIVE);
   assert.equal(v.severity, Severity.HIGH);
-  assert.equal(v.line, 1);
+  assert.equal(v.line, 2);
   assert.ok(v.safeFix && v.safeFix.length > 0, 'Safe SQL Recipe must be non-empty');
   assert.ok(v.safeFix.includes("SET lock_timeout = '3s';"));
 });
@@ -272,8 +273,10 @@ test('Matrix LG-008 - Negative: SET lock_timeout or SET LOCAL lock_timeout satis
   assert.equal(vGlobal.length, 0, 'SET lock_timeout must satisfy LG-008');
 
   const sqlLocal = `
+    BEGIN;
     SET LOCAL lock_timeout = '2s';
     ALTER TABLE accounts ADD COLUMN balance_cents bigint;
+    COMMIT;
   `;
   const resLocal = engine.analyze(sqlLocal);
   const vLocal = resLocal.violations.filter(v => v.ruleId === 'LG-008');

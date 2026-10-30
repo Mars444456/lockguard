@@ -15,7 +15,7 @@ module.exports = {
     for (const stmt of astStatements) {
       if (stmt.type === 'CREATE_INDEX' && !stmt.isConcurrent) {
         // Safe context: If table was created in this same migration, it is empty
-        if (createdTables.has(stmt.table.toLowerCase())) {
+        if (createdTables.has(stmt.table)) {
           continue;
         }
 
@@ -46,7 +46,9 @@ module.exports = {
     return [
       `-- Safe alternative: Build index concurrently without blocking writes`,
       `-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block`,
-      `CREATE INDEX CONCURRENTLY ${indexName} ON ${table} (${cols});`
+      violation.raw
+        ? violation.raw.replace(/^(CREATE\s+(?:UNIQUE\s+)?INDEX)\s+/i, '$1 CONCURRENTLY ').replace(/;\s*$/, '') + ';'
+        : `CREATE INDEX CONCURRENTLY ${indexName} ON ${table} (${cols});`
     ].join('\n');
   }
 };

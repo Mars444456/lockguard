@@ -2,6 +2,27 @@
  * LockGuard Web Dashboard Application Client
  */
 
+let adminToken = '';
+function setAdminToken() {
+  const value = window.prompt('Administrator token (leave empty to sign out):');
+  if (value === null) return;
+  adminToken = value.trim();
+  app.fetchOrganization();
+  app.fetchKeys();
+  app.fetchRuns();
+}
+
+async function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers);
+  if (adminToken) headers.set('Authorization', `Bearer ${adminToken}`);
+  const response = await fetch(url, { ...options, headers });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || `Request failed: ${response.status}`);
+  }
+  return response;
+}
+
 const PRESETS = {
   catastrophic: `-- Catastrophic Real-World E-Commerce PR Migration
 -- Warning: Missing SET lock_timeout!
@@ -134,6 +155,11 @@ class LockGuardApp {
     await this.fetchRules();
     await this.fetchRuns();
     await this.fetchKeys();
+    const paymentReturn = new URLSearchParams(window.location.search).get('payment');
+    if (paymentReturn) {
+      this.switchTab('billing');
+      this.showToast(paymentReturn === 'cancelled' ? 'Оплата прервана. Заказ не активирован.' : 'Возврат с оплаты. Статус заказа проверяется по уведомлению Robokassa.');
+    }
   }
 
   bindEvents() {
@@ -214,7 +240,7 @@ class LockGuardApp {
     btn.textContent = 'Analyzing AST...';
 
     try {
-      const res = await fetch('/api/v1/analyze', {
+      const res = await apiFetch('/api/v1/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,7 +276,7 @@ class LockGuardApp {
     btn.textContent = 'Splitting...';
 
     try {
-      const res = await fetch('/api/v1/split', {
+      const res = await apiFetch('/api/v1/split', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql, orm: 'sql' })
@@ -276,9 +302,9 @@ class LockGuardApp {
           item.style.borderLeftColor = 'var(--accent-cyan)';
           item.innerHTML = `
             <div class="violation-header">
-              <span class="violation-title">📦 Phase ${p.phaseNumber}: ${p.title}</span>
+              <span class="violation-title">📦 Phase ${p.phaseNumber}: ${this.escapeHtml(p.title)}</span>
             </div>
-            <div class="violation-desc" style="color: var(--text-muted);">${p.description}</div>
+            <div class="violation-desc" style="color: var(--text-muted);">${this.escapeHtml(p.description)}</div>
             <div class="fix-box">
               <div class="fix-header">
                 <span>SQL Release Script</span>
@@ -315,7 +341,7 @@ class LockGuardApp {
     const verdictBadge = document.getElementById('verdict-badge');
     if (result.passed) {
       verdictBadge.className = 'verdict-pill passed';
-      verdictBadge.textContent = '✔ Zero Downtime Safe';
+      verdictBadge.textContent = '✔ No rule violations detected';
     } else {
       verdictBadge.className = 'verdict-pill blocked';
       verdictBadge.textContent = '🛑 Blocked (Dangerous Locks)';
@@ -336,7 +362,7 @@ class LockGuardApp {
     if (result.violations.length === 0) {
       violationsList.innerHTML = `
         <div style="padding: 1.5rem; text-align: center; color: var(--accent-emerald); background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
-          ✔ <b>No dangerous locks detected!</b> This migration can be safely applied under zero-downtime traffic.
+          ✔ <b>No dangerous locks detected!</b> Review schema, transaction boundaries and workload before deployment.
         </div>
       `;
     } else {
@@ -349,14 +375,14 @@ class LockGuardApp {
             <span class="violation-tag ${v.severity.toLowerCase()}">${v.severity}</span>
           </div>
           <div class="violation-meta">
-            Rule: <b>${v.ruleId}</b> | Table: <b>${v.table}</b> | Lock: <b>${v.lockLevel}</b> | Line: <b>L${v.line}</b>
+            Rule: <b>${v.ruleId}</b> | Table: <b>${this.escapeHtml(v.table)}</b> | Lock: <b>${v.lockLevel}</b> | Line: <b>L${v.line}</b>
           </div>
           ${v.estimatedDowntimeFormatted ? `
             <div style="font-size:0.75rem; color:var(--accent-red); margin-bottom:0.4rem; font-weight:700;">
               ⏱️ Расчетное время лока: ~${v.estimatedDowntimeFormatted} (${v.downtimeRiskLevel})
             </div>
           ` : ''}
-          <div class="violation-desc">${v.contextualMessage || v.message}</div>
+          <div class="violation-desc">${this.escapeHtml(v.contextualMessage || v.message)}</div>
           ${v.safeFix ? `
             <div class="fix-box">
               <div class="fix-header">
@@ -387,14 +413,15 @@ class LockGuardApp {
 
   async fetchOrganization() {
     try {
-      const res = await fetch('/api/v1/organization');
+      const res = await apiFetch('/api/v1/organization');
       const data = await res.json();
       if (data.organization) {
         this.organization = data.organization;
         document.getElementById('org-name').textContent = this.organization.name;
         const planPill = document.getElementById('org-plan-badge');
         planPill.className = `plan-pill ${this.organization.plan}`;
-        planPill.textContent = `${this.organization.plan.toUpperCase()} (${this.organization.plan === 'team' ? '$39/mo' : (this.organization.plan === 'business' ? '$99/mo' : '$0')})`;
+        planPill.textContent = this.organization.plan === 'team'
+          ? `PRO${this.organization.accessUntil ? ' до ' + new Date(this.organization.accessUntil).toLocaleDateString('ru-RU') : ''}` : this.organization.plan.toUpperCase();
         this.updatePlanCards(this.organization.plan);
       }
     } catch (err) {
@@ -404,7 +431,7 @@ class LockGuardApp {
 
   async fetchRules() {
     try {
-      const res = await fetch('/api/v1/rules');
+      const res = await apiFetch('/api/v1/rules');
       const data = await res.json();
       const grid = document.getElementById('rules-grid');
       grid.innerHTML = '';
@@ -435,7 +462,7 @@ class LockGuardApp {
 
   async fetchRuns() {
     try {
-      const res = await fetch('/api/v1/runs');
+      const res = await apiFetch('/api/v1/runs');
       const data = await res.json();
       const tbody = document.getElementById('runs-tbody');
       tbody.innerHTML = '';
@@ -450,16 +477,16 @@ class LockGuardApp {
             </span>
           </td>
           <td>
-            <b>${run.repo}</b><br>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">PR #${run.prNumber} by @${run.author || 'dev'}</span>
+            <b>${this.escapeHtml(run.repo)}</b><br>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">PR #${this.escapeHtml(run.prNumber)} by @${this.escapeHtml(run.author || 'dev')}</span>
           </td>
           <td>
-            <code>${run.branch}</code><br>
-            <span style="font-size: 0.72rem; color: var(--text-dim);">${run.commit}</span>
+            <code>${this.escapeHtml(run.branch)}</code><br>
+            <span style="font-size: 0.72rem; color: var(--text-dim);">${this.escapeHtml(run.commit)}</span>
           </td>
           <td>
             <span style="font-family: var(--font-mono); font-size: 0.8rem; color: ${run.highestLockLevel === 'ACCESS EXCLUSIVE' ? 'var(--accent-red)' : 'var(--text-main)'}">
-              ${run.highestLockLevel}
+              ${this.escapeHtml(run.highestLockLevel)}
             </span>
           </td>
           <td>
@@ -482,7 +509,7 @@ class LockGuardApp {
 
   async fetchKeys() {
     try {
-      const res = await fetch('/api/v1/keys');
+      const res = await apiFetch('/api/v1/keys');
       const data = await res.json();
       const tbody = document.getElementById('keys-tbody');
       tbody.innerHTML = '';
@@ -490,10 +517,10 @@ class LockGuardApp {
       data.keys.forEach(k => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><b>${k.name}</b></td>
+          <td><b>${this.escapeHtml(k.name)}</b></td>
           <td>
             <code>${k.key.substring(0, 10)}••••••••••••••••</code>
-            <button class="btn-secondary btn-xs" style="margin-left: 0.5rem;" onclick="app.copyKey('${k.key}')">Copy</button>
+            <small>Secret shown only when created</small>
           </td>
           <td style="font-size: 0.75rem; color: var(--text-muted);">${new Date(k.createdAt).toLocaleDateString()}</td>
           <td style="font-size: 0.75rem; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : 'Never'}</td>
@@ -516,7 +543,7 @@ class LockGuardApp {
   async simulatePrWebhook() {
     try {
       const prNumber = Math.floor(Math.random() * 800) + 100;
-      const res = await fetch('/api/v1/github/webhook', {
+      const res = await apiFetch('/api/v1/github/webhook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -538,13 +565,14 @@ class LockGuardApp {
     if (!name) return;
 
     try {
-      const res = await fetch('/api/v1/keys', {
+      const res = await apiFetch('/api/v1/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name })
       });
       const data = await res.json();
       this.showToast(`Key "${name}" created!`);
+      window.prompt('Copy this API key now. It will not be shown again:', data.key.key);
       await this.fetchKeys();
     } catch (err) {
       this.showToast('Error creating key: ' + err.message);
@@ -554,7 +582,7 @@ class LockGuardApp {
   async revokeKey(id) {
     if (!confirm('Are you sure you want to revoke this API key? CI/CD pipelines using it will fail.')) return;
     try {
-      await fetch(`/api/v1/keys/${id}`, { method: 'DELETE' });
+      await apiFetch(`/api/v1/keys/${id}`, { method: 'DELETE' });
       this.showToast('API Key revoked.');
       await this.fetchKeys();
     } catch (err) {
@@ -573,19 +601,48 @@ class LockGuardApp {
   }
 
   async selectPlan(plan) {
+    if (plan === 'free') { this.showToast('Бесплатный анализ доступен без оплаты.'); return; }
+    if (this.paymentRequestInFlight) return;
+    const email = window.prompt('Email покупателя для заказа и чека:');
+    if (email === null) return;
+    this.paymentRequestInFlight = true;
     try {
-      const res = await fetch('/api/v1/billing/checkout', {
+      const res = await apiFetch('/api/v1/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan })
+        body: JSON.stringify({ plan, email: email.trim(), requestId: crypto.randomUUID() })
       });
 
       const data = await res.json();
-      this.showToast(data.message || `Switched plan to ${plan}!`);
-      await this.fetchOrganization();
+      document.getElementById('billing-payment-link').value = data.url;
+      document.getElementById('billing-payment-section').hidden = false;
+      this.showToast(data.testMode ? 'Создан тестовый заказ. Рабочий доступ не изменится.' : 'Заказ создан. Оплатите на странице Robokassa, затем обновите статус.');
+      const form = document.createElement('form');
+      form.method = 'POST'; form.action = data.paymentForm.action; form.target = '_blank';
+      for (const [name, value] of Object.entries(data.paymentForm.fields)) {
+        const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; form.appendChild(input);
+      }
+      document.body.appendChild(form); form.submit(); form.remove();
+      await this.fetchPaymentOrders();
     } catch (err) {
       this.showToast('Billing error: ' + err.message);
-    }
+    } finally { this.paymentRequestInFlight = false; }
+  }
+
+  async fetchPaymentOrders() {
+    try {
+      const res = await apiFetch('/api/v1/billing/orders');
+      const { orders } = await res.json();
+      const list = document.getElementById('billing-orders');
+      list.replaceChildren();
+      const labels = { pending: 'Ожидает оплаты', paid: 'Оплачен', test_paid: 'Тестовая оплата — рабочий доступ не изменён' };
+      for (const order of [...orders].reverse().slice(0, 20)) {
+        const row = document.createElement('p');
+        row.textContent = `№${order.id}: ${order.title} — ${order.amount} ₽ — ${labels[order.status] || order.status}${order.fulfillmentStatus === 'awaiting_audit' ? '. Аудит ожидает выполнения.' : ''}`;
+        list.appendChild(row);
+      }
+      await this.fetchOrganization();
+    } catch (error) { this.showToast(error.message); }
   }
 
   updatePlanCards(currentPlan) {
@@ -594,13 +651,15 @@ class LockGuardApp {
       const card = document.getElementById(`card-plan-${p}`);
       if (!card) return;
       const btn = card.querySelector('.btn-plan');
-      if (p === currentPlan) {
+      if (p === 'free') {
+        btn.textContent = 'Бесплатный анализ'; btn.disabled = true;
+      } else if (p === currentPlan && p !== 'team') {
         btn.textContent = 'Current Plan (Active)';
         btn.className = 'btn-plan btn-secondary';
         btn.disabled = true;
       } else {
         btn.disabled = false;
-        btn.textContent = p === 'team' ? 'Upgrade to Pro Team (1 500 ₽)' : (p === 'business' ? 'Заказать аудит миграций (30 000 ₽)' : 'Downgrade to Free');
+        btn.textContent = p === 'team' ? (currentPlan === 'team' ? 'Продлить на 30 дней — 1 500 ₽' : 'Оплатить 30 дней — 1 500 ₽') : 'Оплатить аудит — 30 000 ₽';
         btn.className = p === 'team' ? 'btn-plan btn-primary' : 'btn-plan btn-secondary';
       }
     });
@@ -616,10 +675,12 @@ class LockGuardApp {
   }
 
   escapeHtml(str) {
-    return str
+    return String(str ?? '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 }
 

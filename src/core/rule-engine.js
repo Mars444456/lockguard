@@ -16,6 +16,7 @@ const rule11 = require('./rules/rule11-unindexed-foreign-key');
 const rule12 = require('./rules/rule12-truncate-and-matview');
 
 class RuleEngine {
+  static initialize() { return PgParser.initialize(); }
   constructor(customRules = null) {
     this.rules = customRules || [
       rule01,
@@ -56,6 +57,9 @@ class RuleEngine {
     const filename = options.filename || 'migration.sql';
     const enabledRuleIds = options.enabledRuleIds || null;
     const failOnSeverity = options.failOnSeverity || Severity.HIGH;
+    if (![Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM].includes(failOnSeverity)) {
+      throw new Error(`Invalid severity threshold: ${failOnSeverity}`);
+    }
     const configIgnoreRules = (options.ignoreRules || []).map(r => r.toUpperCase());
 
     // 1. Parse AST
@@ -63,23 +67,24 @@ class RuleEngine {
 
     // 2. Build Context (Created tables in this migration, transaction state, shared state)
     const sharedState = options.sharedState || null;
-    const createdTables = new Set(sharedState ? Array.from(sharedState.createdTables || []) : []);
+    // A previous migration may already have been deployed and populated.
+    const createdTables = new Set();
     const createdIndexes = new Set(sharedState ? Array.from(sharedState.createdIndexes || []) : []);
     const validatedChecks = new Set(sharedState ? Array.from(sharedState.validatedChecks || []) : []);
     let hasTransactionBlock = false;
 
+    const seenTables = new Set();
     for (const stmt of astStatements) {
-      if (stmt.type === 'CREATE_TABLE' && stmt.table) {
-        createdTables.add(stmt.table.toLowerCase());
-        if (sharedState && sharedState.createdTables) {
-          sharedState.createdTables.add(stmt.table.toLowerCase());
-        }
+      if (stmt.type === 'CREATE_TABLE' && stmt.table && !stmt.ifNotExists) {
+        if (!seenTables.has(stmt.table)) createdTables.add(stmt.table);
       }
+      if (stmt.table) seenTables.add(stmt.table);
+      if (/^(INSERT|UPDATE|DELETE|MERGE|COPY)\b/i.test(stmt.raw)) createdTables.clear();
       if (stmt.type === 'CREATE_INDEX' && stmt.table && stmt.columns) {
         for (const col of stmt.columns) {
-          createdIndexes.add(`${stmt.table.toLowerCase()}:${col.toLowerCase()}`);
+          createdIndexes.add(`${stmt.table}:${col}`);
           if (sharedState && sharedState.createdIndexes) {
-            sharedState.createdIndexes.add(`${stmt.table.toLowerCase()}:${col.toLowerCase()}`);
+            sharedState.createdIndexes.add(`${stmt.table}:${col}`);
           }
         }
       }
@@ -104,7 +109,21 @@ class RuleEngine {
     };
 
     // 3. Run Rules
-    const rawViolations = [];
+    const unsupported = astStatements.filter(stmt =>
+      ['DO_BLOCK', 'CREATE_ROUTINE', 'REINDEX'].includes(stmt.type) ||
+      (stmt.type === 'STATEMENT' && !/^(SELECT|INSERT|UPDATE|DELETE|MERGE|COPY|VALUES|SHOW)\b/i.test(stmt.raw)) ||
+      (stmt.type === 'ALTER_TABLE' && !stmt.subcommands?.length) ||
+      stmt.subcommands?.some(sub => sub.subtype === 'UNSUPPORTED') ||
+      stmt.requiresManualAnalysis ||
+      stmt.table === 'unknown_table'
+    );
+    const rawViolations = unsupported.map(stmt => ({
+      ruleId: 'LG-000', ruleCode: 'INCOMPLETE_ANALYSIS', ruleName: 'SQL requires manual analysis',
+      severity: Severity.CRITICAL, lockLevel: LockLevel.ACCESS_EXCLUSIVE,
+      table: stmt.table || 'global', line: stmt.line, raw: stmt.raw,
+      message: `Unsupported SQL construct (${stmt.type}). Lock safety cannot be established.`,
+      safeFix: null
+    }));
     const activeRules = enabledRuleIds 
       ? this.rules.filter(r => enabledRuleIds.includes(r.id))
       : this.rules;
@@ -141,7 +160,7 @@ class RuleEngine {
           });
         }
       } catch (err) {
-        console.error(`Error running rule ${rule.id}:`, err);
+        throw new Error(`Analysis incomplete: rule ${rule.id} failed`, { cause: err });
       }
     }
 
@@ -218,7 +237,7 @@ class RuleEngine {
       s.type === 'REFRESH_MATVIEW' ||
       s.type === 'VACUUM'
     );
-    const isDmlOnly = !hasDdl && astStatements.length > 0;
+    const isDmlOnly = !hasDdl && !unsupported.length && astStatements.some(s => s.type === 'STATEMENT');
 
     const cascadeWarnings = [];
     for (const table of affectedTables) {
@@ -233,6 +252,8 @@ class RuleEngine {
       file: filename,
       status,
       passed,
+      analysisComplete: unsupported.length === 0,
+      originalSql: sqlText,
       isDmlOnly,
       dmlDescription: isDmlOnly ? 'Operation is not a schema DDL migration (SELECT / DML read/write). No DDL locks detected, estimated downtime: 0.0s.' : null,
       violationsCount: violations.length,

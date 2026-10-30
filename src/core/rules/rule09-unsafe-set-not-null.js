@@ -1,4 +1,5 @@
 const { LockLevel, Severity } = require('../types');
+const { generatedName } = require('../sql-identifiers');
 
 module.exports = {
   id: 'LG-009',
@@ -19,14 +20,15 @@ module.exports = {
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
+          if (sub.subtype === 'SET_NOT_NULL') sub.hasValidatedNotNullCheck = validatedChecks.has(`${sub.table}:${sub.column}`);
           if (sub.subtype === 'ADD_CHECK_CONSTRAINT' && sub.validatedColumn) {
-            candidateChecks.set(`${sub.table.toLowerCase()}:${sub.constraintName.toLowerCase()}`, {
-              table: sub.table.toLowerCase(),
-              column: sub.validatedColumn.toLowerCase()
+            candidateChecks.set(`${sub.table}:${sub.constraintName}`, {
+              table: sub.table,
+              column: sub.validatedColumn
             });
           }
           if (sub.subtype === 'VALIDATE_CONSTRAINT') {
-            const key = `${sub.table.toLowerCase()}:${sub.constraintName.toLowerCase()}`;
+            const key = `${sub.table}:${sub.constraintName}`;
             if (candidateChecks.has(key)) {
               const info = candidateChecks.get(key);
               validatedChecks.add(`${info.table}:${info.column}`);
@@ -35,6 +37,12 @@ module.exports = {
               }
             }
           }
+          if (sub.subtype === 'DROP_CONSTRAINT') {
+            const key = `${sub.table}:${sub.constraintName}`;
+            const info = candidateChecks.get(key);
+            if (info) validatedChecks.delete(`${info.table}:${info.column}`);
+            candidateChecks.delete(key);
+          }
         }
       }
     }
@@ -42,15 +50,15 @@ module.exports = {
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         // Skip tables created in the same migration file
-        if (createdTables.has(stmt.table.toLowerCase())) {
+        if (createdTables.has(stmt.table)) {
           continue;
         }
 
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'SET_NOT_NULL') {
-            const checkKey = `${sub.table.toLowerCase()}:${sub.column.toLowerCase()}`;
+            const checkKey = `${sub.table}:${sub.column}`;
             // If already validated via check constraint in this file, it's safe in PG 12+
-            if (validatedChecks.has(checkKey)) {
+            if (sub.hasValidatedNotNullCheck) {
               continue;
             }
 
@@ -77,7 +85,7 @@ module.exports = {
   generateSafeFix(violation) {
     const table = violation.table || 'your_table';
     const column = violation.column || 'column_name';
-    const constraintName = `${table}_${column}_not_null`;
+    const constraintName = generatedName(table, column, 'not_null');
 
     return [
       `-- Safe 4-step recipe for PostgreSQL 12+ (zero-downtime SET NOT NULL):`,

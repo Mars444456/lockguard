@@ -1,3 +1,4 @@
+require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { PgParser, RuleEngine } = require('../src/core');
@@ -154,7 +155,7 @@ test('PgParser Stress - schemas and quoted table names ("public"."Orders", app.u
 
   // 1: ALTER TABLE "public"."Orders"
   assert.equal(ast[1].type, 'ALTER_TABLE');
-  assert.equal(ast[1].table, 'public.Orders');
+  assert.equal(ast[1].table, 'public."Orders"');
   assert.equal(ast[1].subcommands[0].column, 'order_notes');
 
   // 2: CREATE INDEX ON app.users

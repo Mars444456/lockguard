@@ -36,6 +36,8 @@ module.exports = {
               lockLevel: this.lockLevel,
               table: sub.table,
               column: sub.column,
+              dataType: sub.dataType,
+              isNotNull: sub.isNotNull,
               defaultValue: sub.defaultValue,
               isPhysicalTableRewrite: isVolatileRewrite || isLegacyPostgres,
               rewriteReason: isLegacyPostgres 
@@ -64,7 +66,7 @@ module.exports = {
 
     return [
       `-- Step 1: Add column without default (instant metadata update, no full table rewrite)`,
-      `ALTER TABLE ${table} ADD COLUMN ${column} TEXT;`,
+      `ALTER TABLE ${table} ADD COLUMN ${column} ${violation.dataType || 'TEXT'};`,
       ``,
       `-- Step 2: Set default for future rows`,
       `ALTER TABLE ${table} ALTER COLUMN ${column} SET DEFAULT ${defVal};`,

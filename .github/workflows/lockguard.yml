@@ -2,85 +2,53 @@ name: LockGuard CI & Migration Gatekeeper
 
 on:
   pull_request:
-    paths:
-      - 'migrations/**'
-      - 'fixtures/**'
-      - '**/*.sql'
-      - 'src/**'
-      - 'test/**'
-      - 'bin/**'
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
+
+permissions:
+  contents: read
 
 jobs:
   test-and-audit:
-    name: Run Unit Tests & Migration Gatekeeper
+    name: Tests, browser build and migration audit
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Run Automated Test Suite
-        run: npm test
-
-      - name: Verify Gatekeeper Passes on Safe Migration (Exit Code 0)
+          node-version: 24
+          cache: npm
+      - name: Install pinned dependencies and run tests
         run: |
-          node bin/lockguard.js check fixtures/10_safe_migration.sql --format=github-pr-comment --output=lockguard-pr-report.md
-
-      - name: Verify Gatekeeper Blocks Catastrophic Migrations (Exit Code 1)
+          npm ci --ignore-scripts
+          npm test
+      - name: Verify browser engine matches sources
         run: |
-          if node bin/lockguard.js check fixtures/09_catastrophic_combined.sql; then
-            echo "::error::LockGuard failed to block dangerous migration! Expected exit code 1, but got exit code 0."
+          npm run build:browser
+          git diff --exit-code -- docs/lockguard-engine.js docs/libpg-query.wasm
+      - name: Verify safe migration exits with 0
+        run: node bin/lockguard.js check fixtures/10_safe_migration.sql
+      - name: Verify dangerous migration exits with exactly 1
+        run: |
+          status=0
+          node bin/lockguard.js check fixtures/09_catastrophic_combined.sql || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "::error::Expected exit 1, got $status (0 = missed risk, 2 = audit error)."
             exit 1
-          else
-            echo "✔ LockGuard successfully detected fatal table locks and blocked the migration with exit code 1."
           fi
-
-      - name: Post Sticky PR Comment
+      - name: Audit SQL migrations changed in this pull request
+        if: github.event_name == 'pull_request'
+        env:
+          LOCKGUARD_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-pr-migrations.js
+      - name: Upload actual PR migration report
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/upload-artifact@v4
         with:
-          script: |
-            const fs = require('fs');
-            if (fs.existsSync('lockguard-pr-report.md')) {
-              let body = fs.readFileSync('lockguard-pr-report.md', 'utf8');
-              if (!body.includes('<!-- lockguard-report -->')) {
-                body = '<!-- lockguard-report -->\n' + body;
-              }
-              const { data: comments } = await github.rest.issues.listComments({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo
-              });
-              const botComment = comments.find(comment => 
-                comment.body && comment.body.includes('<!-- lockguard-report -->')
-              );
-              if (botComment) {
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: botComment.id,
-                  body: body
-                });
-              } else {
-                await github.rest.issues.createComment({
-                  issue_number: context.issue.number,
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  body: body
-                });
-              }
-            }
+          name: lockguard-pr-report
+          path: lockguard-pr-report.md
+          if-no-files-found: ignore

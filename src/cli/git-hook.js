@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const GitStaged = require('./git-staged');
 const RuleEngine = require('../core/rule-engine');
 const TerminalFormatter = require('../core/formatters/terminal-formatter');
 
@@ -20,6 +20,9 @@ class GitHookManager {
     }
 
     const preCommitPath = path.join(hooksDir, 'pre-commit');
+    if (fs.existsSync(preCommitPath)) {
+      throw new Error('A pre-commit hook already exists. Add LockGuard to it manually to preserve existing checks.');
+    }
 
     const hookScript = `#!/bin/sh
 # LockGuard Shift-Left Pre-commit Gatekeeper
@@ -62,11 +65,7 @@ exit 0
   static runHook() {
     try {
       // Get staged .sql files
-      const stagedOutput = execSync('git diff --cached --name-only --diff-filter=ACM', { encoding: 'utf8' });
-      const stagedSqlFiles = stagedOutput
-        .split('\n')
-        .map(f => f.trim())
-        .filter(f => f.endsWith('.sql') && fs.existsSync(f));
+      const stagedSqlFiles = GitStaged.list();
 
       if (stagedSqlFiles.length === 0) {
         return 0; // No SQL migrations staged
@@ -78,7 +77,7 @@ exit 0
       const results = [];
 
       for (const file of stagedSqlFiles) {
-        const sql = fs.readFileSync(file, 'utf8');
+        const sql = GitStaged.read(file);
         const res = engine.analyze(sql, { filename: file, failOnSeverity: 'HIGH' });
         results.push(res);
       }
@@ -88,8 +87,8 @@ exit 0
 
       return anyFailed ? 1 : 0;
     } catch (err) {
-      console.warn('LockGuard pre-commit check warning:', err.message);
-      return 0; // Avoid blocking commit if git diff fails
+      console.error('LockGuard pre-commit audit failed:', err.message);
+      return 2;
     }
   }
 }

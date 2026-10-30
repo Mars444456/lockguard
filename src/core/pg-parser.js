@@ -6,6 +6,7 @@
  */
 
 class PgParser {
+  static initialize() { return require('./native-parser').initialize(); }
   /**
    * Parses full SQL content into structured AST statements.
    * @param {string} sqlText 
@@ -16,17 +17,7 @@ class PgParser {
       return [];
     }
 
-    const rawStatements = this.splitStatements(sqlText);
-    const astStatements = [];
-
-    for (const raw of rawStatements) {
-      const parsed = this.parseStatement(raw.sql, raw.line, raw.rawFull, raw.comments, raw.ignoreDirectives);
-      if (parsed) {
-        astStatements.push(parsed);
-      }
-    }
-
-    return astStatements;
+    return require('./native-parser').parse(sqlText, this);
   }
 
   /**
@@ -73,6 +64,7 @@ class PgParser {
     let inDoubleQuote = false;
     let inLineComment = false;
     let inBlockComment = false;
+    let blockDepth = 0;
     let inDollarQuote = false;
     let dollarTag = '';
 
@@ -114,6 +106,7 @@ class PgParser {
           currentRaw += char;
           if (char === '\n') {
             inLineComment = false;
+            current += '\n';
             pendingComments.push(currentComment.trim());
             currentComment = '';
           } else {
@@ -127,18 +120,29 @@ class PgParser {
       if (!inSingleQuote && !inDoubleQuote && !inLineComment) {
         if (!inBlockComment && char === '/' && nextChar === '*') {
           inBlockComment = true;
+          blockDepth = 1;
+          current += ' ';
           currentComment = '/*';
           currentRaw += char;
           continue;
         }
         if (inBlockComment) {
           currentRaw += char;
+          if (char === '/' && nextChar === '*') {
+            blockDepth++;
+            currentRaw += '*';
+            i++;
+            continue;
+          }
           if (char === '*' && nextChar === '/') {
-            inBlockComment = false;
+            blockDepth--;
+            inBlockComment = blockDepth > 0;
             currentRaw += '/';
             currentComment += '*/';
-            pendingComments.push(currentComment.trim());
-            currentComment = '';
+            if (!inBlockComment) {
+              pendingComments.push(currentComment.trim());
+              currentComment = '';
+            }
             i++; // skip next char '/'
           } else {
             currentComment += char;
@@ -211,6 +215,9 @@ class PgParser {
       currentRaw += char;
     }
 
+    if (inSingleQuote || inDoubleQuote || inDollarQuote || inBlockComment) {
+      throw new Error('Incomplete SQL: unterminated quote or block comment');
+    }
     if (current.trim().length > 0) {
       const stmtComments = [...pendingComments];
       const directives = this.extractIgnoreDirectives(stmtComments);
@@ -246,8 +253,8 @@ class PgParser {
 
     // 1. SET lock_timeout / statement_timeout
     if (upper.startsWith('SET ') || upper.startsWith('SET LOCAL ')) {
-      const lockTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?lock_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
-      const statementTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?statement_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
+      const lockTimeoutMatch = cleanSql.match(/SET\s+(?:(?:LOCAL|SESSION)\s+)?lock_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
+      const statementTimeoutMatch = cleanSql.match(/SET\s+(?:(?:LOCAL|SESSION)\s+)?statement_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
       const isLocal = /SET\s+LOCAL\b/i.test(cleanSql);
 
       return {
@@ -284,6 +291,7 @@ class PgParser {
       return {
         ...baseMeta,
         type: 'CREATE_TABLE',
+        ifNotExists: /\bIF\s+NOT\s+EXISTS\b/i.test(cleanSql),
         table
       };
     }
@@ -559,6 +567,10 @@ class PgParser {
       }
 
       // ALTER [COLUMN] ... TYPE
+      if (/^ALTER\s+(?:COLUMN\s+)?[a-zA-Z0-9_"]+\s+(?:SET\s+DEFAULT\s+.+|DROP\s+DEFAULT)$/i.test(cleanClause)) {
+        subcommands.push({ subtype: 'ALTER_COLUMN_DEFAULT', table, raw: cleanClause, line });
+        continue;
+      }
       if (upperClause.startsWith('ALTER ') && (upperClause.includes(' TYPE ') || upperClause.includes(' SET DATA TYPE '))) {
         const colMatch = cleanClause.match(/ALTER\s+(?:COLUMN\s+)?([a-zA-Z0-9_"]+)\s+(?:SET\s+DATA\s+)?TYPE\s+([a-zA-Z0-9_]+(?:\([^)]*\))?)/i);
         if (colMatch) {
@@ -633,6 +645,7 @@ class PgParser {
         }
         continue;
       }
+      subcommands.push({ subtype: 'UNSUPPORTED', table, raw: cleanClause, line });
     }
 
     return subcommands;

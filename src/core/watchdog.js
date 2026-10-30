@@ -4,7 +4,7 @@
  * caused by interrupted or failed CREATE INDEX CONCURRENTLY migrations.
  */
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 class PostDeployWatchdog {
   /**
@@ -74,8 +74,9 @@ class PostDeployWatchdog {
     if ((!rows || rows.length === 0) && process.env.DATABASE_URL) {
       try {
         const sql = this.getDiagnosticQuery().replace(/\r?\n/g, ' ');
-        const raw = execSync(`psql "${process.env.DATABASE_URL}" -t -A -F"," -c "${sql}"`, {
+        const raw = execFileSync('psql', ['-X', '-w', '-d', process.env.DATABASE_URL, '-t', '-A', '-F', ',', '-c', sql], {
           encoding: 'utf8',
+          timeout: 15000,
           stdio: ['ignore', 'pipe', 'ignore']
         });
         rows = raw
@@ -91,7 +92,7 @@ class PostDeployWatchdog {
             };
           });
       } catch {
-        rows = [];
+        throw new Error('Unable to inspect database index health: psql query failed.');
       }
     }
 

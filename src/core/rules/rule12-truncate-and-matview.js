@@ -17,7 +17,7 @@ module.exports = {
       if (stmt.type === 'TRUNCATE_TABLE') {
         const tables = stmt.tables || [stmt.table];
         for (const tbl of tables) {
-          if (createdTables.has(tbl.toLowerCase())) {
+          if (createdTables.has(tbl)) {
             continue;
           }
 

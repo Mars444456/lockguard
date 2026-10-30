@@ -1,3 +1,4 @@
+require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { formatAuditMessage, generateLicenseKey } = require('../bin/bot.js');

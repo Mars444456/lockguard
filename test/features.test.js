@@ -1,3 +1,4 @@
+require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -153,7 +154,7 @@ test('AutoSplitter - handles LG-002, LG-003, LG-004, LG-005, LG-006 anti-pattern
 
   const p1Sql = plan.phases.find(p => p.phaseNumber === 1).sql;
   assert.ok(p1Sql.includes('CREATE INDEX CONCURRENTLY idx_posts_author'), 'LG-002 handled in Phase 1');
-  assert.ok(p1Sql.includes('ADD CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES authors(id) NOT VALID'), 'LG-003 NOT VALID in Phase 1');
+  assert.ok(p1Sql.includes('ADD CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES authors NOT VALID'), 'LG-003 uses parent primary key without assuming its column name');
   assert.ok(p1Sql.includes('points_new BIGINT'), 'LG-004 shadow column in Phase 1');
   assert.ok(p1Sql.includes('CREATE UNIQUE INDEX CONCURRENTLY uq_users_username_idx'), 'LG-005 concurrent unique index in Phase 1');
 

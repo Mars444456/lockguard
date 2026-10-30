@@ -4,6 +4,7 @@
  * Supports targets: Raw SQL, Prisma, Drizzle, Alembic, and Django.
  */
 
+const { generatedName } = require('./sql-identifiers');
 class AutoSplitter {
   /**
    * Generates a multi-step release plan for a migration AST / violations.
@@ -13,10 +14,15 @@ class AutoSplitter {
   static generatePlan(analysis, targetOrm = 'sql') {
     const phases = [];
     const violations = analysis.violations || [];
+    if (analysis.analysisComplete === false) {
+      throw new Error('Cannot generate migration phases from incomplete SQL analysis.');
+    }
 
     if (violations.length === 0) {
       return {
         isSafe: true,
+        requiresReview: true,
+        originalSql: analysis.originalSql,
         message: 'Migration is already zero-downtime safe. No splitting needed.',
         phases: []
       };
@@ -38,20 +44,25 @@ class AutoSplitter {
         // 1. ADD COLUMN with volatile DEFAULT
         case 'LG-001': {
           const col = v.column || 'new_column';
+          const check = generatedName('chk', table, col, 'not_null');
           const def = v.defaultValue || 'now()';
           phase1Statements.push(`-- Phase 1 (Deploy 1): Add column as nullable without default`);
-          phase1Statements.push(`ALTER TABLE ${table} ADD COLUMN ${col} TIMESTAMP;`);
+          phase1Statements.push(`ALTER TABLE ${table} ADD COLUMN ${col} ${v.dataType || 'TEXT'};`);
           phase1Statements.push(`ALTER TABLE ${table} ALTER COLUMN ${col} SET DEFAULT ${def};`);
 
           phase2Operations.push(`-- Phase 2 (Async Background Worker): Backfill historical rows in small batches`);
           phase2Operations.push(`-- Execute in chunks of 5000 rows to prevent table lock saturation:`);
-          phase2Operations.push(`UPDATE ${table} SET ${col} = ${def} WHERE ${col} IS NULL;`);
+          phase2Operations.push(`-- Template only: implement a bounded batch using the table primary key before executing.`);
+          phase2Operations.push(`-- UPDATE ${table} SET ${col} = ${def} WHERE ${col} IS NULL;`);
 
-          phase3Statements.push(`-- Phase 3 (Deploy 2): Enforce NOT NULL after backfill is complete`);
-          phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT chk_${table}_${col}_not_null CHECK (${col} IS NOT NULL) NOT VALID;`);
-          
-          phase4Statements.push(`-- Phase 4 (Deploy 3): Validate constraint without blocking writes`);
-          phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT chk_${table}_${col}_not_null;`);
+          if (v.isNotNull) {
+            phase3Statements.push(`-- Phase 3 (Deploy 2): Enforce NOT NULL after backfill is complete`);
+            phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${check} CHECK (${col} IS NOT NULL) NOT VALID;`);
+            phase4Statements.push(`-- Phase 4 (Deploy 3): Validate constraint without blocking writes`);
+            phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${check};`);
+            phase4Statements.push(`ALTER TABLE ${table} ALTER COLUMN ${col} SET NOT NULL;`);
+            phase4Statements.push(`ALTER TABLE ${table} DROP CONSTRAINT ${check};`);
+          }
           break;
         }
 
@@ -60,7 +71,9 @@ class AutoSplitter {
           const idxName = v.indexName || `idx_${table}_col`;
           const cols = (v.columns && v.columns.length > 0) ? v.columns.join(', ') : 'column_name';
           phase1Statements.push(`-- Phase 1: Build index concurrently (must run outside multi-statement transaction)`);
-          phase1Statements.push(`CREATE INDEX CONCURRENTLY ${idxName} ON ${table} (${cols});`);
+          phase1Statements.push(v.raw
+            ? v.raw.replace(/^(CREATE\s+(?:UNIQUE\s+)?INDEX)\s+/i, '$1 CONCURRENTLY ').replace(/;\s*$/, '') + ';'
+            : `CREATE INDEX CONCURRENTLY ${idxName} ON ${table} (${cols});`);
           break;
         }
 
@@ -75,7 +88,9 @@ class AutoSplitter {
           phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent cascade locks`);
           phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
           phase1Statements.push(`-- Phase 1 (Deploy 1): Attach FK with NOT VALID (instant catalog lock)`);
-          phase1Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${colList}) REFERENCES ${foreignTable}(id) NOT VALID;`);
+          phase1Statements.push(v.raw
+            ? `${/^ALTER\s+TABLE/i.test(v.raw) ? v.raw : `ALTER TABLE ${table} ${v.raw}`} NOT VALID;`
+            : `ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${colList}) REFERENCES ${foreignTable}${v.foreignColumns?.length ? `(${v.foreignColumns.join(', ')})` : ''} NOT VALID;`);
 
           phase4Statements.push(`-- Phase 4 (Deploy 2): Validate existing rows (weak lock SHARE UPDATE EXCLUSIVE)`);
           phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${constraint};`);
@@ -141,10 +156,13 @@ class AutoSplitter {
         // 9. Unsafe SET NOT NULL
         case 'LG-009': {
           const col = v.column || 'column_name';
+          const check = generatedName('chk', table, col, 'not_null');
           phase3Statements.push(`-- Phase 3: Add NOT NULL via NOT VALID check constraint`);
-          phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT chk_${table}_${col}_not_null CHECK (${col} IS NOT NULL) NOT VALID;`);
+          phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${check} CHECK (${col} IS NOT NULL) NOT VALID;`);
           phase4Statements.push(`-- Phase 4: Validate check constraint without blocking writes`);
-          phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT chk_${table}_${col}_not_null;`);
+          phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${check};`);
+          phase4Statements.push(`ALTER TABLE ${table} ALTER COLUMN ${col} SET NOT NULL;`);
+          phase4Statements.push(`ALTER TABLE ${table} DROP CONSTRAINT ${check};`);
           break;
         }
 
@@ -182,7 +200,8 @@ class AutoSplitter {
         "",
         ...statements,
         "",
-        "RESET lock_timeout;"
+        "RESET lock_timeout;",
+        "RESET statement_timeout;"
       ].join('\n');
     };
 
@@ -236,6 +255,9 @@ class AutoSplitter {
 
     return {
       isSafe: false,
+      requiresReview: true,
+      originalSql: analysis.originalSql,
+      warning: 'Draft plan. Compare with originalSql: unflagged operations are not copied into phases. Verify types, constraints, backfill and transaction boundaries before execution.',
       targetOrm,
       totalPhases: phases.length,
       phases,
@@ -293,7 +315,8 @@ class AutoSplitter {
         content = p.sql;
       }
 
-      fs.writeFileSync(filePath, content + '\n', 'utf8');
+      content = (targetOrm === 'django' || targetOrm === 'alembic' ? '# DRAFT: manual review required\n' : '-- DRAFT: manual review required; compare against original migration\n') + content;
+      fs.writeFileSync(filePath, content + '\n', { encoding: 'utf8', flag: 'wx' });
       writtenFiles.push({
         phase: p.phaseNumber,
         path: filePath,

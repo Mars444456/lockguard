@@ -14,9 +14,9 @@
   <div style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.12)); border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 0.55rem 1rem; text-align: center; font-size: 0.88rem; color: #F3F4F6;">
     🛡️ <b>LockGuard v1.1.0:</b> Zero-Downtime PostgreSQL Gatekeeper • 12 правил предотвращения аварий 
     <span style="margin: 0 8px; color: var(--text-dim);">|</span>
-    <a href="#tab-billing" onclick="app.switchTab('billing')" style="color: #A5B4FC; font-weight: 700; text-decoration: none;">💎 Командная подписка: 1 500 ₽/мес (30 дней бесплатно)</a>
+    <a href="#tab-billing" onclick="app.switchTab('billing')" style="color: #A5B4FC; font-weight: 700; text-decoration: none;">💎 Pro: 1 500 ₽ за 30 дней, без автосписаний</a>
     <span style="margin: 0 8px; color: var(--text-dim);">|</span>
-    <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="color: #38BDF8; font-weight: 700; text-decoration: none;">💬 Аудит миграций под ключ: 30 000 ₽</a>
+    <a href="#tab-billing" onclick="app.switchTab('billing'); return false;" style="color: #38BDF8; font-weight: 700; text-decoration: none;">💬 Аудит миграций под ключ: 30 000 ₽</a>
   </div>
 
   <!-- Top Navigation Bar -->
@@ -39,10 +39,11 @@
       </nav>
 
       <div class="nav-actions">
+        <button class="btn-secondary" onclick="setAdminToken()">Admin sign in / out</button>
         <div class="org-badge">
           <span class="org-dot"></span>
           <span id="org-name">Acme SaaS Engineering</span>
-          <span id="org-plan-badge" class="plan-pill team">Pro Team (1 500 ₽/mo)</span>
+          <span id="org-plan-badge" class="plan-pill team">Войдите для проверки тарифа</span>
         </div>
       </div>
     </div>
@@ -56,10 +57,10 @@
           <h1 class="page-title">Interactive Migration AST Playground</h1>
           <p class="page-desc">Paste raw PostgreSQL DDL or load a preset to detect dangerous table locks (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>) before production outage.</p>
           <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0.85rem; flex-wrap: wrap;">
-            <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%82%D0%B8%D0%BC%20%D0%BE%D1%84%D0%BE%D1%80%D0%BC%D0%B8%D1%82%D1%8C%20%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D1%83%20LockGuard%20Pro%20Team%20(1%20500%20%D1%80%D1%83%D0%B1%2F%D0%BC%D0%B5%D1%81)." target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); color: #FFF; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
-              <span>💎 Оформить подписку Pro (1 500 ₽)</span>
+            <a href="#tab-billing" onclick="app.switchTab('billing'); return false;" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); color: #FFF; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
+              <span>💎 Оплатить Pro на 30 дней (1 500 ₽)</span>
             </a>
-            <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: rgba(56, 189, 248, 0.15); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
+            <a href="#tab-billing" onclick="app.switchTab('billing'); return false;" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; background: rgba(56, 189, 248, 0.15); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 800; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
               <span>💬 Аудит миграций (30 000 ₽)</span>
             </a>
             <a href="https://t.me/lockguard_audit_bot" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.8rem; background: rgba(59, 130, 246, 0.15); border: 1px solid #3B82F6; color: #60A5FA; font-weight: 700; font-size: 0.82rem; border-radius: 6px; text-decoration: none;">
@@ -111,7 +112,7 @@
             <option value="missing_timeout">⏱️ Missing SET lock_timeout (LG-008)</option>
             <option value="unindexed_fk">🔗 Unindexed Foreign Key child lock (LG-011)</option>
             <option value="truncate_matview">⚡ TRUNCATE TABLE & Unconcurrent MatView (LG-012)</option>
-            <option value="safe_migration">✅ 100% Safe Zero-Downtime Migration</option>
+            <option value="safe_migration">✅ Example without detected violations</option>
           </select>
         </div>
       </div>
@@ -156,7 +157,7 @@
             <div class="empty-state" id="empty-state">
               <div class="empty-icon">🛡️</div>
               <h3>Click "Analyze Migration"</h3>
-              <p>LockGuard will parse your SQL statements into an AST, calculate exact PostgreSQL lock levels, and generate zero-downtime SQL replacements.</p>
+              <p>LockGuard parses PostgreSQL SQL, checks known lock risks and prepares draft recommendations for review.</p>
             </div>
 
             <!-- Analysis details container -->
@@ -344,12 +345,12 @@
     <section id="tab-billing" class="tab-pane">
       <div class="section-header text-center">
         <div>
-          <h1 class="page-title">LockGuard Subscription Plans</h1>
-          <p class="page-desc">Protect your PostgreSQL databases from catastrophic locking outages and customer downtime.</p>
+          <h1 class="page-title">Оплата LockGuard через Robokassa</h1>
+          <p class="page-desc">Платёж в рублях на защищённой странице Robokassa. Pro — на 30 дней, аудит — разовая услуга. Автосписаний нет.</p>
         </div>
       </div>
 
-      <div class="pricing-grid">
+      <p style="margin-bottom:1rem">До оплаты ознакомьтесь с <a href="offer.html" target="_blank">офертой и правилами возврата</a> и <a href="contacts.html" target="_blank">реквизитами исполнителя</a>.</p><div class="pricing-grid">
         <!-- Free Card -->
         <div class="pricing-card" id="card-plan-free">
           <div class="pricing-badge">DEVELOPER</div>
@@ -360,7 +361,7 @@
             <li>✔ Local CLI linting tool (<code>lockguard check</code>)</li>
             <li>✔ Top-12 fatal anti-pattern rules (LG-001 — LG-012)</li>
             <li>✔ Unlimited local runs</li>
-            <li>✖ Automated CI PR Gatekeeper</li>
+            <li>✔ Open-source CLI and GitHub Action</li>
             <li>✖ Slack & Telegram incident alerts</li>
             <li>✖ Live replica schema stats integration</li>
           </ul>
@@ -371,42 +372,49 @@
         <div class="pricing-card featured" id="card-plan-team" style="border: 2px solid #6366F1; box-shadow: 0 0 35px rgba(99, 102, 241, 0.25);">
           <div class="pricing-badge popular" style="background: linear-gradient(135deg, #6366F1, #EC4899);">RECOMMENDED FOR TEAMS</div>
           <h3 class="plan-name">Pro Team Gatekeeper</h3>
-          <div class="plan-price">1 500 ₽ <span class="per-month">/ month</span></div>
-          <p class="plan-desc">Automated CI/CD gatekeeper blocking dangerous PRs before production merge.</p>
+          <div class="plan-price">1 500 ₽ <span class="per-month">/ 30 дней</span></div>
+          <p class="plan-desc">Доступ к согласованному экземпляру LockGuard и поддержка по его использованию. Возможности и адрес подтверждаются до оплаты.</p>
           <ul class="plan-features">
-            <li>✔ <b>Unlimited</b> GitHub Action & GitLab CI PR checks</li>
-            <li>✔ Automated rich PR comments with lock conflict matrix</li>
-            <li>✔ <b>Auto-Splitter:</b> multi-phase safe migrations (Django, Prisma, Drizzle, SQLAlchemy)</li>
-            <li>✔ Unlimited team members & API keys</li>
-            <li>✔ Telegram & Slack outage alerts</li>
-            <li>✔ 30 days full free trial</li>
+            <li>✔ 30 дней доступа с подтверждения оплаты</li>
+            <li>✔ Анализ SQL-миграций и отчёты о рисках</li>
+            <li>✔ Черновые рекомендации Auto-Splitter для ручной проверки</li>
+            <li>✔ Состав функций согласуется в заказе</li>
+            <li>✔ Поддержка по email</li>
+            <li>✔ Продление по разовой оплате, без автосписаний</li>
           </ul>
-          <button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Upgrade to Pro Team (1 500 ₽)</button>
+          <button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Оплатить 30 дней — 1 500 ₽</button>
         </div>
 
         <!-- Business Card -->
         <div class="pricing-card" id="card-plan-business" style="border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, rgba(15, 23, 42, 0.95) 100%);">
           <div class="pricing-badge" style="background: linear-gradient(135deg, #0284C7, #06B6D4);">EXPERT DBA SERVICE</div>
-          <h3 class="plan-name">Migration Audit & DBA</h3>
-          <div class="plan-price">30 000 ₽ <span class="per-month">/ fixed turn-key</span></div>
-          <p class="plan-desc">Turn-key personal database audit and zero-downtime migration guarantee.</p>
+          <h3 class="plan-name">Аудит SQL-миграций</h3>
+          <div class="plan-price">30 000 ₽ <span class="per-month">/ разовый заказ</span></div>
+          <p class="plan-desc">Разовый персональный аудит. Материалы, объём и срок выполнения согласуются письменно до оплаты.</p>
           <ul class="plan-features">
             <li>✔ <b>Personal audit</b> of full schema, FKs, and migration history</li>
             <li>✔ CascadeGraph unindexed FK and deadlock resolution</li>
-            <li>✔ PgBouncer / Odyssey pool and connection tuning</li>
-            <li>✔ Multi-phase migration plan with safe SQL recipes</li>
-            <li>✔ 1-on-1 Zoom architecture consultation with Senior DBA</li>
-            <li>✔ Formal invoice, contract, and closing acts for legal entities</li>
+            <li>✔ Дополнительные работы согласуются отдельно</li>
+            <li>✔ Рекомендации по порядку применения миграций</li>
+            <li>✔ Формат консультации согласуется до оплаты</li>
+            <li>✔ Электронный отчёт и чек самозанятого</li>
           </ul>
-          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" class="btn-plan btn-secondary" style="border-color: #38BDF8; color: #38BDF8; text-align: center; text-decoration: none; display: block; font-weight: 700;">
-            🚀 Заказать аудит (30 000 ₽)
-          </a>
+          <button class="btn-plan btn-secondary" onclick="app.selectPlan('business')">Оплатить аудит — 30 000 ₽</button>
         </div>
       </div>
+      <div id="billing-payment-section" hidden style="margin-top:1.5rem">
+        <label for="billing-payment-link">Ссылка для оплаты созданного заказа</label>
+        <input id="billing-payment-link" readonly style="width:100%;padding:0.7rem" aria-label="Ссылка на оплату">
+        <p>Если платёжная страница не открылась, скопируйте ссылку. Тестовые заказы не включают рабочий доступ.</p>
+      </div>
+      <button class="btn-secondary" style="margin-top:1rem" onclick="app.fetchPaymentOrders()">Обновить статус заказов</button>
+      <div id="billing-orders" aria-live="polite"></div>
     </section>
   </main>
-
-  <!-- Notification Toast Container -->
+<!-- seller-footer:start -->
+<footer class="seller-footer" style="max-width:1200px;margin:2rem auto;padding:2rem 1.5rem;border-top:1px solid #334155;color:#cbd5e1;line-height:1.8"><h2 style="font-size:1.1rem;color:#fff">Контакты и реквизиты исполнителя</h2><p>Минсафин Марсель Ренатович · Самозанятый (НПД) · ИНН 631112758865</p><p><a href="mailto:minsafinmarsel02@gmail.com">minsafinmarsel02@gmail.com</a> · <a href="https://t.me/marswwu">Telegram @marswwu</a></p><p><a href="contacts.html">Услуги, цены и реквизиты</a> · <a href="offer.html">Публичная оферта, предоставление услуг и возврат</a> · <a href="privacy.html">Политика конфиденциальности</a></p><p>Pro — 1 500 ₽ за 30 дней без автосписаний. Аудит — 30 000 ₽ разово, объём и сроки согласуются до оплаты. Услуги предоставляются электронно.</p></footer>
+<!-- seller-footer:end -->
+<!-- Notification Toast Container -->
   <div id="toast" class="toast"></div>
 
   <script src="app.js"></script>

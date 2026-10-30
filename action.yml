@@ -35,12 +35,22 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Install LockGuard Runtime Dependencies
+      shell: bash
+      env:
+        LOCKGUARD_ACTION_PATH: ${{ github.action_path }}
+      run: npm ci --omit=dev --ignore-scripts --prefix "$LOCKGUARD_ACTION_PATH"
     - name: Run LockGuard Migration Gatekeeper
       shell: bash
       env:
         LOCKGUARD_API_KEY: ${{ inputs.api_key }}
+        LOCKGUARD_ACTION_PATH: ${{ github.action_path }}
+        LOCKGUARD_MIGRATIONS: ${{ inputs.migrations_dir }}
+        LOCKGUARD_FORMAT: ${{ inputs.format }}
+        LOCKGUARD_SEVERITY: ${{ inputs.severity }}
+        LOCKGUARD_OUTPUT: ${{ inputs.output_file }}
       run: |
-        node "${{ github.action_path }}/bin/lockguard.js" check "${{ inputs.migrations_dir }}" \
-          --format="${{ inputs.format }}" \
-          --severity="${{ inputs.severity }}" \
-          --output="${{ inputs.output_file }}"
+        node "$LOCKGUARD_ACTION_PATH/bin/lockguard.js" check "$LOCKGUARD_MIGRATIONS" \
+          --format="$LOCKGUARD_FORMAT" \
+          --fail-on="$LOCKGUARD_SEVERITY" \
+          --output="$LOCKGUARD_OUTPUT"

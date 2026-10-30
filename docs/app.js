@@ -1,3 +1,4 @@
+const escapeHtml = value => String(value ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 /**
  * LockGuard GitHub Pages Client Application
  * Powered 100% in-browser by LockGuard AST Engine
@@ -389,7 +390,16 @@ class LockGuardWebPlayground {
     this.verdictBadge.textContent = 'Awaiting Analysis';
   }
 
-  runAnalysis() {
+  async runAnalysis() {
+    try { await window.LockGuard?.ready; this.runAnalysisInternal(); }
+    catch (error) {
+      this.lastAnalysis = null;
+      this.showEmptyState();
+      alert('Analysis could not be completed: ' + error.message);
+    }
+  }
+
+  runAnalysisInternal() {
     const sql = this.sqlInput.value.trim();
     if (!sql) {
       this.showEmptyState();
@@ -432,10 +442,10 @@ class LockGuardWebPlayground {
   renderVerdict(analysis) {
     if (analysis.isDmlOnly) {
       this.verdictBadge.className = 'verdict-pill passed';
-      this.verdictBadge.innerHTML = '✔ DML / ЧТЕНИЕ ДАННЫХ (БЛОКИРОВОК НЕТ)';
+      this.verdictBadge.innerHTML = '✔ DML: ПРОВЕРКИ DDL НЕ ПРИМЕНЯЮТСЯ';
     } else if (analysis.passed) {
       this.verdictBadge.className = 'verdict-pill passed';
-      this.verdictBadge.innerHTML = '✔ 100% ZERO-DOWNTIME SAFE';
+      this.verdictBadge.innerHTML = '✔ NO RULE VIOLATIONS DETECTED';
     } else {
       this.verdictBadge.className = 'verdict-pill failed';
       this.verdictBadge.innerHTML = `✖ CI RELEASE BLOCKED (${analysis.criticalCount} Critical)`;
@@ -583,8 +593,8 @@ class LockGuardWebPlayground {
           </div>
         </div>
         <div class="violation-msg">
-          <b>Table:</b> <code>${v.table || 'unknown'}</code> | <b>Line:</b> L${v.line || '1'}
-          <br>${v.message}
+          <b>Table:</b> <code>${escapeHtml(v.table || 'unknown')}</code> | <b>Line:</b> L${v.line || '1'}
+          <br>${escapeHtml(v.message)}
         </div>
         ${v.safeFix ? `
           <div class="safe-fix-box">
@@ -592,7 +602,7 @@ class LockGuardWebPlayground {
               <span>💡 Zero-Downtime Safe Fix</span>
               <button class="btn-secondary btn-xs btn-copy-fix">Copy Fix</button>
             </div>
-            <pre class="safe-fix-code">${v.safeFix}</pre>
+            <pre class="safe-fix-code">${escapeHtml(v.safeFix)}</pre>
           </div>
         ` : ''}
       `;
@@ -643,8 +653,8 @@ class LockGuardWebPlayground {
         ? `<div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:0.4rem; font-family:monospace;">${plan.ormSnippets[idx].instruction}</div>`
         : '';
       card.innerHTML = `
-        <div class="phase-title">📦 [PHASE ${p.phaseNumber || (idx + 1)}]: ${p.title}</div>
-        <div class="phase-desc">${p.description}</div>
+        <div class="phase-title">📦 [PHASE ${p.phaseNumber || (idx + 1)}]: ${escapeHtml(p.title)}</div>
+        <div class="phase-desc">${escapeHtml(p.description)}</div>
         ${instruction}
         <pre class="phase-code">${snippet}</pre>
       `;
@@ -677,7 +687,7 @@ class LockGuardWebPlayground {
       fileName = `${this.currentOrm}_safe_migration.sql`;
       fileContent = plan.phases.map((p, idx) => {
         const code = (plan.ormSnippets && plan.ormSnippets[idx]) ? plan.ormSnippets[idx].code : (p.sql || p.code || '');
-        return `-- ==========================================\n-- [PHASE ${p.phaseNumber || (idx + 1)}]: ${p.title}\n-- ${p.description}\n-- ==========================================\n${code}`;
+        return `-- ==========================================\n-- [PHASE ${p.phaseNumber || (idx + 1)}]: ${escapeHtml(p.title)}\n-- ${escapeHtml(p.description)}\n-- ==========================================\n${code}`;
       }).join('\n\n');
     }
 
@@ -735,12 +745,12 @@ class LockGuardWebPlayground {
         </div>
         <div style="font-size:13px; color:#334155; margin-bottom:8px;">
           <b>Таблица:</b> <code>${v.table || 'default'}</code> | <b>Строка:</b> L${v.line || '1'}
-          <br>${v.message}
+          <br>${escapeHtml(v.message)}
         </div>
         ${v.safeFix ? `
           <div style="background:#0F172A; color:#E2E8F0; padding:10px 14px; border-radius:6px; font-family:Consolas, monospace; font-size:12px; line-height:1.5; white-space:pre-wrap;">
 <span style="color:#38BDF8; font-weight:bold;">-- Безопасный альтернативный Zero-Downtime код:</span>
-${v.safeFix}
+${escapeHtml(v.safeFix)}
           </div>
         ` : ''}
       </div>
@@ -748,8 +758,8 @@ ${v.safeFix}
 
     const phasesHtml = (splitPlan.phases || []).map(p => `
       <div style="border:1px solid #E2E8F0; border-radius:6px; padding:12px; margin-bottom:10px; background:#F8FAFC; page-break-inside:avoid;">
-        <div style="font-weight:700; color:#0F172A; font-size:14px; margin-bottom:4px;">📦 [ЭТАП ${p.phase}]: ${p.title}</div>
-        <div style="font-size:12px; color:#475569; margin-bottom:8px;">${p.description}</div>
+        <div style="font-weight:700; color:#0F172A; font-size:14px; margin-bottom:4px;">📦 [ЭТАП ${p.phase}]: ${escapeHtml(p.title)}</div>
+        <div style="font-size:12px; color:#475569; margin-bottom:8px;">${escapeHtml(p.description)}</div>
         <pre style="background:#0F172A; color:#4ADE80; padding:10px; border-radius:4px; font-family:Consolas, monospace; font-size:12px; line-height:1.4; margin:0; white-space:pre-wrap;">${p.code}</pre>
       </div>
     `).join('');
