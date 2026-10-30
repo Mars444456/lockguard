@@ -1,6 +1,18 @@
-# LockGuard
+<div align="center">
+
+# 🛡️ LockGuard
 
 Анализатор SQL-миграций PostgreSQL: находит известные риски блокировок до запуска миграции, формирует отчёты для CI и черновики поэтапных изменений.
+
+[![GitHub Action](https://img.shields.io/badge/GitHub_Action-Setup-181717?style=for-the-badge&logo=github)](#github-action)
+[![Web Playground](https://img.shields.io/badge/Web_Playground-Open-7c3aed?style=for-the-badge&logo=googlechrome&logoColor=white)](https://mars444456.github.io/lockguard/)
+[![Telegram Audit Bot](https://img.shields.io/badge/Telegram_Bot-@lockguard__audit__bot-0088cc?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/lockguard_audit_bot)
+[![CI](https://github.com/Mars444456/lockguard/actions/workflows/lockguard.yml/badge.svg?branch=main)](https://github.com/Mars444456/lockguard/actions/workflows/lockguard.yml)
+[![MIT License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](LICENSE)
+
+**Быстрый доступ:** [🚀 Запуск](#быстрый-запуск) · [🌐 Демо](https://mars444456.github.io/lockguard/) · [🤖 Бот](https://t.me/lockguard_audit_bot) · [📜 Правила](#каталог-правил) · [🖥️ CLI](#локальный-cli) · [💳 Тарифы](#услуги-и-оплата) · [📬 Контакты](#контакты-и-реквизиты-исполнителя)
+
+</div>
 
 [Сайт и демонстрация](https://mars444456.github.io/lockguard/) · [Контакты](https://mars444456.github.io/lockguard/contacts.html) · [Оферта и возвраты](https://mars444456.github.io/lockguard/offer.html) · [Конфиденциальность](https://mars444456.github.io/lockguard/privacy.html)
 
@@ -32,6 +44,8 @@ node bin/lockguard.js rules
 npm test
 ```
 
+## Локальный CLI
+
 Проверка собственных миграций:
 
 ```sh
@@ -45,6 +59,25 @@ node bin/lockguard.js check --staged
 Коды завершения: **0** — нет нарушений выбранного порога; **1** — найдены нарушения; **2** — ошибка запуска, чтения или анализа. `--strict` также блокирует предупреждения. Не считайте любой ненулевой код успешной работой анализатора.
 
 `--staged` читает SQL из индекса Git, включая частично добавленные файлы. Этот режим нельзя совмещать с `--fix`: исправьте рабочие файлы, проверьте diff и добавьте их заново.
+
+## Каталог правил
+
+| Правило | Что проверяет |
+|---|---|
+| LG-001 | Добавление колонки с volatile или нетривиальным DEFAULT |
+| LG-002 | Построение индекса без CONCURRENTLY |
+| LG-003 | Добавление внешнего ключа без NOT VALID |
+| LG-004 | Смена типа колонки с риском перезаписи таблицы |
+| LG-005 | Прямое добавление UNIQUE без конкурентного построения индекса |
+| LG-006 | Немедленное удаление колонки или таблицы |
+| LG-007 | VACUUM и изменение параметров autovacuum в транзакции |
+| LG-008 | Отсутствующий или неэффективный lock_timeout перед DDL |
+| LG-009 | SET NOT NULL без предварительно проверенного ограничения |
+| LG-010 | CONCURRENTLY внутри транзакционного блока |
+| LG-011 | Внешний ключ без подтверждённого индекса на дочерних колонках |
+| LG-012 | TRUNCATE и REFRESH MATERIALIZED VIEW без CONCURRENTLY |
+
+Отдельное нарушение `LG-000` означает неполный анализ и необходимость ручной проверки. Исходный код проверок находится в [src/core/rules](src/core/rules/), полный вывод доступен через `node bin/lockguard.js rules`.
 
 ## GitHub Action
 
