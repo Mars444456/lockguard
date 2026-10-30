@@ -29,7 +29,7 @@ jobs:
       - name: Verify browser engine matches sources
         run: |
           npm run build:browser
-          git diff --exit-code -- docs/lockguard-engine.js docs/libpg-query.wasm
+          git diff --exit-code -- docs/index.html docs/lockguard-engine.js docs/libpg-query.wasm
       - name: Verify safe migration exits with 0
         run: node bin/lockguard.js check fixtures/10_safe_migration.sql
       - name: Verify dangerous migration exits with exactly 1
