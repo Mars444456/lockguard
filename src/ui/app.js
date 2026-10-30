@@ -11,7 +11,7 @@ BEGIN;
 CREATE INDEX idx_transactions_created_at ON transactions (created_at);
 
 -- 2. Heavy ADD COLUMN with volatile DEFAULT (full table rewrite!)
-ALTER TABLE accounts ADD COLUMN updated_at TIMESTAMP DEFAULT now() NOT NULL;
+ALTER TABLE accounts ADD COLUMN token UUID DEFAULT gen_random_uuid() NOT NULL;
 
 -- 3. Unvalidated Foreign Key (scans millions of rows under lock)
 ALTER TABLE transactions 
@@ -33,7 +33,7 @@ COMMIT;`,
   add_column: `-- Unsafe ADD COLUMN with volatile default
 SET lock_timeout = '3s';
 
-ALTER TABLE orders ADD COLUMN created_at TIMESTAMP DEFAULT now() NOT NULL;
+ALTER TABLE orders ADD COLUMN token UUID DEFAULT gen_random_uuid() NOT NULL;
 ALTER TABLE payments ADD COLUMN transaction_token UUID DEFAULT gen_random_uuid();`,
 
   blocking_index: `-- Blocking non-concurrent CREATE INDEX

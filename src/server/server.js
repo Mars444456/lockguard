@@ -99,7 +99,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const parsedUrl = url.parse(req.url, true);
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
 
   // Add JSON response helper
@@ -116,14 +116,23 @@ const server = http.createServer(async (req, res) => {
   const matched = router.match(req.method, pathname);
   if (matched) {
     req.params = matched.params;
-    req.query = parsedUrl.query;
+    req.query = Object.fromEntries(parsedUrl.searchParams.entries());
 
     if (req.method === 'POST' || req.method === 'PUT') {
       let bodyData = '';
+      const MAX_BODY_SIZE = 1024 * 1024; // 1 MB limit
+      let sizeExceeded = false;
+
       req.on('data', chunk => {
         bodyData += chunk;
+        if (bodyData.length > MAX_BODY_SIZE) {
+          sizeExceeded = true;
+          res.status(413).json({ error: 'Payload Too Large: maximum body size is 1MB' });
+          req.destroy();
+        }
       });
       req.on('end', async () => {
+        if (sizeExceeded) return;
         try {
           req.body = bodyData ? JSON.parse(bodyData) : {};
         } catch {
@@ -150,7 +159,28 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Static File Serving from src/ui/
-  let filePath = path.join(__dirname, '..', 'ui', pathname === '/' ? 'index.html' : pathname);
+  const uiDir = path.resolve(__dirname, '..', 'ui');
+  let decodedPath = '';
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    decodedPath = pathname;
+  }
+
+  // Path Traversal Protection: reject any path attempting directory traversal
+  if (decodedPath.includes('..') || req.url.includes('..')) {
+    res.status(403).json({ error: 'Forbidden: Path traversal detected' });
+    return;
+  }
+
+  const safeRelativePath = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^\/+/, '');
+  let filePath = path.resolve(uiDir, safeRelativePath);
+
+  if (!filePath.startsWith(uiDir)) {
+    res.status(403).json({ error: 'Forbidden: Path traversal detected' });
+    return;
+  }
+
   if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
     filePath = path.join(filePath, 'index.html');
   }
@@ -164,7 +194,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Default SPA fallback to index.html for unknown routes
-  const indexPath = path.join(__dirname, '..', 'ui', 'index.html');
+  const indexPath = path.join(uiDir, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     fs.createReadStream(indexPath).pipe(res);
@@ -174,12 +204,14 @@ const server = http.createServer(async (req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
-server.listen(PORT, () => {
-  console.log(`\n========================================================`);
-  console.log(`  🛡️  LockGuard Server Running at: http://localhost:${PORT}`);
-  console.log(`  📊 Interactive Migration Playground: http://localhost:${PORT}`);
-  console.log(`  🔌 REST API Base URL: http://localhost:${PORT}/api/v1`);
-  console.log(`========================================================\n`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`\n========================================================`);
+    console.log(`  🛡️  LockGuard Server Running at: http://localhost:${PORT}`);
+    console.log(`  📊 Interactive Migration Playground: http://localhost:${PORT}`);
+    console.log(`  🔌 REST API Base URL: http://localhost:${PORT}/api/v1`);
+    console.log(`========================================================\n`);
+  });
+}
 
 module.exports = server;

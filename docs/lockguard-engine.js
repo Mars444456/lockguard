@@ -324,8 +324,8 @@ class PgParser {
 
     // 1. SET lock_timeout / statement_timeout
     if (upper.startsWith('SET ') || upper.startsWith('SET LOCAL ')) {
-      const lockTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?lock_timeout\s*=\s*['"]?([^'";]+)['"]?/i);
-      const statementTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?statement_timeout\s*=\s*['"]?([^'";]+)['"]?/i);
+      const lockTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?lock_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
+      const statementTimeoutMatch = cleanSql.match(/SET\s+(?:LOCAL\s+)?statement_timeout(?:\s*=\s*|\s+TO\s+)['"]?([^'";]+)['"]?/i);
       const isLocal = /SET\s+LOCAL\b/i.test(cleanSql);
 
       return {
@@ -375,8 +375,9 @@ class PgParser {
       const nameMatch = cleanSql.match(/INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_."]+)/i);
 
       const table = onMatch ? this.cleanIdentifier(onMatch[1]) : 'unknown_table';
-      const indexName = nameMatch ? this.cleanIdentifier(nameMatch[1]) : 'idx_' + table;
+      const rawIndexName = (nameMatch && nameMatch[1].toUpperCase() !== 'ON') ? this.cleanIdentifier(nameMatch[1]) : null;
       const columns = onMatch ? onMatch[2].split(',').map(s => s.trim()) : [];
+      const indexName = rawIndexName || ('idx_' + table.replace(/[^a-zA-Z0-9_]/g, '_') + (columns.length > 0 ? '_' + columns[0].replace(/[^a-zA-Z0-9_]/g, '') : ''));
 
       return {
         ...baseMeta,
@@ -469,6 +470,36 @@ class PgParser {
       };
     }
 
+    // 13. TRUNCATE [TABLE]
+    if (upper.startsWith('TRUNCATE')) {
+      const tableMatch = cleanSql.match(/TRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?([a-zA-Z0-9_.",\s]+?)(?:\s+RESTART\s+IDENTITY|\s+CONTINUE\s+IDENTITY|\s+CASCADE|\s+RESTRICT|;|$)/i);
+      const tables = tableMatch
+        ? tableMatch[1].split(',').map(t => this.cleanIdentifier(t.trim())).filter(Boolean)
+        : ['unknown_table'];
+
+      return {
+        ...baseMeta,
+        type: 'TRUNCATE_TABLE',
+        table: tables[0] || 'unknown_table',
+        tables
+      };
+    }
+
+    // 14. REFRESH MATERIALIZED VIEW [CONCURRENTLY]
+    if (upper.startsWith('REFRESH MATERIALIZED VIEW')) {
+      const isConcurrent = /REFRESH\s+MATERIALIZED\s+VIEW\s+CONCURRENTLY/i.test(cleanSql);
+      const viewMatch = cleanSql.match(/REFRESH\s+MATERIALIZED\s+VIEW\s+(?:CONCURRENTLY\s+)?([a-zA-Z0-9_."]+)/i);
+      const view = viewMatch ? this.cleanIdentifier(viewMatch[1]) : 'unknown_view';
+
+      return {
+        ...baseMeta,
+        type: 'REFRESH_MATVIEW',
+        view,
+        table: view,
+        isConcurrent
+      };
+    }
+
     // Default unrecognized statement
     return {
       ...baseMeta,
@@ -482,7 +513,8 @@ class PgParser {
    */
   static parseAlterSubcommands(sql, table, line) {
     const subcommands = [];
-    const parts = sql.replace(/^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?[a-zA-Z0-9_."]+\s+/i, '').trim();
+    let parts = sql.replace(/^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?[a-zA-Z0-9_."]+\s+/i, '').trim();
+    parts = parts.replace(/;+\s*$/, '');
 
     // Split top-level subcommands by comma, ignoring commas inside parentheses or quotes
     const clauses = this.splitClauses(parts);
@@ -502,6 +534,7 @@ class PgParser {
           hasDefault: colDetails.hasDefault,
           defaultValue: colDetails.defaultValue,
           isVolatileDefault: colDetails.isVolatileDefault,
+          isTrulyVolatile: colDetails.isTrulyVolatile,
           isPhysicalTableRewrite: colDetails.isPhysicalTableRewrite,
           rewriteReason: colDetails.rewriteReason,
           isNotNull: colDetails.isNotNull,
@@ -691,15 +724,21 @@ class PgParser {
     let current = '';
     let parenDepth = 0;
     let inQuote = false;
+    let inDoubleQuote = false;
 
     for (let i = 0; i < str.length; i++) {
       const char = str[i];
-      if (char === "'") {
+      if (char === "'" && !inDoubleQuote) {
         inQuote = !inQuote;
         current += char;
         continue;
       }
-      if (!inQuote) {
+      if (char === '"' && !inQuote) {
+        inDoubleQuote = !inDoubleQuote;
+        current += char;
+        continue;
+      }
+      if (!inQuote && !inDoubleQuote) {
         if (char === '(') parenDepth++;
         else if (char === ')') parenDepth--;
         else if (char === ',' && parenDepth === 0) {
@@ -736,6 +775,7 @@ class PgParser {
     const hasDefault = /DEFAULT\s+/i.test(clean);
     let defaultValue = null;
     let isVolatileDefault = false;
+    let isTrulyVolatile = false;
     let isPhysicalTableRewrite = false;
     let rewriteReason = 'NONE';
 
@@ -763,7 +803,7 @@ class PgParser {
           /\btransaction_timestamp\s*\(/i
         ];
 
-        const isTrulyVolatile = volatilePatterns.some(p => p.test(defaultValue));
+        isTrulyVolatile = volatilePatterns.some(p => p.test(defaultValue));
         const isStableTimestamp = stablePatterns.some(p => p.test(defaultValue));
 
         // isVolatileDefault flags dynamic expressions (including now() and volatile funcs)
@@ -783,7 +823,7 @@ class PgParser {
       hasDefault,
       defaultValue,
       isVolatileDefault,
-      isTrulyVolatile: typeof isTrulyVolatile !== 'undefined' ? isTrulyVolatile : false,
+      isTrulyVolatile,
       isPhysicalTableRewrite,
       rewriteReason,
       isNotNull
@@ -792,7 +832,11 @@ class PgParser {
 
   static cleanIdentifier(ident) {
     if (!ident) return '';
-    return ident.replace(/^["'`]|["'`]$/g, '').trim();
+    return ident
+      .split('.')
+      .map(part => part.replace(/^["'`]|["'`]$/g, '').trim())
+      .join('.')
+      .trim();
   }
 }
 
@@ -819,10 +863,11 @@ return {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_COLUMN' && sub.hasDefault) {
             // In PostgreSQL 11+, pure constant literals ('active', 0, false, NULL)
+            // and stable expressions (now(), CURRENT_TIMESTAMP)
             // are safe fast metadata-only updates.
-            // Volatile expressions (random, gen_random_uuid) or dynamic timestamps
-            // trigger zero-downtime safety guidelines.
-            if (!sub.isVolatileDefault && !isLegacyPostgres) {
+            // Only truly volatile expressions (random, gen_random_uuid, clock_timestamp)
+            // or legacy PG < 11 force physical table rewrite on disk.
+            if (!sub.isTrulyVolatile && !isLegacyPostgres) {
               continue;
             }
 
@@ -1075,11 +1120,16 @@ return {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Adding a UNIQUE constraint directly creates an underlying unique index under an ACCESS EXCLUSIVE lock. Writes and reads are blocked during index creation.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
+    const createdTables = context.createdTables || new Set();
 
     for (const stmt of astStatements) {
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
+        if (createdTables.has(stmt.table.toLowerCase())) {
+          continue;
+        }
+
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_UNIQUE_CONSTRAINT' && !sub.isUsingIndex) {
             violations.push({
@@ -1273,7 +1323,9 @@ return {
       s.type === 'CREATE_INDEX' || 
       s.type === 'DROP_TABLE' ||
       s.type === 'CREATE_TABLE' ||
-      s.type === 'DROP_INDEX'
+      s.type === 'DROP_INDEX' ||
+      s.type === 'TRUNCATE_TABLE' ||
+      s.type === 'REFRESH_MATVIEW'
     );
 
     if (!hasDdl) {
@@ -1312,14 +1364,36 @@ return {
     }
 
     return [
-      `-- Add lock_timeout at the top, and RESET at the end to prevent pooler (PgBouncer) connection contamination:`,
+      `-- Basic Pattern: Add lock_timeout at top and RESET at end:`,
       `SET lock_timeout = '3s';`,
       `SET statement_timeout = '30s';`,
       ``,
       `-- ... (your migration statements here) ...`,
       ``,
       `RESET lock_timeout;`,
-      `RESET statement_timeout;`
+      `RESET statement_timeout;`,
+      ``,
+      `-- Advanced Pattern: Zero-Downtime PL/pgSQL Lock-Retry loop:`,
+      `DO $$`,
+      `DECLARE`,
+      `  success BOOLEAN := FALSE;`,
+      `  attempts INT := 0;`,
+      `BEGIN`,
+      `  WHILE NOT success AND attempts < 5 LOOP`,
+      `    BEGIN`,
+      `      SET LOCAL lock_timeout = '2s';`,
+      `      -- (Run your DDL command here)`,
+      `      success := TRUE;`,
+      `      EXIT;`,
+      `    EXCEPTION WHEN lock_not_available THEN`,
+      `      attempts := attempts + 1;`,
+      `      PERFORM pg_sleep(1);`,
+      `    END;`,
+      `  END LOOP;`,
+      `  IF NOT success THEN`,
+      `    RAISE EXCEPTION 'Could not acquire lock after 5 attempts';`,
+      `  END IF;`,
+      `END $$;`
     ].join('\n');
   }
 };
@@ -1339,7 +1413,7 @@ return {
     const createdTables = context.createdTables || new Set();
 
     // Track validated check constraints: "table:column"
-    const validatedChecks = new Set();
+    const validatedChecks = new Set(context.validatedChecks || (context.sharedState && context.sharedState.validatedChecks) || []);
     const candidateChecks = new Map(); // constraintName -> { table, column }
 
     for (const stmt of astStatements) {
@@ -1356,6 +1430,9 @@ return {
             if (candidateChecks.has(key)) {
               const info = candidateChecks.get(key);
               validatedChecks.add(`${info.table}:${info.column}`);
+              if (context.sharedState && context.sharedState.validatedChecks) {
+                context.sharedState.validatedChecks.add(`${info.table}:${info.column}`);
+              }
             }
           }
         }
@@ -1475,6 +1552,9 @@ return {
 
   // 4. Rule Engine
   
+const CascadeGraph = require('./cascade-graph');
+
+
 
 
 
@@ -1500,7 +1580,9 @@ class RuleEngine {
       rule07,
       rule08,
       rule09,
-      rule10
+      rule10,
+      rule11,
+      rule12
     ];
   }
 
@@ -1521,7 +1603,7 @@ class RuleEngine {
   /**
    * Analyzes SQL script and checks for dangerous table locks.
    * @param {string} sqlText 
-   * @param {object} options { filename, enabledRuleIds, failOnSeverity, ignoreRules }
+   * @param {object} options { filename, enabledRuleIds, failOnSeverity, ignoreRules, sharedState }
    */
   analyze(sqlText, options = {}) {
     const filename = options.filename || 'migration.sql';
@@ -1532,24 +1614,45 @@ class RuleEngine {
     // 1. Parse AST
     const astStatements = PgParser.parse(sqlText);
 
-    // 2. Build Context (Created tables in this migration, transaction state)
-    const createdTables = new Set();
+    // 2. Build Context (Created tables in this migration, transaction state, shared state)
+    const sharedState = options.sharedState || null;
+    const createdTables = new Set(sharedState ? Array.from(sharedState.createdTables || []) : []);
+    const createdIndexes = new Set(sharedState ? Array.from(sharedState.createdIndexes || []) : []);
+    const validatedChecks = new Set(sharedState ? Array.from(sharedState.validatedChecks || []) : []);
     let hasTransactionBlock = false;
 
     for (const stmt of astStatements) {
       if (stmt.type === 'CREATE_TABLE' && stmt.table) {
         createdTables.add(stmt.table.toLowerCase());
+        if (sharedState && sharedState.createdTables) {
+          sharedState.createdTables.add(stmt.table.toLowerCase());
+        }
+      }
+      if (stmt.type === 'CREATE_INDEX' && stmt.table && stmt.columns) {
+        for (const col of stmt.columns) {
+          createdIndexes.add(`${stmt.table.toLowerCase()}:${col.toLowerCase()}`);
+          if (sharedState && sharedState.createdIndexes) {
+            sharedState.createdIndexes.add(`${stmt.table.toLowerCase()}:${col.toLowerCase()}`);
+          }
+        }
       }
       if (stmt.type === 'TRANSACTION_START') {
         hasTransactionBlock = true;
       }
     }
 
+    const cascadeGraph = new CascadeGraph();
+    cascadeGraph.buildFromAst(astStatements);
+
     const context = {
       filename,
       sqlText,
       createdTables,
+      createdIndexes,
+      validatedChecks,
       hasTransactionBlock,
+      cascadeGraph,
+      sharedState,
       ...options
     };
 
@@ -1597,7 +1700,7 @@ class RuleEngine {
 
     const violations = rawViolations;
 
-    // 4. Determine Affected Tables
+    // 4. Determine Affected Tables (Including parent tables in Foreign Keys)
     const affectedTablesSet = new Set();
     for (const stmt of astStatements) {
       if (stmt.table && stmt.table !== 'global' && stmt.table !== 'unknown_table') {
@@ -1606,10 +1709,19 @@ class RuleEngine {
       if (stmt.tables) {
         stmt.tables.forEach(t => affectedTablesSet.add(t));
       }
+      if (stmt.subcommands) {
+        for (const sub of stmt.subcommands) {
+          if (sub.table) affectedTablesSet.add(sub.table);
+          if (sub.foreignTable) affectedTablesSet.add(sub.foreignTable);
+        }
+      }
     }
     for (const v of violations) {
       if (v.table && v.table !== 'global' && v.table !== 'unknown_table') {
         affectedTablesSet.add(v.table);
+      }
+      if (v.foreignTable) {
+        affectedTablesSet.add(v.foreignTable);
       }
     }
     const affectedTables = Array.from(affectedTablesSet);
@@ -1655,16 +1767,27 @@ class RuleEngine {
       s.type === 'DROP_TABLE' ||
       s.type === 'CREATE_TABLE' ||
       s.type === 'DROP_INDEX' ||
+      s.type === 'TRUNCATE_TABLE' ||
+      s.type === 'REFRESH_MATVIEW' ||
       s.type === 'VACUUM'
     );
     const isDmlOnly = !hasDdl && astStatements.length > 0;
 
+    const cascadeWarnings = [];
+    for (const table of affectedTables) {
+      const risks = cascadeGraph.findCascadeRisks(table);
+      for (const r of risks) {
+        cascadeWarnings.push(r);
+      }
+    }
+
     return {
       filename,
+      file: filename,
       status,
       passed,
       isDmlOnly,
-      dmlDescription: isDmlOnly ? 'Операция не является DDL-миграцией схемы (SELECT / DML чтение/запись данных). Блокировок DDL нет, простой базы: 0.0 сек.' : null,
+      dmlDescription: isDmlOnly ? 'Operation is not a schema DDL migration (SELECT / DML read/write). No DDL locks detected, estimated downtime: 0.0s.' : null,
       violationsCount: violations.length,
       criticalCount,
       highCount,
@@ -1672,6 +1795,7 @@ class RuleEngine {
       highestLockLevel: violations.length > 0 ? highestLock : LockLevel.ACCESS_SHARE,
       lockImpact: LockMatrix[highestLock] || null,
       affectedTables,
+      cascadeWarnings,
       violations,
       astStatementsCount: astStatements.length,
       analyzedAt: new Date().toISOString()
@@ -1686,14 +1810,14 @@ class RuleEngine {
   /**
  * LockGuard Auto-Splitter
  * Deconstructs fatal monolithic migrations into safe, zero-downtime multi-phase releases.
- * Supports targets: Raw SQL, Prisma, Drizzle, and Alembic.
+ * Supports targets: Raw SQL, Prisma, Drizzle, Alembic, and Django.
  */
 
 class AutoSplitter {
   /**
    * Generates a multi-step release plan for a migration AST / violations.
    * @param {object} analysis Analysis result from RuleEngine
-   * @param {string} targetOrm 'sql' | 'prisma' | 'drizzle' | 'alembic'
+   * @param {string} targetOrm 'sql' | 'prisma' | 'drizzle' | 'alembic' | 'django'
    */
   static generatePlan(analysis, targetOrm = 'sql') {
     const phases = [];
@@ -1715,9 +1839,6 @@ class AutoSplitter {
     const phase3Statements = [];
     // Phase 4: Validation & Cleanup
     const phase4Statements = [];
-
-    phase1Statements.push("SET lock_timeout = '3s';");
-    phase1Statements.push("SET statement_timeout = '30s';");
 
     for (const v of violations) {
       const table = v.table || 'your_table';
@@ -1756,10 +1877,14 @@ class AutoSplitter {
         case 'LG-003': {
           const constraint = v.constraintName || `fk_${table}_ref`;
           const foreignTable = v.foreignTable || 'referenced_table';
-          const cols = (v.columns && v.columns.length > 0) ? v.columns.join(', ') : 'foreign_id';
+          const cols = (v.columns && v.columns.length > 0) ? v.columns : ['foreign_id'];
+          const colList = cols.join(', ');
+          const colSlug = cols.join('_').replace(/[^a-zA-Z0-9_]/g, '');
 
+          phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent cascade locks`);
+          phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
           phase1Statements.push(`-- Phase 1 (Deploy 1): Attach FK with NOT VALID (instant catalog lock)`);
-          phase1Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${cols}) REFERENCES ${foreignTable}(id) NOT VALID;`);
+          phase1Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${colList}) REFERENCES ${foreignTable}(id) NOT VALID;`);
 
           phase4Statements.push(`-- Phase 4 (Deploy 2): Validate existing rows (weak lock SHARE UPDATE EXCLUSIVE)`);
           phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${constraint};`);
@@ -1792,7 +1917,8 @@ class AutoSplitter {
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col} TO ${col}_deprecated;`);
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col}_new TO ${col};`);
 
-          phase4Statements.push(`-- Phase 4 (Cleanup): Drop deprecated column`);
+          phase4Statements.push(`-- Phase 4 (Cleanup): Drop deprecated column safely`);
+          phase4Statements.push(`-- lockguard-ignore: LG-006`);
           phase4Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col}_deprecated;`);
           break;
         }
@@ -1816,7 +1942,40 @@ class AutoSplitter {
           const col = v.column || 'col_to_drop';
           phase1Statements.push(`-- Phase 1 (Deploy 1): Remove column from ORM schema / mark as @ignore`);
           phase3Statements.push(`-- Phase 3 (Deploy 2 / Maintenance Window): Drop physically`);
+          phase3Statements.push(`-- lockguard-ignore: LG-006`);
           phase3Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col};`);
+          break;
+        }
+
+        // 9. Unsafe SET NOT NULL
+        case 'LG-009': {
+          const col = v.column || 'column_name';
+          phase3Statements.push(`-- Phase 3: Add NOT NULL via NOT VALID check constraint`);
+          phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT chk_${table}_${col}_not_null CHECK (${col} IS NOT NULL) NOT VALID;`);
+          phase4Statements.push(`-- Phase 4: Validate check constraint without blocking writes`);
+          phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT chk_${table}_${col}_not_null;`);
+          break;
+        }
+
+        // 11. Unindexed Foreign Key
+        case 'LG-011': {
+          const cols = (v.columns && v.columns.length > 0) ? v.columns : ['foreign_id'];
+          const colList = cols.join(', ');
+          const colSlug = cols.join('_').replace(/[^a-zA-Z0-9_]/g, '');
+          phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent child table locks`);
+          phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
+          break;
+        }
+
+        // 12. Truncate / Unconcurrent Matview
+        case 'LG-012': {
+          if (v.matview) {
+            phase1Statements.push(`-- Phase 1: Concurrent Materialized View Refresh (requires unique index)`);
+            phase1Statements.push(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${v.matview};`);
+          } else {
+            phase2Operations.push(`-- Phase 2 (Async Batch): Purge data in small batches to avoid ACCESS EXCLUSIVE lock:`);
+            phase2Operations.push(`DELETE FROM ${table} WHERE ctid = ANY (ARRAY(SELECT ctid FROM ${table} LIMIT 10000));`);
+          }
           break;
         }
 
@@ -1825,12 +1984,23 @@ class AutoSplitter {
       }
     }
 
-    if (phase1Statements.length > 2) {
+    const wrapDdlPhase = (statements) => {
+      return [
+        "SET lock_timeout = '3s';",
+        "SET statement_timeout = '30s';",
+        "",
+        ...statements,
+        "",
+        "RESET lock_timeout;"
+      ].join('\n');
+    };
+
+    if (phase1Statements.length > 0) {
       phases.push({
         phaseNumber: 1,
         title: 'Release 1: Non-Blocking Catalog & Index Setup',
         description: 'Safe catalog operations taking <1ms ACCESS EXCLUSIVE or background concurrent indexes.',
-        sql: phase1Statements.join('\n')
+        sql: wrapDdlPhase(phase1Statements)
       });
     }
 
@@ -1848,7 +2018,7 @@ class AutoSplitter {
         phaseNumber: 3,
         title: 'Release 3: Schema Swaps & Constraint Attaching',
         description: 'Attach constraints using indexes or activate check constraints after data consistency is established.',
-        sql: phase3Statements.join('\n')
+        sql: wrapDdlPhase(phase3Statements)
       });
     }
 
@@ -1857,7 +2027,7 @@ class AutoSplitter {
         phaseNumber: 4,
         title: 'Release 4: Non-Blocking Validation & Final Cleanup',
         description: 'Validate constraints under weak SHARE UPDATE EXCLUSIVE locks and drop deprecated shadow columns.',
-        sql: phase4Statements.join('\n')
+        sql: wrapDdlPhase(phase4Statements)
       });
     }
 
@@ -1880,6 +2050,67 @@ class AutoSplitter {
       phases,
       ormSnippets
     };
+  }
+
+  /**
+   * Writes multi-phase migration files to disk.
+   * @param {object} plan Generated plan from generatePlan()
+   * @param {string} targetFile Source migration file path
+   * @param {string} [outDir] Destination directory
+   * @returns {Array<{ phase: number, path: string, content: string }>}
+   */
+  static writePhasesToDisk(plan, targetFile, outDir = null) {
+    const fs = require('fs');
+    const path = require('path');
+
+    const baseName = path.basename(targetFile, path.extname(targetFile));
+    const targetDir = outDir
+      ? path.resolve(process.cwd(), outDir)
+      : path.dirname(path.resolve(process.cwd(), targetFile));
+
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    const writtenFiles = [];
+    const phaseSlugs = {
+      1: 'phase1_pre_deploy',
+      2: 'phase2_backfill',
+      3: 'phase3_enforce',
+      4: 'phase4_cleanup'
+    };
+
+    const targetOrm = plan.targetOrm || 'sql';
+
+    for (const p of plan.phases) {
+      let filePath;
+      let content;
+
+      if (targetOrm === 'prisma') {
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
+        const phaseDir = path.join(targetDir, `${timestamp}_phase_${p.phaseNumber}`);
+        fs.mkdirSync(phaseDir, { recursive: true });
+        filePath = path.join(phaseDir, 'migration.sql');
+        content = p.sql;
+      } else if (targetOrm === 'django' || targetOrm === 'alembic') {
+        const snippet = plan.ormSnippets && plan.ormSnippets.find(s => s.phaseNumber === p.phaseNumber);
+        filePath = path.join(targetDir, `${baseName}_phase${p.phaseNumber}.py`);
+        content = snippet ? snippet.code : p.sql;
+      } else {
+        // sql or drizzle
+        const slug = phaseSlugs[p.phaseNumber] || `phase${p.phaseNumber}`;
+        filePath = path.join(targetDir, `${baseName}_${slug}.sql`);
+        content = p.sql;
+      }
+
+      fs.writeFileSync(filePath, content + '\n', 'utf8');
+      writtenFiles.push({
+        phase: p.phaseNumber,
+        path: filePath,
+        content: content + '\n'
+      });
+    }
+
+    return writtenFiles;
   }
 
   static formatPrisma(phases) {
@@ -1933,7 +2164,7 @@ class ContextAnalyzer {
   /**
    * Enriches an analysis result with real-world DB context.
    * @param {object} analysis AST analysis result from RuleEngine
-   * @param {object} dbContext Table metadata { table: { rowCount, sizeMb, version } } or connection
+   * @param {object} dbContext Table metadata { tables: { table: { rowCount, sizeMb } }, demoMode: boolean, pgVersion }
    */
   static enrich(analysis, dbContext = {}) {
     const enrichedViolations = [];
@@ -1948,11 +2179,21 @@ class ContextAnalyzer {
       payments: { rowCount: 8900000, sizeMb: 4300 }
     };
 
+    const providedTables = dbContext.tables || {};
+    const useDemoStats = !!dbContext.demoMode;
+
     for (const v of analysis.violations) {
       const tableName = v.table || 'default';
-      const stats = (dbContext.tables && dbContext.tables[tableName]) || 
-                    defaultStats[tableName] || 
-                    { rowCount: 100000, sizeMb: 50 }; // fallback medium table
+      let stats = providedTables[tableName];
+
+      // Only use demo fallback stats when explicitly requested by demo/playground mode
+      if (!stats && useDemoStats) {
+        stats = defaultStats[tableName] || { rowCount: 100000, sizeMb: 50 };
+      }
+
+      if (!stats) {
+        stats = { rowCount: 0, sizeMb: 0 };
+      }
 
       const lockDuration = this.calculateLockDuration(v, stats, dbContext.pgVersion || 16);
       if (lockDuration.seconds > maxEstimatedDowntimeSec) {
@@ -1971,48 +2212,56 @@ class ContextAnalyzer {
       });
     }
 
+    const hasAnyStats = analysis.affectedTables.some(t => providedTables[t] || (useDemoStats && defaultStats[t]));
+
     return {
       ...analysis,
       violations: enrichedViolations,
-      hasLiveContext: true,
+      hasLiveContext: hasAnyStats,
       maxEstimatedDowntimeSec,
       maxEstimatedDowntimeFormatted: this.formatSeconds(maxEstimatedDowntimeSec),
-      contextSummary: `Audited against table metrics: ${analysis.affectedTables.map(t => {
-        const s = (dbContext.tables && dbContext.tables[t]) || defaultStats[t] || { rowCount: 100000 };
-        return `${t} (${(s.rowCount / 1000000).toFixed(1)}M rows)`;
-      }).join(', ')}`
+      contextSummary: hasAnyStats 
+        ? `Audited against table metrics: ${analysis.affectedTables.map(t => {
+            const s = providedTables[t] || (useDemoStats && defaultStats[t]) || { rowCount: 0 };
+            return `${t} (${(s.rowCount / 1000000).toFixed(1)}M rows)`;
+          }).join(', ')}`
+        : 'Context analysis enabled without live metrics. Use --schema-stats=<file.json> or set DATABASE_URL to provide actual table sizes.'
     };
   }
 
   static calculateLockDuration(violation, stats, pgVersion = 16) {
-    const { rowCount, sizeMb } = stats;
+    const { rowCount = 0, sizeMb = 0 } = stats;
+    if (rowCount <= 0 && sizeMb <= 0) {
+      return {
+        seconds: 0,
+        formatted: 'N/A',
+        riskLevel: 'UNKNOWN (NO TABLE METRICS)'
+      };
+    }
+
     let seconds = 0;
 
     switch (violation.ruleId) {
       // ADD COLUMN with volatile DEFAULT
       case 'LG-001': {
-        // Table rewrite: approx 150k rows/sec on standard SSD
         seconds = Math.max(1, Math.round(rowCount / 150000) + Math.round(sizeMb / 300));
         break;
       }
 
       // Non-concurrent CREATE INDEX
       case 'LG-002': {
-        // Index build: approx 80k rows/sec
         seconds = Math.max(2, Math.round(rowCount / 80000));
         break;
       }
 
       // Foreign Key without NOT VALID
       case 'LG-003': {
-        // Sequential validation scan
         seconds = Math.max(1, Math.round(rowCount / 200000));
         break;
       }
 
       // ALTER COLUMN TYPE rewrite
       case 'LG-004': {
-        // Full table rewrite + index rebuilds
         seconds = Math.max(2, Math.round(rowCount / 100000) * 1.5);
         break;
       }
@@ -2025,13 +2274,25 @@ class ContextAnalyzer {
 
       // Immediate DROP COLUMN / TABLE
       case 'LG-006': {
-        seconds = 0.5; // Catalog lock is short, but breaks application queries
+        seconds = 0.5;
         break;
       }
 
       // Missing lock timeout
       case 'LG-008': {
-        seconds = 15; // Queue accumulation hazard
+        seconds = 15;
+        break;
+      }
+
+      // Unsafe SET NOT NULL
+      case 'LG-009': {
+        seconds = Math.max(2, Math.round(rowCount / 180000));
+        break;
+      }
+
+      // TRUNCATE / MATVIEW
+      case 'LG-012': {
+        seconds = Math.max(1, Math.round(rowCount / 250000));
         break;
       }
 
@@ -2053,25 +2314,86 @@ class ContextAnalyzer {
   }
 
   static generateContextualRiskMessage(violation, stats, lockDuration) {
+    if ((stats.rowCount || 0) <= 0 && (stats.sizeMb || 0) <= 0) {
+      return `Table '${violation.table}' live metrics unavailable. Operation will acquire ${violation.lockLevel} lock. Provide --schema-stats for estimated duration.`;
+    }
+
     const rowsFormatted = (stats.rowCount >= 1000000) 
-      ? (stats.rowCount / 1000000).toFixed(1) + ' млн строк'
-      : (stats.rowCount / 1000).toFixed(0) + ' тыс. строк';
+      ? (stats.rowCount / 1000000).toFixed(1) + 'M rows'
+      : (stats.rowCount / 1000).toFixed(0) + 'k rows';
 
     const sizeFormatted = (stats.sizeMb >= 1024)
       ? (stats.sizeMb / 1024).toFixed(1) + ' GB'
       : stats.sizeMb + ' MB';
 
-    return `Таблица '${violation.table}' содержит ${rowsFormatted} (~${sizeFormatted}). ` +
-      `Операция вызовет блокировку ${violation.lockLevel} минимум на ${lockDuration.formatted} ` +
-      `и заблокирует входящий трафик запросов. Расчетный риск: ${lockDuration.riskLevel}.`;
+    return `Table '${violation.table}' contains ${rowsFormatted} (~${sizeFormatted}). ` +
+      `Operation will hold ${violation.lockLevel} lock for at least ${lockDuration.formatted}, ` +
+      `blocking concurrent client traffic. Calculated risk: ${lockDuration.riskLevel}.`;
   }
 
   static formatSeconds(sec) {
-    if (sec < 1) return '< 1 сек';
-    if (sec < 60) return `${Math.round(sec)} сек`;
+    if (sec <= 0) return '0.0s';
+    if (sec < 1) return '< 1s';
+    if (sec < 60) return `${Math.round(sec)}s`;
     const mins = Math.floor(sec / 60);
     const rem = Math.round(sec % 60);
-    return `${mins} мин ${rem} сек`;
+    return `${mins}m ${rem}s`;
+  }
+
+  /**
+   * Retrieves table schema statistics from live PostgreSQL (via psql) or a local JSON file.
+   * @param {object} options { schemaStatsPath, useLiveDb, databaseUrl }
+   * @returns {object} { [tableName]: { rowCount: number, sizeMb: number } }
+   */
+  static fetchSchemaStats(options = {}) {
+    const fs = require('fs');
+    const path = require('path');
+
+    if (options.schemaStatsPath) {
+      const resolved = path.resolve(process.cwd(), options.schemaStatsPath);
+      if (fs.existsSync(resolved)) {
+        try {
+          const content = fs.readFileSync(resolved, 'utf8');
+          const parsed = JSON.parse(content);
+          const normalized = {};
+          for (const [key, val] of Object.entries(parsed)) {
+            normalized[key.toLowerCase()] = {
+              rowCount: val.rowCount || val.row_count || val.rows || 0,
+              sizeMb: val.sizeMb || val.size_mb || val.size || 0
+            };
+          }
+          return normalized;
+        } catch (err) {
+          console.warn(`⚠️ Warning: Failed to parse schema stats from ${options.schemaStatsPath}: ${err.message}`);
+        }
+      }
+    }
+
+    const dbUrl = options.databaseUrl || process.env.DATABASE_URL;
+    if (options.useLiveDb && dbUrl) {
+      try {
+        
+        const sql = `SELECT c.relname, c.reltuples::bigint, pg_total_relation_size(c.oid) / (1024*1024) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r';`;
+        const cmd = `psql "${dbUrl}" -t -A -F"," -c "${sql}"`;
+        const output = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+        const stats = {};
+        for (const line of output.trim().split('\n')) {
+          if (!line.trim()) continue;
+          const [table, rows, sizeMb] = line.split(',');
+          if (table) {
+            stats[table.trim().toLowerCase()] = {
+              rowCount: Math.max(0, parseInt(rows, 10) || 0),
+              sizeMb: Math.max(0, parseInt(sizeMb, 10) || 0)
+            };
+          }
+        }
+        return stats;
+      } catch (err) {
+        // Live psql query failed; fall through to empty stats
+      }
+    }
+
+    return {};
   }
 }
 
@@ -2153,6 +2475,15 @@ class ShadowReplaySimulator {
     const timeToExhaustSec = Number((poolSize / rps).toFixed(2));
     const isPoolExhausted = totalContentionMs > (timeToExhaustSec * 1000);
 
+    let outageSeverity = 'NONE';
+    if (isPoolExhausted || totalContentionMs >= 1000) {
+      outageSeverity = 'CATASTROPHIC';
+    } else if (totalContentionMs >= 300) {
+      outageSeverity = 'HIGH';
+    } else if (totalContentionMs > 0) {
+      outageSeverity = 'MODERATE';
+    }
+
     return {
       simulatedRows: rows,
       simulatedConcurrentRps: rps,
@@ -2161,13 +2492,14 @@ class ShadowReplaySimulator {
       lockContentionProbability: Number(lockContentionProb.toFixed(1)),
       timeToPoolExhaustionSec: timeToExhaustSec,
       isPoolExhausted,
+      outageSeverity,
       poolExhaustionWarning: isPoolExhausted
-        ? `При трафике ${rps} RPS пул PgBouncer (${poolSize} коннектов) забьется за ${timeToExhaustSec} сек! Все последующие запросы встанут в очередь или отвалятся по HTTP 504.`
-        : `Пул PgBouncer (${poolSize} коннектов) успеет обслужить трафик в пределах нормы.`,
+        ? `At ${rps} RPS traffic, PgBouncer pool (${poolSize} connections) will exhaust in ${timeToExhaustSec}s! Subsequent queries will queue up or fail with HTTP 504 Gateway Timeout.`
+        : `PgBouncer pool (${poolSize} connections) has sufficient buffer to absorb transient lock contention under normal load.`,
       totalLockWaitContentionMs: totalContentionMs,
       totalBlockedQueriesEstimated: simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0),
       tableSimulations: simulationResults,
-      summary: `Тест в песочнице на ${rows.toLocaleString()} строк показал суммарную задержку запросов ${totalContentionMs}ms, блокировку ~${simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0)} запросов и вероятность коллизии ${lockContentionProb.toFixed(1)}% на ${cpuCores} vCPU.`
+      summary: `Shadow simulation on ${rows.toLocaleString()} rows measured ${totalContentionMs}ms total query wait latency, blocking ~${simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0)} client queries with ${lockContentionProb.toFixed(1)}% lock collision probability across ${cpuCores} vCPUs.`
     };
   }
 }
@@ -2247,7 +2579,7 @@ class CascadeGraph {
             fkName: edge.fkName,
             columns: edge.columns,
             severity: 'HIGH',
-            warning: `Внимание: изменение таблицы '${targetTable}' заблокирует дочернюю таблицу '${edge.fromTable}', так как внешний ключ '${edge.fkName}' (${edge.fromTable}.${edge.columns.join(', ')}) не проиндексирован!`,
+            warning: `Warning: Altering parent table '${targetTable}' will cause lock escalation on child table '${edge.fromTable}' because foreign key '${edge.fkName}' (${edge.fromTable}.${edge.columns.join(', ')}) is not indexed!`,
             safeFix: `CREATE INDEX CONCURRENTLY idx_${edge.fromTable}_${edge.columns.join('_')} ON ${edge.fromTable} (${edge.columns.join(', ')});`
           });
         }

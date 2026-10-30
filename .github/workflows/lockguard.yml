@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,9 +36,18 @@ jobs:
       - name: Run Automated Test Suite
         run: npm test
 
-      - name: Run LockGuard Gatekeeper on Safe Demo
+      - name: Verify Gatekeeper Passes on Safe Migration (Exit Code 0)
         run: |
           node bin/lockguard.js check fixtures/10_safe_migration.sql --format=github-pr-comment --output=lockguard-pr-report.md
+
+      - name: Verify Gatekeeper Blocks Catastrophic Migrations (Exit Code 1)
+        run: |
+          if node bin/lockguard.js check fixtures/09_catastrophic_combined.sql; then
+            echo "::error::LockGuard failed to block dangerous migration! Expected exit code 1, but got exit code 0."
+            exit 1
+          else
+            echo "✔ LockGuard successfully detected fatal table locks and blocked the migration with exit code 1."
+          fi
 
       - name: Post Sticky PR Comment
         if: always() && github.event_name == 'pull_request'
@@ -45,11 +56,31 @@ jobs:
           script: |
             const fs = require('fs');
             if (fs.existsSync('lockguard-pr-report.md')) {
-              const body = fs.readFileSync('lockguard-pr-report.md', 'utf8');
-              github.rest.issues.createComment({
+              let body = fs.readFileSync('lockguard-pr-report.md', 'utf8');
+              if (!body.includes('<!-- lockguard-report -->')) {
+                body = '<!-- lockguard-report -->\n' + body;
+              }
+              const { data: comments } = await github.rest.issues.listComments({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: body
+                repo: context.repo.repo
               });
+              const botComment = comments.find(comment => 
+                comment.body && comment.body.includes('<!-- lockguard-report -->')
+              );
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: body
+                });
+              }
             }

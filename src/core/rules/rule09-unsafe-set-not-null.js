@@ -13,7 +13,7 @@ module.exports = {
     const createdTables = context.createdTables || new Set();
 
     // Track validated check constraints: "table:column"
-    const validatedChecks = new Set();
+    const validatedChecks = new Set(context.validatedChecks || (context.sharedState && context.sharedState.validatedChecks) || []);
     const candidateChecks = new Map(); // constraintName -> { table, column }
 
     for (const stmt of astStatements) {
@@ -30,6 +30,9 @@ module.exports = {
             if (candidateChecks.has(key)) {
               const info = candidateChecks.get(key);
               validatedChecks.add(`${info.table}:${info.column}`);
+              if (context.sharedState && context.sharedState.validatedChecks) {
+                context.sharedState.validatedChecks.add(`${info.table}:${info.column}`);
+              }
             }
           }
         }

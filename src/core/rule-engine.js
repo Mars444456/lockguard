@@ -1,4 +1,5 @@
 const PgParser = require('./pg-parser');
+const CascadeGraph = require('./cascade-graph');
 const { LockLevel, Severity, LockMatrix } = require('./types');
 
 const rule01 = require('./rules/rule01-add-column-default');
@@ -11,6 +12,8 @@ const rule07 = require('./rules/rule07-vacuum-in-transaction');
 const rule08 = require('./rules/rule08-missing-lock-timeout');
 const rule09 = require('./rules/rule09-unsafe-set-not-null');
 const rule10 = require('./rules/rule10-concurrently-in-transaction');
+const rule11 = require('./rules/rule11-unindexed-foreign-key');
+const rule12 = require('./rules/rule12-truncate-and-matview');
 
 class RuleEngine {
   constructor(customRules = null) {
@@ -24,7 +27,9 @@ class RuleEngine {
       rule07,
       rule08,
       rule09,
-      rule10
+      rule10,
+      rule11,
+      rule12
     ];
   }
 
@@ -45,7 +50,7 @@ class RuleEngine {
   /**
    * Analyzes SQL script and checks for dangerous table locks.
    * @param {string} sqlText 
-   * @param {object} options { filename, enabledRuleIds, failOnSeverity, ignoreRules }
+   * @param {object} options { filename, enabledRuleIds, failOnSeverity, ignoreRules, sharedState }
    */
   analyze(sqlText, options = {}) {
     const filename = options.filename || 'migration.sql';
@@ -56,24 +61,45 @@ class RuleEngine {
     // 1. Parse AST
     const astStatements = PgParser.parse(sqlText);
 
-    // 2. Build Context (Created tables in this migration, transaction state)
-    const createdTables = new Set();
+    // 2. Build Context (Created tables in this migration, transaction state, shared state)
+    const sharedState = options.sharedState || null;
+    const createdTables = new Set(sharedState ? Array.from(sharedState.createdTables || []) : []);
+    const createdIndexes = new Set(sharedState ? Array.from(sharedState.createdIndexes || []) : []);
+    const validatedChecks = new Set(sharedState ? Array.from(sharedState.validatedChecks || []) : []);
     let hasTransactionBlock = false;
 
     for (const stmt of astStatements) {
       if (stmt.type === 'CREATE_TABLE' && stmt.table) {
         createdTables.add(stmt.table.toLowerCase());
+        if (sharedState && sharedState.createdTables) {
+          sharedState.createdTables.add(stmt.table.toLowerCase());
+        }
+      }
+      if (stmt.type === 'CREATE_INDEX' && stmt.table && stmt.columns) {
+        for (const col of stmt.columns) {
+          createdIndexes.add(`${stmt.table.toLowerCase()}:${col.toLowerCase()}`);
+          if (sharedState && sharedState.createdIndexes) {
+            sharedState.createdIndexes.add(`${stmt.table.toLowerCase()}:${col.toLowerCase()}`);
+          }
+        }
       }
       if (stmt.type === 'TRANSACTION_START') {
         hasTransactionBlock = true;
       }
     }
 
+    const cascadeGraph = new CascadeGraph();
+    cascadeGraph.buildFromAst(astStatements);
+
     const context = {
       filename,
       sqlText,
       createdTables,
+      createdIndexes,
+      validatedChecks,
       hasTransactionBlock,
+      cascadeGraph,
+      sharedState,
       ...options
     };
 
@@ -121,7 +147,7 @@ class RuleEngine {
 
     const violations = rawViolations;
 
-    // 4. Determine Affected Tables
+    // 4. Determine Affected Tables (Including parent tables in Foreign Keys)
     const affectedTablesSet = new Set();
     for (const stmt of astStatements) {
       if (stmt.table && stmt.table !== 'global' && stmt.table !== 'unknown_table') {
@@ -130,10 +156,19 @@ class RuleEngine {
       if (stmt.tables) {
         stmt.tables.forEach(t => affectedTablesSet.add(t));
       }
+      if (stmt.subcommands) {
+        for (const sub of stmt.subcommands) {
+          if (sub.table) affectedTablesSet.add(sub.table);
+          if (sub.foreignTable) affectedTablesSet.add(sub.foreignTable);
+        }
+      }
     }
     for (const v of violations) {
       if (v.table && v.table !== 'global' && v.table !== 'unknown_table') {
         affectedTablesSet.add(v.table);
+      }
+      if (v.foreignTable) {
+        affectedTablesSet.add(v.foreignTable);
       }
     }
     const affectedTables = Array.from(affectedTablesSet);
@@ -179,16 +214,27 @@ class RuleEngine {
       s.type === 'DROP_TABLE' ||
       s.type === 'CREATE_TABLE' ||
       s.type === 'DROP_INDEX' ||
+      s.type === 'TRUNCATE_TABLE' ||
+      s.type === 'REFRESH_MATVIEW' ||
       s.type === 'VACUUM'
     );
     const isDmlOnly = !hasDdl && astStatements.length > 0;
 
+    const cascadeWarnings = [];
+    for (const table of affectedTables) {
+      const risks = cascadeGraph.findCascadeRisks(table);
+      for (const r of risks) {
+        cascadeWarnings.push(r);
+      }
+    }
+
     return {
       filename,
+      file: filename,
       status,
       passed,
       isDmlOnly,
-      dmlDescription: isDmlOnly ? 'Операция не является DDL-миграцией схемы (SELECT / DML чтение/запись данных). Блокировок DDL нет, простой базы: 0.0 сек.' : null,
+      dmlDescription: isDmlOnly ? 'Operation is not a schema DDL migration (SELECT / DML read/write). No DDL locks detected, estimated downtime: 0.0s.' : null,
       violationsCount: violations.length,
       criticalCount,
       highCount,
@@ -196,6 +242,7 @@ class RuleEngine {
       highestLockLevel: violations.length > 0 ? highestLock : LockLevel.ACCESS_SHARE,
       lockImpact: LockMatrix[highestLock] || null,
       affectedTables,
+      cascadeWarnings,
       violations,
       astStatementsCount: astStatements.length,
       analyzedAt: new Date().toISOString()

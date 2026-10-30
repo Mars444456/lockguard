@@ -17,7 +17,9 @@ module.exports = {
       s.type === 'CREATE_INDEX' || 
       s.type === 'DROP_TABLE' ||
       s.type === 'CREATE_TABLE' ||
-      s.type === 'DROP_INDEX'
+      s.type === 'DROP_INDEX' ||
+      s.type === 'TRUNCATE_TABLE' ||
+      s.type === 'REFRESH_MATVIEW'
     );
 
     if (!hasDdl) {
@@ -56,14 +58,36 @@ module.exports = {
     }
 
     return [
-      `-- Add lock_timeout at the top, and RESET at the end to prevent pooler (PgBouncer) connection contamination:`,
+      `-- Basic Pattern: Add lock_timeout at top and RESET at end:`,
       `SET lock_timeout = '3s';`,
       `SET statement_timeout = '30s';`,
       ``,
       `-- ... (your migration statements here) ...`,
       ``,
       `RESET lock_timeout;`,
-      `RESET statement_timeout;`
+      `RESET statement_timeout;`,
+      ``,
+      `-- Advanced Pattern: Zero-Downtime PL/pgSQL Lock-Retry loop:`,
+      `DO $$`,
+      `DECLARE`,
+      `  success BOOLEAN := FALSE;`,
+      `  attempts INT := 0;`,
+      `BEGIN`,
+      `  WHILE NOT success AND attempts < 5 LOOP`,
+      `    BEGIN`,
+      `      SET LOCAL lock_timeout = '2s';`,
+      `      -- (Run your DDL command here)`,
+      `      success := TRUE;`,
+      `      EXIT;`,
+      `    EXCEPTION WHEN lock_not_available THEN`,
+      `      attempts := attempts + 1;`,
+      `      PERFORM pg_sleep(1);`,
+      `    END;`,
+      `  END LOOP;`,
+      `  IF NOT success THEN`,
+      `    RAISE EXCEPTION 'Could not acquire lock after 5 attempts';`,
+      `  END IF;`,
+      `END $$;`
     ].join('\n');
   }
 };

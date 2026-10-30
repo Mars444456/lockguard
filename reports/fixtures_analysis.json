@@ -1,0 +1,1510 @@
+{
+  "version": "1.0.0",
+  "gatekeeper": "LockGuard",
+  "summary": {
+    "totalFiles": 10,
+    "passed": false,
+    "totalViolations": 20,
+    "criticalCount": 12,
+    "highCount": 7,
+    "mediumCount": 1
+  },
+  "violations": [
+    {
+      "ruleId": "LG-001",
+      "ruleCode": "ADD_COLUMN_WITH_DEFAULT",
+      "ruleName": "Adding column with volatile or non-trivial DEFAULT",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "orders",
+      "column": "created_at",
+      "defaultValue": "clock_timestamp()",
+      "isPhysicalTableRewrite": true,
+      "rewriteReason": "VOLATILE_FULL_REWRITE",
+      "line": 7,
+      "raw": "ADD COLUMN created_at TIMESTAMP DEFAULT clock_timestamp() NOT NULL",
+      "message": "Column 'created_at' on table 'orders' has a volatile DEFAULT 'clock_timestamp()'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!",
+      "file": "fixtures\\01_dangerous_add_column.sql",
+      "safeFix": "-- Step 1: Add column without default (instant metadata update, no full table rewrite)\nALTER TABLE orders ADD COLUMN created_at TEXT;\n\n-- Step 2: Set default for future rows\nALTER TABLE orders ALTER COLUMN created_at SET DEFAULT clock_timestamp();\n\n-- Step 3: Backfill existing rows in small batches (run separately to avoid table lock)\n-- UPDATE orders SET created_at = clock_timestamp() WHERE created_at IS NULL;\n\n-- Step 4: If NOT NULL is required, set it after backfill using zero-downtime pattern\n-- ALTER TABLE orders ADD CONSTRAINT orders_created_at_not_null CHECK (created_at IS NOT NULL) NOT VALID;\n-- ALTER TABLE orders VALIDATE CONSTRAINT orders_created_at_not_null;\n-- ALTER TABLE orders ALTER COLUMN created_at SET NOT NULL;\n-- ALTER TABLE orders DROP CONSTRAINT orders_created_at_not_null;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-001",
+      "ruleCode": "ADD_COLUMN_WITH_DEFAULT",
+      "ruleName": "Adding column with volatile or non-trivial DEFAULT",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "payments",
+      "column": "transaction_token",
+      "defaultValue": "gen_random_uuid()",
+      "isPhysicalTableRewrite": true,
+      "rewriteReason": "VOLATILE_FULL_REWRITE",
+      "line": 8,
+      "raw": "ADD COLUMN transaction_token UUID DEFAULT gen_random_uuid()",
+      "message": "Column 'transaction_token' on table 'payments' has a volatile DEFAULT 'gen_random_uuid()'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!",
+      "file": "fixtures\\01_dangerous_add_column.sql",
+      "safeFix": "-- Step 1: Add column without default (instant metadata update, no full table rewrite)\nALTER TABLE payments ADD COLUMN transaction_token TEXT;\n\n-- Step 2: Set default for future rows\nALTER TABLE payments ALTER COLUMN transaction_token SET DEFAULT gen_random_uuid();\n\n-- Step 3: Backfill existing rows in small batches (run separately to avoid table lock)\n-- UPDATE payments SET transaction_token = gen_random_uuid() WHERE transaction_token IS NULL;\n\n-- Step 4: If NOT NULL is required, set it after backfill using zero-downtime pattern\n-- ALTER TABLE payments ADD CONSTRAINT payments_transaction_token_not_null CHECK (transaction_token IS NOT NULL) NOT VALID;\n-- ALTER TABLE payments VALIDATE CONSTRAINT payments_transaction_token_not_null;\n-- ALTER TABLE payments ALTER COLUMN transaction_token SET NOT NULL;\n-- ALTER TABLE payments DROP CONSTRAINT payments_transaction_token_not_null;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-002",
+      "ruleCode": "CREATE_INDEX_NON_CONCURRENTLY",
+      "ruleName": "Creating index without CONCURRENTLY",
+      "severity": "CRITICAL",
+      "lockLevel": "SHARE",
+      "table": "users",
+      "indexName": "idx_users_email",
+      "columns": [
+        "email"
+      ],
+      "line": 7,
+      "raw": "CREATE INDEX idx_users_email ON users (email)",
+      "message": "Index 'idx_users_email' on table 'users' is created without CONCURRENTLY. This takes a SHARE lock and BLOCKS ALL WRITES on production!",
+      "file": "fixtures\\02_dangerous_create_index.sql",
+      "safeFix": "-- Safe alternative: Build index concurrently without blocking writes\n-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block\nCREATE INDEX CONCURRENTLY idx_users_email ON users (email);",
+      "lockDetails": {
+        "description": "Acquired by non-concurrent CREATE INDEX.",
+        "blocks": [
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "FATAL: BLOCKS ALL INSERTS, UPDATES, AND DELETES. Can cause 504 Gateway Timeouts."
+      }
+    },
+    {
+      "ruleId": "LG-002",
+      "ruleCode": "CREATE_INDEX_NON_CONCURRENTLY",
+      "ruleName": "Creating index without CONCURRENTLY",
+      "severity": "CRITICAL",
+      "lockLevel": "SHARE",
+      "table": "orders",
+      "indexName": "idx_orders_reference",
+      "columns": [
+        "reference_number"
+      ],
+      "line": 8,
+      "raw": "CREATE UNIQUE INDEX idx_orders_reference ON orders (reference_number)",
+      "message": "Index 'idx_orders_reference' on table 'orders' is created without CONCURRENTLY. This takes a SHARE lock and BLOCKS ALL WRITES on production!",
+      "file": "fixtures\\02_dangerous_create_index.sql",
+      "safeFix": "-- Safe alternative: Build index concurrently without blocking writes\n-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block\nCREATE INDEX CONCURRENTLY idx_orders_reference ON orders (reference_number);",
+      "lockDetails": {
+        "description": "Acquired by non-concurrent CREATE INDEX.",
+        "blocks": [
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "FATAL: BLOCKS ALL INSERTS, UPDATES, AND DELETES. Can cause 504 Gateway Timeouts."
+      }
+    },
+    {
+      "ruleId": "LG-003",
+      "ruleCode": "FOREIGN_KEY_WITHOUT_NOT_VALID",
+      "ruleName": "Adding Foreign Key without NOT VALID",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "order_items",
+      "constraintName": "fk_order_items_product",
+      "foreignTable": "products",
+      "columns": [
+        "product_id"
+      ],
+      "line": 7,
+      "raw": "ADD CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(id)",
+      "message": "Foreign Key 'fk_order_items_product' on 'order_items' referencing 'products' lacks 'NOT VALID'. It blocks all reads/writes during table validation!",
+      "file": "fixtures\\03_dangerous_fk.sql",
+      "safeFix": "-- Step 1: Add foreign key with NOT VALID (instant lock acquisition, no full table scan)\nALTER TABLE order_items ADD CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(id) NOT VALID;\n\n-- Step 2: Validate existing rows in a separate statement (acquires only SHARE UPDATE EXCLUSIVE - writes proceed!)\nALTER TABLE order_items VALIDATE CONSTRAINT fk_order_items_product;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-004",
+      "ruleCode": "ALTER_COLUMN_TYPE_REWRITE",
+      "ruleName": "Altering column type causing full table rewrite",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "invoices",
+      "column": "amount",
+      "newType": "BIGINT",
+      "line": 7,
+      "raw": "ALTER COLUMN amount TYPE BIGINT",
+      "message": "Altering type of column 'amount' to 'BIGINT' on table 'invoices' forces a full table rewrite on disk under ACCESS EXCLUSIVE lock!",
+      "file": "fixtures\\04_dangerous_alter_type.sql",
+      "safeFix": "-- Safe 4-phase transition without downtime (dual-writing pattern):\n-- Phase 1: Add new column without locking table\nALTER TABLE invoices ADD COLUMN amount_new BIGINT;\n\n-- Phase 2: Create trigger / dual-write in application code for incoming writes\n-- Backfill historical rows in small batches:\n-- UPDATE invoices SET amount_new = amount WHERE amount_new IS NULL;\n\n-- Phase 3: Rename columns in a quick metadata lock\n-- ALTER TABLE invoices RENAME COLUMN amount TO amount_old;\n-- ALTER TABLE invoices RENAME COLUMN amount_new TO amount;\n\n-- Phase 4: Drop old column in later release\n-- ALTER TABLE invoices DROP COLUMN amount_old;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-004",
+      "ruleCode": "ALTER_COLUMN_TYPE_REWRITE",
+      "ruleName": "Altering column type causing full table rewrite",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "user_profiles",
+      "column": "bio",
+      "newType": "VARCHAR(255)",
+      "line": 8,
+      "raw": "ALTER COLUMN bio TYPE VARCHAR(255)",
+      "message": "Altering type of column 'bio' to 'VARCHAR(255)' on table 'user_profiles' forces a full table rewrite on disk under ACCESS EXCLUSIVE lock!",
+      "file": "fixtures\\04_dangerous_alter_type.sql",
+      "safeFix": "-- Safe 4-phase transition without downtime (dual-writing pattern):\n-- Phase 1: Add new column without locking table\nALTER TABLE user_profiles ADD COLUMN bio_new VARCHAR(255);\n\n-- Phase 2: Create trigger / dual-write in application code for incoming writes\n-- Backfill historical rows in small batches:\n-- UPDATE user_profiles SET bio_new = bio WHERE bio_new IS NULL;\n\n-- Phase 3: Rename columns in a quick metadata lock\n-- ALTER TABLE user_profiles RENAME COLUMN bio TO bio_old;\n-- ALTER TABLE user_profiles RENAME COLUMN bio_new TO bio;\n\n-- Phase 4: Drop old column in later release\n-- ALTER TABLE user_profiles DROP COLUMN bio_old;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-005",
+      "ruleCode": "ADD_UNIQUE_CONSTRAINT_DIRECT",
+      "ruleName": "Adding UNIQUE constraint directly without concurrent index",
+      "severity": "HIGH",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "subscriptions",
+      "constraintName": "uq_subscriptions_user_plan",
+      "columns": [
+        "user_id",
+        "plan_id"
+      ],
+      "line": 7,
+      "raw": "ADD CONSTRAINT uq_subscriptions_user_plan UNIQUE (user_id, plan_id)",
+      "message": "UNIQUE constraint 'uq_subscriptions_user_plan' on 'subscriptions' is added directly. Use CREATE UNIQUE INDEX CONCURRENTLY + ADD CONSTRAINT USING INDEX instead.",
+      "file": "fixtures\\05_dangerous_unique.sql",
+      "safeFix": "-- Step 1: Create unique index concurrently without blocking writes\nCREATE UNIQUE INDEX CONCURRENTLY uq_subscriptions_user_plan_idx ON subscriptions (user_id, plan_id);\n\n-- Step 2: Attach constraint using existing index (instant catalog operation)\nALTER TABLE subscriptions ADD CONSTRAINT uq_subscriptions_user_plan UNIQUE USING INDEX uq_subscriptions_user_plan_idx;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-006",
+      "ruleCode": "DROP_TABLE_OR_COLUMN_DIRECT",
+      "ruleName": "Immediate DROP COLUMN or DROP TABLE in monolithic step",
+      "severity": "HIGH",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "customers",
+      "column": "legacy_address",
+      "line": 7,
+      "raw": "DROP COLUMN legacy_address",
+      "message": "DROP COLUMN 'legacy_address' on 'customers' executed directly. Ensure column is ignored in ORM (Prisma/Drizzle/Alembic) prior to dropping.",
+      "file": "fixtures\\06_dangerous_drop_column.sql",
+      "safeFix": "-- Safe 3-Phase Deprecation Workflow:\n-- Phase 1: Deploy code ignoring the column in your ORM (e.g. Prisma @ignore or schema exclude)\n-- Phase 2: Verify zero active queries access the column\n-- Phase 3: Drop column safely:\nALTER TABLE customers DROP COLUMN IF EXISTS legacy_address;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-006",
+      "ruleCode": "DROP_TABLE_OR_COLUMN_DIRECT",
+      "ruleName": "Immediate DROP COLUMN or DROP TABLE in monolithic step",
+      "severity": "HIGH",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "legacy_audit_logs",
+      "line": 8,
+      "raw": "DROP TABLE legacy_audit_logs",
+      "message": "DROP TABLE 'legacy_audit_logs' in single step. Ensure tables are completely removed from ORM and all services before dropping.",
+      "file": "fixtures\\06_dangerous_drop_column.sql",
+      "safeFix": "-- Safe 3-Phase Deprecation Workflow:\n-- Phase 1: Deploy code ignoring the column in your ORM (e.g. Prisma @ignore or schema exclude)\n-- Phase 2: Verify zero active queries access the column\n-- Phase 3: Drop column safely:\nALTER TABLE legacy_audit_logs DROP COLUMN IF EXISTS old_column;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-007",
+      "ruleCode": "UNSAFE_VACUUM_IN_TRANSACTION",
+      "ruleName": "VACUUM or autovacuum storage parameter changes inside migration transaction",
+      "severity": "MEDIUM",
+      "lockLevel": "SHARE UPDATE EXCLUSIVE",
+      "table": "event_logs",
+      "line": 9,
+      "raw": "SET (autovacuum_enabled = false)",
+      "message": "Changing autovacuum settings (autovacuum_enabled = false) on table 'event_logs' inside migration script. Run outside migration transactions.",
+      "file": "fixtures\\07_dangerous_vacuum.sql",
+      "safeFix": "-- Run maintenance operations outside transactional migration scripts:\n-- e.g. run via standalone DBA job or pg_cron:\nALTER TABLE event_logs SET (autovacuum_vacuum_scale_factor = 0.05);",
+      "lockDetails": {
+        "description": "Acquired by CREATE INDEX CONCURRENTLY, VACUUM (without FULL), ANALYZE, ALTER TABLE VALIDATE CONSTRAINT.",
+        "blocks": [
+          "SHARE_UPDATE_EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "Safe for production! Allows concurrent SELECT, INSERT, UPDATE, DELETE."
+      }
+    },
+    {
+      "ruleId": "LG-007",
+      "ruleCode": "UNSAFE_VACUUM_IN_TRANSACTION",
+      "ruleName": "VACUUM or autovacuum storage parameter changes inside migration transaction",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "all",
+      "line": 10,
+      "raw": "VACUUM FULL event_logs",
+      "message": "VACUUM FULL locks tables completely (ACCESS EXCLUSIVE) and cannot be executed in standard migrations!",
+      "file": "fixtures\\07_dangerous_vacuum.sql",
+      "safeFix": "-- Run maintenance operations outside transactional migration scripts:\n-- e.g. run via standalone DBA job or pg_cron:\nALTER TABLE all SET (autovacuum_vacuum_scale_factor = 0.05);",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-008",
+      "ruleCode": "MISSING_LOCK_TIMEOUT",
+      "ruleName": "Missing SET lock_timeout directive in migration",
+      "severity": "HIGH",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "global",
+      "line": 1,
+      "raw": "-- (Header of migration file)",
+      "message": "No `SET lock_timeout` found in migration! If table locks cannot be acquired immediately, this migration will block all production traffic behind it.",
+      "file": "fixtures\\08_missing_lock_timeout.sql",
+      "safeFix": "-- Add lock_timeout at the top, and RESET at the end to prevent pooler (PgBouncer) connection contamination:\nSET lock_timeout = '3s';\nSET statement_timeout = '30s';\n\n-- ... (your migration statements here) ...\n\nRESET lock_timeout;\nRESET statement_timeout;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-001",
+      "ruleCode": "ADD_COLUMN_WITH_DEFAULT",
+      "ruleName": "Adding column with volatile or non-trivial DEFAULT",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "accounts",
+      "column": "token",
+      "defaultValue": "gen_random_uuid()",
+      "isPhysicalTableRewrite": true,
+      "rewriteReason": "VOLATILE_FULL_REWRITE",
+      "line": 11,
+      "raw": "ADD COLUMN token UUID DEFAULT gen_random_uuid() NOT NULL",
+      "message": "Column 'token' on table 'accounts' has a volatile DEFAULT 'gen_random_uuid()'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "safeFix": "-- Step 1: Add column without default (instant metadata update, no full table rewrite)\nALTER TABLE accounts ADD COLUMN token TEXT;\n\n-- Step 2: Set default for future rows\nALTER TABLE accounts ALTER COLUMN token SET DEFAULT gen_random_uuid();\n\n-- Step 3: Backfill existing rows in small batches (run separately to avoid table lock)\n-- UPDATE accounts SET token = gen_random_uuid() WHERE token IS NULL;\n\n-- Step 4: If NOT NULL is required, set it after backfill using zero-downtime pattern\n-- ALTER TABLE accounts ADD CONSTRAINT accounts_token_not_null CHECK (token IS NOT NULL) NOT VALID;\n-- ALTER TABLE accounts VALIDATE CONSTRAINT accounts_token_not_null;\n-- ALTER TABLE accounts ALTER COLUMN token SET NOT NULL;\n-- ALTER TABLE accounts DROP CONSTRAINT accounts_token_not_null;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-002",
+      "ruleCode": "CREATE_INDEX_NON_CONCURRENTLY",
+      "ruleName": "Creating index without CONCURRENTLY",
+      "severity": "CRITICAL",
+      "lockLevel": "SHARE",
+      "table": "transactions",
+      "indexName": "idx_transactions_created_at",
+      "columns": [
+        "created_at"
+      ],
+      "line": 8,
+      "raw": "CREATE INDEX idx_transactions_created_at ON transactions (created_at)",
+      "message": "Index 'idx_transactions_created_at' on table 'transactions' is created without CONCURRENTLY. This takes a SHARE lock and BLOCKS ALL WRITES on production!",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "safeFix": "-- Safe alternative: Build index concurrently without blocking writes\n-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block\nCREATE INDEX CONCURRENTLY idx_transactions_created_at ON transactions (created_at);",
+      "lockDetails": {
+        "description": "Acquired by non-concurrent CREATE INDEX.",
+        "blocks": [
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "FATAL: BLOCKS ALL INSERTS, UPDATES, AND DELETES. Can cause 504 Gateway Timeouts."
+      }
+    },
+    {
+      "ruleId": "LG-003",
+      "ruleCode": "FOREIGN_KEY_WITHOUT_NOT_VALID",
+      "ruleName": "Adding Foreign Key without NOT VALID",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "transactions",
+      "constraintName": "fk_tx_account",
+      "foreignTable": "accounts",
+      "columns": [
+        "account_id"
+      ],
+      "line": 14,
+      "raw": "ADD CONSTRAINT fk_tx_account FOREIGN KEY (account_id) REFERENCES accounts(id)",
+      "message": "Foreign Key 'fk_tx_account' on 'transactions' referencing 'accounts' lacks 'NOT VALID'. It blocks all reads/writes during table validation!",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "safeFix": "-- Step 1: Add foreign key with NOT VALID (instant lock acquisition, no full table scan)\nALTER TABLE transactions ADD CONSTRAINT fk_tx_account FOREIGN KEY (account_id) REFERENCES accounts(id) NOT VALID;\n\n-- Step 2: Validate existing rows in a separate statement (acquires only SHARE UPDATE EXCLUSIVE - writes proceed!)\nALTER TABLE transactions VALIDATE CONSTRAINT fk_tx_account;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-004",
+      "ruleCode": "ALTER_COLUMN_TYPE_REWRITE",
+      "ruleName": "Altering column type causing full table rewrite",
+      "severity": "CRITICAL",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "transactions",
+      "column": "amount",
+      "newType": "NUMERIC(18, 4)",
+      "line": 20,
+      "raw": "ALTER COLUMN amount TYPE NUMERIC(18, 4)",
+      "message": "Altering type of column 'amount' to 'NUMERIC(18, 4)' on table 'transactions' forces a full table rewrite on disk under ACCESS EXCLUSIVE lock!",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "safeFix": "-- Safe 4-phase transition without downtime (dual-writing pattern):\n-- Phase 1: Add new column without locking table\nALTER TABLE transactions ADD COLUMN amount_new NUMERIC(18, 4);\n\n-- Phase 2: Create trigger / dual-write in application code for incoming writes\n-- Backfill historical rows in small batches:\n-- UPDATE transactions SET amount_new = amount WHERE amount_new IS NULL;\n\n-- Phase 3: Rename columns in a quick metadata lock\n-- ALTER TABLE transactions RENAME COLUMN amount TO amount_old;\n-- ALTER TABLE transactions RENAME COLUMN amount_new TO amount;\n\n-- Phase 4: Drop old column in later release\n-- ALTER TABLE transactions DROP COLUMN amount_old;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-005",
+      "ruleCode": "ADD_UNIQUE_CONSTRAINT_DIRECT",
+      "ruleName": "Adding UNIQUE constraint directly without concurrent index",
+      "severity": "HIGH",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "accounts",
+      "constraintName": "uq_account_iban",
+      "columns": [
+        "iban"
+      ],
+      "line": 23,
+      "raw": "ADD CONSTRAINT uq_account_iban UNIQUE (iban)",
+      "message": "UNIQUE constraint 'uq_account_iban' on 'accounts' is added directly. Use CREATE UNIQUE INDEX CONCURRENTLY + ADD CONSTRAINT USING INDEX instead.",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "safeFix": "-- Step 1: Create unique index concurrently without blocking writes\nCREATE UNIQUE INDEX CONCURRENTLY uq_account_iban_idx ON accounts (iban);\n\n-- Step 2: Attach constraint using existing index (instant catalog operation)\nALTER TABLE accounts ADD CONSTRAINT uq_account_iban UNIQUE USING INDEX uq_account_iban_idx;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-006",
+      "ruleCode": "DROP_TABLE_OR_COLUMN_DIRECT",
+      "ruleName": "Immediate DROP COLUMN or DROP TABLE in monolithic step",
+      "severity": "HIGH",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "accounts",
+      "column": "legacy_pin",
+      "line": 26,
+      "raw": "DROP COLUMN legacy_pin",
+      "message": "DROP COLUMN 'legacy_pin' on 'accounts' executed directly. Ensure column is ignored in ORM (Prisma/Drizzle/Alembic) prior to dropping.",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "safeFix": "-- Safe 3-Phase Deprecation Workflow:\n-- Phase 1: Deploy code ignoring the column in your ORM (e.g. Prisma @ignore or schema exclude)\n-- Phase 2: Verify zero active queries access the column\n-- Phase 3: Drop column safely:\nALTER TABLE accounts DROP COLUMN IF EXISTS legacy_pin;",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    },
+    {
+      "ruleId": "LG-008",
+      "ruleCode": "MISSING_LOCK_TIMEOUT",
+      "ruleName": "Missing SET lock_timeout directive in migration",
+      "severity": "HIGH",
+      "lockLevel": "ACCESS EXCLUSIVE",
+      "table": "global",
+      "line": 1,
+      "raw": "-- (Header of migration file)",
+      "message": "No `SET lock_timeout` found in migration! If table locks cannot be acquired immediately, this migration will block all production traffic behind it.",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "safeFix": "-- Migration runs inside a transaction block. Use SET LOCAL to scope lock_timeout to this transaction:\nSET LOCAL lock_timeout = '3s';\nSET LOCAL statement_timeout = '30s';",
+      "lockDetails": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      }
+    }
+  ],
+  "results": [
+    {
+      "filename": "fixtures\\01_dangerous_add_column.sql",
+      "file": "fixtures\\01_dangerous_add_column.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 2,
+      "criticalCount": 2,
+      "highCount": 0,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "orders",
+        "payments"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-001",
+          "ruleCode": "ADD_COLUMN_WITH_DEFAULT",
+          "ruleName": "Adding column with volatile or non-trivial DEFAULT",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "orders",
+          "column": "created_at",
+          "defaultValue": "clock_timestamp()",
+          "isPhysicalTableRewrite": true,
+          "rewriteReason": "VOLATILE_FULL_REWRITE",
+          "line": 7,
+          "raw": "ADD COLUMN created_at TIMESTAMP DEFAULT clock_timestamp() NOT NULL",
+          "message": "Column 'created_at' on table 'orders' has a volatile DEFAULT 'clock_timestamp()'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!",
+          "file": "fixtures\\01_dangerous_add_column.sql",
+          "safeFix": "-- Step 1: Add column without default (instant metadata update, no full table rewrite)\nALTER TABLE orders ADD COLUMN created_at TEXT;\n\n-- Step 2: Set default for future rows\nALTER TABLE orders ALTER COLUMN created_at SET DEFAULT clock_timestamp();\n\n-- Step 3: Backfill existing rows in small batches (run separately to avoid table lock)\n-- UPDATE orders SET created_at = clock_timestamp() WHERE created_at IS NULL;\n\n-- Step 4: If NOT NULL is required, set it after backfill using zero-downtime pattern\n-- ALTER TABLE orders ADD CONSTRAINT orders_created_at_not_null CHECK (created_at IS NOT NULL) NOT VALID;\n-- ALTER TABLE orders VALIDATE CONSTRAINT orders_created_at_not_null;\n-- ALTER TABLE orders ALTER COLUMN created_at SET NOT NULL;\n-- ALTER TABLE orders DROP CONSTRAINT orders_created_at_not_null;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-001",
+          "ruleCode": "ADD_COLUMN_WITH_DEFAULT",
+          "ruleName": "Adding column with volatile or non-trivial DEFAULT",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "payments",
+          "column": "transaction_token",
+          "defaultValue": "gen_random_uuid()",
+          "isPhysicalTableRewrite": true,
+          "rewriteReason": "VOLATILE_FULL_REWRITE",
+          "line": 8,
+          "raw": "ADD COLUMN transaction_token UUID DEFAULT gen_random_uuid()",
+          "message": "Column 'transaction_token' on table 'payments' has a volatile DEFAULT 'gen_random_uuid()'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!",
+          "file": "fixtures\\01_dangerous_add_column.sql",
+          "safeFix": "-- Step 1: Add column without default (instant metadata update, no full table rewrite)\nALTER TABLE payments ADD COLUMN transaction_token TEXT;\n\n-- Step 2: Set default for future rows\nALTER TABLE payments ALTER COLUMN transaction_token SET DEFAULT gen_random_uuid();\n\n-- Step 3: Backfill existing rows in small batches (run separately to avoid table lock)\n-- UPDATE payments SET transaction_token = gen_random_uuid() WHERE transaction_token IS NULL;\n\n-- Step 4: If NOT NULL is required, set it after backfill using zero-downtime pattern\n-- ALTER TABLE payments ADD CONSTRAINT payments_transaction_token_not_null CHECK (transaction_token IS NOT NULL) NOT VALID;\n-- ALTER TABLE payments VALIDATE CONSTRAINT payments_transaction_token_not_null;\n-- ALTER TABLE payments ALTER COLUMN transaction_token SET NOT NULL;\n-- ALTER TABLE payments DROP CONSTRAINT payments_transaction_token_not_null;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 3,
+      "analyzedAt": "2026-10-30T05:45:16.599Z"
+    },
+    {
+      "filename": "fixtures\\02_dangerous_create_index.sql",
+      "file": "fixtures\\02_dangerous_create_index.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 2,
+      "criticalCount": 2,
+      "highCount": 0,
+      "mediumCount": 0,
+      "highestLockLevel": "SHARE",
+      "lockImpact": {
+        "description": "Acquired by non-concurrent CREATE INDEX.",
+        "blocks": [
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "FATAL: BLOCKS ALL INSERTS, UPDATES, AND DELETES. Can cause 504 Gateway Timeouts."
+      },
+      "affectedTables": [
+        "users",
+        "orders"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-002",
+          "ruleCode": "CREATE_INDEX_NON_CONCURRENTLY",
+          "ruleName": "Creating index without CONCURRENTLY",
+          "severity": "CRITICAL",
+          "lockLevel": "SHARE",
+          "table": "users",
+          "indexName": "idx_users_email",
+          "columns": [
+            "email"
+          ],
+          "line": 7,
+          "raw": "CREATE INDEX idx_users_email ON users (email)",
+          "message": "Index 'idx_users_email' on table 'users' is created without CONCURRENTLY. This takes a SHARE lock and BLOCKS ALL WRITES on production!",
+          "file": "fixtures\\02_dangerous_create_index.sql",
+          "safeFix": "-- Safe alternative: Build index concurrently without blocking writes\n-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block\nCREATE INDEX CONCURRENTLY idx_users_email ON users (email);",
+          "lockDetails": {
+            "description": "Acquired by non-concurrent CREATE INDEX.",
+            "blocks": [
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "FATAL: BLOCKS ALL INSERTS, UPDATES, AND DELETES. Can cause 504 Gateway Timeouts."
+          }
+        },
+        {
+          "ruleId": "LG-002",
+          "ruleCode": "CREATE_INDEX_NON_CONCURRENTLY",
+          "ruleName": "Creating index without CONCURRENTLY",
+          "severity": "CRITICAL",
+          "lockLevel": "SHARE",
+          "table": "orders",
+          "indexName": "idx_orders_reference",
+          "columns": [
+            "reference_number"
+          ],
+          "line": 8,
+          "raw": "CREATE UNIQUE INDEX idx_orders_reference ON orders (reference_number)",
+          "message": "Index 'idx_orders_reference' on table 'orders' is created without CONCURRENTLY. This takes a SHARE lock and BLOCKS ALL WRITES on production!",
+          "file": "fixtures\\02_dangerous_create_index.sql",
+          "safeFix": "-- Safe alternative: Build index concurrently without blocking writes\n-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block\nCREATE INDEX CONCURRENTLY idx_orders_reference ON orders (reference_number);",
+          "lockDetails": {
+            "description": "Acquired by non-concurrent CREATE INDEX.",
+            "blocks": [
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "FATAL: BLOCKS ALL INSERTS, UPDATES, AND DELETES. Can cause 504 Gateway Timeouts."
+          }
+        }
+      ],
+      "astStatementsCount": 3,
+      "analyzedAt": "2026-10-30T05:45:16.602Z"
+    },
+    {
+      "filename": "fixtures\\03_dangerous_fk.sql",
+      "file": "fixtures\\03_dangerous_fk.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 1,
+      "criticalCount": 1,
+      "highCount": 0,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "order_items"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-003",
+          "ruleCode": "FOREIGN_KEY_WITHOUT_NOT_VALID",
+          "ruleName": "Adding Foreign Key without NOT VALID",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "order_items",
+          "constraintName": "fk_order_items_product",
+          "foreignTable": "products",
+          "columns": [
+            "product_id"
+          ],
+          "line": 7,
+          "raw": "ADD CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(id)",
+          "message": "Foreign Key 'fk_order_items_product' on 'order_items' referencing 'products' lacks 'NOT VALID'. It blocks all reads/writes during table validation!",
+          "file": "fixtures\\03_dangerous_fk.sql",
+          "safeFix": "-- Step 1: Add foreign key with NOT VALID (instant lock acquisition, no full table scan)\nALTER TABLE order_items ADD CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(id) NOT VALID;\n\n-- Step 2: Validate existing rows in a separate statement (acquires only SHARE UPDATE EXCLUSIVE - writes proceed!)\nALTER TABLE order_items VALIDATE CONSTRAINT fk_order_items_product;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 2,
+      "analyzedAt": "2026-10-30T05:45:16.604Z"
+    },
+    {
+      "filename": "fixtures\\04_dangerous_alter_type.sql",
+      "file": "fixtures\\04_dangerous_alter_type.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 2,
+      "criticalCount": 2,
+      "highCount": 0,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "invoices",
+        "user_profiles"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-004",
+          "ruleCode": "ALTER_COLUMN_TYPE_REWRITE",
+          "ruleName": "Altering column type causing full table rewrite",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "invoices",
+          "column": "amount",
+          "newType": "BIGINT",
+          "line": 7,
+          "raw": "ALTER COLUMN amount TYPE BIGINT",
+          "message": "Altering type of column 'amount' to 'BIGINT' on table 'invoices' forces a full table rewrite on disk under ACCESS EXCLUSIVE lock!",
+          "file": "fixtures\\04_dangerous_alter_type.sql",
+          "safeFix": "-- Safe 4-phase transition without downtime (dual-writing pattern):\n-- Phase 1: Add new column without locking table\nALTER TABLE invoices ADD COLUMN amount_new BIGINT;\n\n-- Phase 2: Create trigger / dual-write in application code for incoming writes\n-- Backfill historical rows in small batches:\n-- UPDATE invoices SET amount_new = amount WHERE amount_new IS NULL;\n\n-- Phase 3: Rename columns in a quick metadata lock\n-- ALTER TABLE invoices RENAME COLUMN amount TO amount_old;\n-- ALTER TABLE invoices RENAME COLUMN amount_new TO amount;\n\n-- Phase 4: Drop old column in later release\n-- ALTER TABLE invoices DROP COLUMN amount_old;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-004",
+          "ruleCode": "ALTER_COLUMN_TYPE_REWRITE",
+          "ruleName": "Altering column type causing full table rewrite",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "user_profiles",
+          "column": "bio",
+          "newType": "VARCHAR(255)",
+          "line": 8,
+          "raw": "ALTER COLUMN bio TYPE VARCHAR(255)",
+          "message": "Altering type of column 'bio' to 'VARCHAR(255)' on table 'user_profiles' forces a full table rewrite on disk under ACCESS EXCLUSIVE lock!",
+          "file": "fixtures\\04_dangerous_alter_type.sql",
+          "safeFix": "-- Safe 4-phase transition without downtime (dual-writing pattern):\n-- Phase 1: Add new column without locking table\nALTER TABLE user_profiles ADD COLUMN bio_new VARCHAR(255);\n\n-- Phase 2: Create trigger / dual-write in application code for incoming writes\n-- Backfill historical rows in small batches:\n-- UPDATE user_profiles SET bio_new = bio WHERE bio_new IS NULL;\n\n-- Phase 3: Rename columns in a quick metadata lock\n-- ALTER TABLE user_profiles RENAME COLUMN bio TO bio_old;\n-- ALTER TABLE user_profiles RENAME COLUMN bio_new TO bio;\n\n-- Phase 4: Drop old column in later release\n-- ALTER TABLE user_profiles DROP COLUMN bio_old;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 3,
+      "analyzedAt": "2026-10-30T05:45:16.605Z"
+    },
+    {
+      "filename": "fixtures\\05_dangerous_unique.sql",
+      "file": "fixtures\\05_dangerous_unique.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 1,
+      "criticalCount": 0,
+      "highCount": 1,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "subscriptions"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-005",
+          "ruleCode": "ADD_UNIQUE_CONSTRAINT_DIRECT",
+          "ruleName": "Adding UNIQUE constraint directly without concurrent index",
+          "severity": "HIGH",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "subscriptions",
+          "constraintName": "uq_subscriptions_user_plan",
+          "columns": [
+            "user_id",
+            "plan_id"
+          ],
+          "line": 7,
+          "raw": "ADD CONSTRAINT uq_subscriptions_user_plan UNIQUE (user_id, plan_id)",
+          "message": "UNIQUE constraint 'uq_subscriptions_user_plan' on 'subscriptions' is added directly. Use CREATE UNIQUE INDEX CONCURRENTLY + ADD CONSTRAINT USING INDEX instead.",
+          "file": "fixtures\\05_dangerous_unique.sql",
+          "safeFix": "-- Step 1: Create unique index concurrently without blocking writes\nCREATE UNIQUE INDEX CONCURRENTLY uq_subscriptions_user_plan_idx ON subscriptions (user_id, plan_id);\n\n-- Step 2: Attach constraint using existing index (instant catalog operation)\nALTER TABLE subscriptions ADD CONSTRAINT uq_subscriptions_user_plan UNIQUE USING INDEX uq_subscriptions_user_plan_idx;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 2,
+      "analyzedAt": "2026-10-30T05:45:16.607Z"
+    },
+    {
+      "filename": "fixtures\\06_dangerous_drop_column.sql",
+      "file": "fixtures\\06_dangerous_drop_column.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 2,
+      "criticalCount": 0,
+      "highCount": 2,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "customers",
+        "legacy_audit_logs"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-006",
+          "ruleCode": "DROP_TABLE_OR_COLUMN_DIRECT",
+          "ruleName": "Immediate DROP COLUMN or DROP TABLE in monolithic step",
+          "severity": "HIGH",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "customers",
+          "column": "legacy_address",
+          "line": 7,
+          "raw": "DROP COLUMN legacy_address",
+          "message": "DROP COLUMN 'legacy_address' on 'customers' executed directly. Ensure column is ignored in ORM (Prisma/Drizzle/Alembic) prior to dropping.",
+          "file": "fixtures\\06_dangerous_drop_column.sql",
+          "safeFix": "-- Safe 3-Phase Deprecation Workflow:\n-- Phase 1: Deploy code ignoring the column in your ORM (e.g. Prisma @ignore or schema exclude)\n-- Phase 2: Verify zero active queries access the column\n-- Phase 3: Drop column safely:\nALTER TABLE customers DROP COLUMN IF EXISTS legacy_address;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-006",
+          "ruleCode": "DROP_TABLE_OR_COLUMN_DIRECT",
+          "ruleName": "Immediate DROP COLUMN or DROP TABLE in monolithic step",
+          "severity": "HIGH",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "legacy_audit_logs",
+          "line": 8,
+          "raw": "DROP TABLE legacy_audit_logs",
+          "message": "DROP TABLE 'legacy_audit_logs' in single step. Ensure tables are completely removed from ORM and all services before dropping.",
+          "file": "fixtures\\06_dangerous_drop_column.sql",
+          "safeFix": "-- Safe 3-Phase Deprecation Workflow:\n-- Phase 1: Deploy code ignoring the column in your ORM (e.g. Prisma @ignore or schema exclude)\n-- Phase 2: Verify zero active queries access the column\n-- Phase 3: Drop column safely:\nALTER TABLE legacy_audit_logs DROP COLUMN IF EXISTS old_column;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 3,
+      "analyzedAt": "2026-10-30T05:45:16.608Z"
+    },
+    {
+      "filename": "fixtures\\07_dangerous_vacuum.sql",
+      "file": "fixtures\\07_dangerous_vacuum.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 2,
+      "criticalCount": 1,
+      "highCount": 0,
+      "mediumCount": 1,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "event_logs",
+        "all"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-007",
+          "ruleCode": "UNSAFE_VACUUM_IN_TRANSACTION",
+          "ruleName": "VACUUM or autovacuum storage parameter changes inside migration transaction",
+          "severity": "MEDIUM",
+          "lockLevel": "SHARE UPDATE EXCLUSIVE",
+          "table": "event_logs",
+          "line": 9,
+          "raw": "SET (autovacuum_enabled = false)",
+          "message": "Changing autovacuum settings (autovacuum_enabled = false) on table 'event_logs' inside migration script. Run outside migration transactions.",
+          "file": "fixtures\\07_dangerous_vacuum.sql",
+          "safeFix": "-- Run maintenance operations outside transactional migration scripts:\n-- e.g. run via standalone DBA job or pg_cron:\nALTER TABLE event_logs SET (autovacuum_vacuum_scale_factor = 0.05);",
+          "lockDetails": {
+            "description": "Acquired by CREATE INDEX CONCURRENTLY, VACUUM (without FULL), ANALYZE, ALTER TABLE VALIDATE CONSTRAINT.",
+            "blocks": [
+              "SHARE_UPDATE_EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "Safe for production! Allows concurrent SELECT, INSERT, UPDATE, DELETE."
+          }
+        },
+        {
+          "ruleId": "LG-007",
+          "ruleCode": "UNSAFE_VACUUM_IN_TRANSACTION",
+          "ruleName": "VACUUM or autovacuum storage parameter changes inside migration transaction",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "all",
+          "line": 10,
+          "raw": "VACUUM FULL event_logs",
+          "message": "VACUUM FULL locks tables completely (ACCESS EXCLUSIVE) and cannot be executed in standard migrations!",
+          "file": "fixtures\\07_dangerous_vacuum.sql",
+          "safeFix": "-- Run maintenance operations outside transactional migration scripts:\n-- e.g. run via standalone DBA job or pg_cron:\nALTER TABLE all SET (autovacuum_vacuum_scale_factor = 0.05);",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 5,
+      "analyzedAt": "2026-10-30T05:45:16.609Z"
+    },
+    {
+      "filename": "fixtures\\08_missing_lock_timeout.sql",
+      "file": "fixtures\\08_missing_lock_timeout.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 1,
+      "criticalCount": 0,
+      "highCount": 1,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "users"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-008",
+          "ruleCode": "MISSING_LOCK_TIMEOUT",
+          "ruleName": "Missing SET lock_timeout directive in migration",
+          "severity": "HIGH",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "global",
+          "line": 1,
+          "raw": "-- (Header of migration file)",
+          "message": "No `SET lock_timeout` found in migration! If table locks cannot be acquired immediately, this migration will block all production traffic behind it.",
+          "file": "fixtures\\08_missing_lock_timeout.sql",
+          "safeFix": "-- Add lock_timeout at the top, and RESET at the end to prevent pooler (PgBouncer) connection contamination:\nSET lock_timeout = '3s';\nSET statement_timeout = '30s';\n\n-- ... (your migration statements here) ...\n\nRESET lock_timeout;\nRESET statement_timeout;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 1,
+      "analyzedAt": "2026-10-30T05:45:16.611Z"
+    },
+    {
+      "filename": "fixtures\\09_catastrophic_combined.sql",
+      "file": "fixtures\\09_catastrophic_combined.sql",
+      "status": "FAILED",
+      "passed": false,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 7,
+      "criticalCount": 4,
+      "highCount": 3,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS EXCLUSIVE",
+      "lockImpact": {
+        "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+        "blocks": [
+          "ACCESS SHARE",
+          "ROW SHARE",
+          "ROW EXCLUSIVE",
+          "SHARE UPDATE EXCLUSIVE",
+          "SHARE",
+          "SHARE ROW EXCLUSIVE",
+          "EXCLUSIVE",
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+      },
+      "affectedTables": [
+        "transactions",
+        "accounts"
+      ],
+      "violations": [
+        {
+          "ruleId": "LG-001",
+          "ruleCode": "ADD_COLUMN_WITH_DEFAULT",
+          "ruleName": "Adding column with volatile or non-trivial DEFAULT",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "accounts",
+          "column": "token",
+          "defaultValue": "gen_random_uuid()",
+          "isPhysicalTableRewrite": true,
+          "rewriteReason": "VOLATILE_FULL_REWRITE",
+          "line": 11,
+          "raw": "ADD COLUMN token UUID DEFAULT gen_random_uuid() NOT NULL",
+          "message": "Column 'token' on table 'accounts' has a volatile DEFAULT 'gen_random_uuid()'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!",
+          "file": "fixtures\\09_catastrophic_combined.sql",
+          "safeFix": "-- Step 1: Add column without default (instant metadata update, no full table rewrite)\nALTER TABLE accounts ADD COLUMN token TEXT;\n\n-- Step 2: Set default for future rows\nALTER TABLE accounts ALTER COLUMN token SET DEFAULT gen_random_uuid();\n\n-- Step 3: Backfill existing rows in small batches (run separately to avoid table lock)\n-- UPDATE accounts SET token = gen_random_uuid() WHERE token IS NULL;\n\n-- Step 4: If NOT NULL is required, set it after backfill using zero-downtime pattern\n-- ALTER TABLE accounts ADD CONSTRAINT accounts_token_not_null CHECK (token IS NOT NULL) NOT VALID;\n-- ALTER TABLE accounts VALIDATE CONSTRAINT accounts_token_not_null;\n-- ALTER TABLE accounts ALTER COLUMN token SET NOT NULL;\n-- ALTER TABLE accounts DROP CONSTRAINT accounts_token_not_null;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-002",
+          "ruleCode": "CREATE_INDEX_NON_CONCURRENTLY",
+          "ruleName": "Creating index without CONCURRENTLY",
+          "severity": "CRITICAL",
+          "lockLevel": "SHARE",
+          "table": "transactions",
+          "indexName": "idx_transactions_created_at",
+          "columns": [
+            "created_at"
+          ],
+          "line": 8,
+          "raw": "CREATE INDEX idx_transactions_created_at ON transactions (created_at)",
+          "message": "Index 'idx_transactions_created_at' on table 'transactions' is created without CONCURRENTLY. This takes a SHARE lock and BLOCKS ALL WRITES on production!",
+          "file": "fixtures\\09_catastrophic_combined.sql",
+          "safeFix": "-- Safe alternative: Build index concurrently without blocking writes\n-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block\nCREATE INDEX CONCURRENTLY idx_transactions_created_at ON transactions (created_at);",
+          "lockDetails": {
+            "description": "Acquired by non-concurrent CREATE INDEX.",
+            "blocks": [
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "FATAL: BLOCKS ALL INSERTS, UPDATES, AND DELETES. Can cause 504 Gateway Timeouts."
+          }
+        },
+        {
+          "ruleId": "LG-003",
+          "ruleCode": "FOREIGN_KEY_WITHOUT_NOT_VALID",
+          "ruleName": "Adding Foreign Key without NOT VALID",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "transactions",
+          "constraintName": "fk_tx_account",
+          "foreignTable": "accounts",
+          "columns": [
+            "account_id"
+          ],
+          "line": 14,
+          "raw": "ADD CONSTRAINT fk_tx_account FOREIGN KEY (account_id) REFERENCES accounts(id)",
+          "message": "Foreign Key 'fk_tx_account' on 'transactions' referencing 'accounts' lacks 'NOT VALID'. It blocks all reads/writes during table validation!",
+          "file": "fixtures\\09_catastrophic_combined.sql",
+          "safeFix": "-- Step 1: Add foreign key with NOT VALID (instant lock acquisition, no full table scan)\nALTER TABLE transactions ADD CONSTRAINT fk_tx_account FOREIGN KEY (account_id) REFERENCES accounts(id) NOT VALID;\n\n-- Step 2: Validate existing rows in a separate statement (acquires only SHARE UPDATE EXCLUSIVE - writes proceed!)\nALTER TABLE transactions VALIDATE CONSTRAINT fk_tx_account;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-004",
+          "ruleCode": "ALTER_COLUMN_TYPE_REWRITE",
+          "ruleName": "Altering column type causing full table rewrite",
+          "severity": "CRITICAL",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "transactions",
+          "column": "amount",
+          "newType": "NUMERIC(18, 4)",
+          "line": 20,
+          "raw": "ALTER COLUMN amount TYPE NUMERIC(18, 4)",
+          "message": "Altering type of column 'amount' to 'NUMERIC(18, 4)' on table 'transactions' forces a full table rewrite on disk under ACCESS EXCLUSIVE lock!",
+          "file": "fixtures\\09_catastrophic_combined.sql",
+          "safeFix": "-- Safe 4-phase transition without downtime (dual-writing pattern):\n-- Phase 1: Add new column without locking table\nALTER TABLE transactions ADD COLUMN amount_new NUMERIC(18, 4);\n\n-- Phase 2: Create trigger / dual-write in application code for incoming writes\n-- Backfill historical rows in small batches:\n-- UPDATE transactions SET amount_new = amount WHERE amount_new IS NULL;\n\n-- Phase 3: Rename columns in a quick metadata lock\n-- ALTER TABLE transactions RENAME COLUMN amount TO amount_old;\n-- ALTER TABLE transactions RENAME COLUMN amount_new TO amount;\n\n-- Phase 4: Drop old column in later release\n-- ALTER TABLE transactions DROP COLUMN amount_old;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-005",
+          "ruleCode": "ADD_UNIQUE_CONSTRAINT_DIRECT",
+          "ruleName": "Adding UNIQUE constraint directly without concurrent index",
+          "severity": "HIGH",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "accounts",
+          "constraintName": "uq_account_iban",
+          "columns": [
+            "iban"
+          ],
+          "line": 23,
+          "raw": "ADD CONSTRAINT uq_account_iban UNIQUE (iban)",
+          "message": "UNIQUE constraint 'uq_account_iban' on 'accounts' is added directly. Use CREATE UNIQUE INDEX CONCURRENTLY + ADD CONSTRAINT USING INDEX instead.",
+          "file": "fixtures\\09_catastrophic_combined.sql",
+          "safeFix": "-- Step 1: Create unique index concurrently without blocking writes\nCREATE UNIQUE INDEX CONCURRENTLY uq_account_iban_idx ON accounts (iban);\n\n-- Step 2: Attach constraint using existing index (instant catalog operation)\nALTER TABLE accounts ADD CONSTRAINT uq_account_iban UNIQUE USING INDEX uq_account_iban_idx;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-006",
+          "ruleCode": "DROP_TABLE_OR_COLUMN_DIRECT",
+          "ruleName": "Immediate DROP COLUMN or DROP TABLE in monolithic step",
+          "severity": "HIGH",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "accounts",
+          "column": "legacy_pin",
+          "line": 26,
+          "raw": "DROP COLUMN legacy_pin",
+          "message": "DROP COLUMN 'legacy_pin' on 'accounts' executed directly. Ensure column is ignored in ORM (Prisma/Drizzle/Alembic) prior to dropping.",
+          "file": "fixtures\\09_catastrophic_combined.sql",
+          "safeFix": "-- Safe 3-Phase Deprecation Workflow:\n-- Phase 1: Deploy code ignoring the column in your ORM (e.g. Prisma @ignore or schema exclude)\n-- Phase 2: Verify zero active queries access the column\n-- Phase 3: Drop column safely:\nALTER TABLE accounts DROP COLUMN IF EXISTS legacy_pin;",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        },
+        {
+          "ruleId": "LG-008",
+          "ruleCode": "MISSING_LOCK_TIMEOUT",
+          "ruleName": "Missing SET lock_timeout directive in migration",
+          "severity": "HIGH",
+          "lockLevel": "ACCESS EXCLUSIVE",
+          "table": "global",
+          "line": 1,
+          "raw": "-- (Header of migration file)",
+          "message": "No `SET lock_timeout` found in migration! If table locks cannot be acquired immediately, this migration will block all production traffic behind it.",
+          "file": "fixtures\\09_catastrophic_combined.sql",
+          "safeFix": "-- Migration runs inside a transaction block. Use SET LOCAL to scope lock_timeout to this transaction:\nSET LOCAL lock_timeout = '3s';\nSET LOCAL statement_timeout = '30s';",
+          "lockDetails": {
+            "description": "Acquired by ALTER TABLE, DROP TABLE, TRUNCATE, VACUUM FULL, LOCK TABLE.",
+            "blocks": [
+              "ACCESS SHARE",
+              "ROW SHARE",
+              "ROW EXCLUSIVE",
+              "SHARE UPDATE EXCLUSIVE",
+              "SHARE",
+              "SHARE ROW EXCLUSIVE",
+              "EXCLUSIVE",
+              "ACCESS EXCLUSIVE"
+            ],
+            "impact": "CATASTROPHIC: BLOCKS EVERYTHING (even SELECT queries). Freezes the entire table."
+          }
+        }
+      ],
+      "astStatementsCount": 8,
+      "analyzedAt": "2026-10-30T05:45:16.612Z"
+    },
+    {
+      "filename": "fixtures\\10_safe_migration.sql",
+      "file": "fixtures\\10_safe_migration.sql",
+      "status": "PASSED",
+      "passed": true,
+      "isDmlOnly": false,
+      "dmlDescription": null,
+      "violationsCount": 0,
+      "criticalCount": 0,
+      "highCount": 0,
+      "mediumCount": 0,
+      "highestLockLevel": "ACCESS SHARE",
+      "lockImpact": {
+        "description": "Acquired by SELECT queries.",
+        "blocks": [
+          "ACCESS EXCLUSIVE"
+        ],
+        "impact": "None on normal queries. Non-blocking."
+      },
+      "affectedTables": [
+        "accounts",
+        "transactions"
+      ],
+      "violations": [],
+      "astStatementsCount": 9,
+      "analyzedAt": "2026-10-30T05:45:16.614Z"
+    }
+  ]
+}

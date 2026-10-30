@@ -7,7 +7,7 @@
     "lockguard": "./bin/lockguard.js"
   },
   "scripts": {
-    "start": "node bin/bot.js",
+    "start": "node src/server/server.js",
     "server": "node src/server/server.js",
     "dev": "node src/server/server.js",
     "check": "node bin/lockguard.js check fixtures/09_catastrophic_combined.sql",
@@ -15,7 +15,7 @@
     "check:pr": "node bin/lockguard.js check fixtures/ --format=github-pr-comment",
     "rules": "node bin/lockguard.js rules",
     "bot": "node bin/bot.js",
-    "test": "node --test test/**/*.test.js"
+    "test": "node --test"
   },
   "keywords": [
     "postgresql",

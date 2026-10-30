@@ -17,10 +17,11 @@ module.exports = {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_COLUMN' && sub.hasDefault) {
             // In PostgreSQL 11+, pure constant literals ('active', 0, false, NULL)
+            // and stable expressions (now(), CURRENT_TIMESTAMP)
             // are safe fast metadata-only updates.
-            // Volatile expressions (random, gen_random_uuid) or dynamic timestamps
-            // trigger zero-downtime safety guidelines.
-            if (!sub.isVolatileDefault && !isLegacyPostgres) {
+            // Only truly volatile expressions (random, gen_random_uuid, clock_timestamp)
+            // or legacy PG < 11 force physical table rewrite on disk.
+            if (!sub.isTrulyVolatile && !isLegacyPostgres) {
               continue;
             }
 

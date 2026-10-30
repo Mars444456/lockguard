@@ -72,6 +72,15 @@ class ShadowReplaySimulator {
     const timeToExhaustSec = Number((poolSize / rps).toFixed(2));
     const isPoolExhausted = totalContentionMs > (timeToExhaustSec * 1000);
 
+    let outageSeverity = 'NONE';
+    if (isPoolExhausted || totalContentionMs >= 1000) {
+      outageSeverity = 'CATASTROPHIC';
+    } else if (totalContentionMs >= 300) {
+      outageSeverity = 'HIGH';
+    } else if (totalContentionMs > 0) {
+      outageSeverity = 'MODERATE';
+    }
+
     return {
       simulatedRows: rows,
       simulatedConcurrentRps: rps,
@@ -80,13 +89,14 @@ class ShadowReplaySimulator {
       lockContentionProbability: Number(lockContentionProb.toFixed(1)),
       timeToPoolExhaustionSec: timeToExhaustSec,
       isPoolExhausted,
+      outageSeverity,
       poolExhaustionWarning: isPoolExhausted
-        ? `При трафике ${rps} RPS пул PgBouncer (${poolSize} коннектов) забьется за ${timeToExhaustSec} сек! Все последующие запросы встанут в очередь или отвалятся по HTTP 504.`
-        : `Пул PgBouncer (${poolSize} коннектов) успеет обслужить трафик в пределах нормы.`,
+        ? `At ${rps} RPS traffic, PgBouncer pool (${poolSize} connections) will exhaust in ${timeToExhaustSec}s! Subsequent queries will queue up or fail with HTTP 504 Gateway Timeout.`
+        : `PgBouncer pool (${poolSize} connections) has sufficient buffer to absorb transient lock contention under normal load.`,
       totalLockWaitContentionMs: totalContentionMs,
       totalBlockedQueriesEstimated: simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0),
       tableSimulations: simulationResults,
-      summary: `Тест в песочнице на ${rows.toLocaleString()} строк показал суммарную задержку запросов ${totalContentionMs}ms, блокировку ~${simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0)} запросов и вероятность коллизии ${lockContentionProb.toFixed(1)}% на ${cpuCores} vCPU.`
+      summary: `Shadow simulation on ${rows.toLocaleString()} rows measured ${totalContentionMs}ms total query wait latency, blocking ~${simulationResults.reduce((acc, s) => acc + s.blockedQueriesEstimated, 0)} client queries with ${lockContentionProb.toFixed(1)}% lock collision probability across ${cpuCores} vCPUs.`
     };
   }
 }

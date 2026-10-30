@@ -1,14 +1,14 @@
 /**
  * LockGuard Auto-Splitter
  * Deconstructs fatal monolithic migrations into safe, zero-downtime multi-phase releases.
- * Supports targets: Raw SQL, Prisma, Drizzle, and Alembic.
+ * Supports targets: Raw SQL, Prisma, Drizzle, Alembic, and Django.
  */
 
 class AutoSplitter {
   /**
    * Generates a multi-step release plan for a migration AST / violations.
    * @param {object} analysis Analysis result from RuleEngine
-   * @param {string} targetOrm 'sql' | 'prisma' | 'drizzle' | 'alembic'
+   * @param {string} targetOrm 'sql' | 'prisma' | 'drizzle' | 'alembic' | 'django'
    */
   static generatePlan(analysis, targetOrm = 'sql') {
     const phases = [];
@@ -30,9 +30,6 @@ class AutoSplitter {
     const phase3Statements = [];
     // Phase 4: Validation & Cleanup
     const phase4Statements = [];
-
-    phase1Statements.push("SET lock_timeout = '3s';");
-    phase1Statements.push("SET statement_timeout = '30s';");
 
     for (const v of violations) {
       const table = v.table || 'your_table';
@@ -71,10 +68,14 @@ class AutoSplitter {
         case 'LG-003': {
           const constraint = v.constraintName || `fk_${table}_ref`;
           const foreignTable = v.foreignTable || 'referenced_table';
-          const cols = (v.columns && v.columns.length > 0) ? v.columns.join(', ') : 'foreign_id';
+          const cols = (v.columns && v.columns.length > 0) ? v.columns : ['foreign_id'];
+          const colList = cols.join(', ');
+          const colSlug = cols.join('_').replace(/[^a-zA-Z0-9_]/g, '');
 
+          phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent cascade locks`);
+          phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
           phase1Statements.push(`-- Phase 1 (Deploy 1): Attach FK with NOT VALID (instant catalog lock)`);
-          phase1Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${cols}) REFERENCES ${foreignTable}(id) NOT VALID;`);
+          phase1Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${colList}) REFERENCES ${foreignTable}(id) NOT VALID;`);
 
           phase4Statements.push(`-- Phase 4 (Deploy 2): Validate existing rows (weak lock SHARE UPDATE EXCLUSIVE)`);
           phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${constraint};`);
@@ -107,7 +108,8 @@ class AutoSplitter {
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col} TO ${col}_deprecated;`);
           phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col}_new TO ${col};`);
 
-          phase4Statements.push(`-- Phase 4 (Cleanup): Drop deprecated column`);
+          phase4Statements.push(`-- Phase 4 (Cleanup): Drop deprecated column safely`);
+          phase4Statements.push(`-- lockguard-ignore: LG-006`);
           phase4Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col}_deprecated;`);
           break;
         }
@@ -131,7 +133,40 @@ class AutoSplitter {
           const col = v.column || 'col_to_drop';
           phase1Statements.push(`-- Phase 1 (Deploy 1): Remove column from ORM schema / mark as @ignore`);
           phase3Statements.push(`-- Phase 3 (Deploy 2 / Maintenance Window): Drop physically`);
+          phase3Statements.push(`-- lockguard-ignore: LG-006`);
           phase3Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col};`);
+          break;
+        }
+
+        // 9. Unsafe SET NOT NULL
+        case 'LG-009': {
+          const col = v.column || 'column_name';
+          phase3Statements.push(`-- Phase 3: Add NOT NULL via NOT VALID check constraint`);
+          phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT chk_${table}_${col}_not_null CHECK (${col} IS NOT NULL) NOT VALID;`);
+          phase4Statements.push(`-- Phase 4: Validate check constraint without blocking writes`);
+          phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT chk_${table}_${col}_not_null;`);
+          break;
+        }
+
+        // 11. Unindexed Foreign Key
+        case 'LG-011': {
+          const cols = (v.columns && v.columns.length > 0) ? v.columns : ['foreign_id'];
+          const colList = cols.join(', ');
+          const colSlug = cols.join('_').replace(/[^a-zA-Z0-9_]/g, '');
+          phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent child table locks`);
+          phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
+          break;
+        }
+
+        // 12. Truncate / Unconcurrent Matview
+        case 'LG-012': {
+          if (v.matview) {
+            phase1Statements.push(`-- Phase 1: Concurrent Materialized View Refresh (requires unique index)`);
+            phase1Statements.push(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${v.matview};`);
+          } else {
+            phase2Operations.push(`-- Phase 2 (Async Batch): Purge data in small batches to avoid ACCESS EXCLUSIVE lock:`);
+            phase2Operations.push(`DELETE FROM ${table} WHERE ctid = ANY (ARRAY(SELECT ctid FROM ${table} LIMIT 10000));`);
+          }
           break;
         }
 
@@ -140,12 +175,23 @@ class AutoSplitter {
       }
     }
 
-    if (phase1Statements.length > 2) {
+    const wrapDdlPhase = (statements) => {
+      return [
+        "SET lock_timeout = '3s';",
+        "SET statement_timeout = '30s';",
+        "",
+        ...statements,
+        "",
+        "RESET lock_timeout;"
+      ].join('\n');
+    };
+
+    if (phase1Statements.length > 0) {
       phases.push({
         phaseNumber: 1,
         title: 'Release 1: Non-Blocking Catalog & Index Setup',
         description: 'Safe catalog operations taking <1ms ACCESS EXCLUSIVE or background concurrent indexes.',
-        sql: phase1Statements.join('\n')
+        sql: wrapDdlPhase(phase1Statements)
       });
     }
 
@@ -163,7 +209,7 @@ class AutoSplitter {
         phaseNumber: 3,
         title: 'Release 3: Schema Swaps & Constraint Attaching',
         description: 'Attach constraints using indexes or activate check constraints after data consistency is established.',
-        sql: phase3Statements.join('\n')
+        sql: wrapDdlPhase(phase3Statements)
       });
     }
 
@@ -172,7 +218,7 @@ class AutoSplitter {
         phaseNumber: 4,
         title: 'Release 4: Non-Blocking Validation & Final Cleanup',
         description: 'Validate constraints under weak SHARE UPDATE EXCLUSIVE locks and drop deprecated shadow columns.',
-        sql: phase4Statements.join('\n')
+        sql: wrapDdlPhase(phase4Statements)
       });
     }
 
@@ -195,6 +241,67 @@ class AutoSplitter {
       phases,
       ormSnippets
     };
+  }
+
+  /**
+   * Writes multi-phase migration files to disk.
+   * @param {object} plan Generated plan from generatePlan()
+   * @param {string} targetFile Source migration file path
+   * @param {string} [outDir] Destination directory
+   * @returns {Array<{ phase: number, path: string, content: string }>}
+   */
+  static writePhasesToDisk(plan, targetFile, outDir = null) {
+    const fs = require('fs');
+    const path = require('path');
+
+    const baseName = path.basename(targetFile, path.extname(targetFile));
+    const targetDir = outDir
+      ? path.resolve(process.cwd(), outDir)
+      : path.dirname(path.resolve(process.cwd(), targetFile));
+
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    const writtenFiles = [];
+    const phaseSlugs = {
+      1: 'phase1_pre_deploy',
+      2: 'phase2_backfill',
+      3: 'phase3_enforce',
+      4: 'phase4_cleanup'
+    };
+
+    const targetOrm = plan.targetOrm || 'sql';
+
+    for (const p of plan.phases) {
+      let filePath;
+      let content;
+
+      if (targetOrm === 'prisma') {
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
+        const phaseDir = path.join(targetDir, `${timestamp}_phase_${p.phaseNumber}`);
+        fs.mkdirSync(phaseDir, { recursive: true });
+        filePath = path.join(phaseDir, 'migration.sql');
+        content = p.sql;
+      } else if (targetOrm === 'django' || targetOrm === 'alembic') {
+        const snippet = plan.ormSnippets && plan.ormSnippets.find(s => s.phaseNumber === p.phaseNumber);
+        filePath = path.join(targetDir, `${baseName}_phase${p.phaseNumber}.py`);
+        content = snippet ? snippet.code : p.sql;
+      } else {
+        // sql or drizzle
+        const slug = phaseSlugs[p.phaseNumber] || `phase${p.phaseNumber}`;
+        filePath = path.join(targetDir, `${baseName}_${slug}.sql`);
+        content = p.sql;
+      }
+
+      fs.writeFileSync(filePath, content + '\n', 'utf8');
+      writtenFiles.push({
+        phase: p.phaseNumber,
+        path: filePath,
+        content: content + '\n'
+      });
+    }
+
+    return writtenFiles;
   }
 
   static formatPrisma(phases) {

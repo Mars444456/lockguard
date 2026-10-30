@@ -4,5 +4,5 @@
 
 SET lock_timeout = '3s';
 
-ALTER TABLE orders ADD COLUMN created_at TIMESTAMP DEFAULT now() NOT NULL;
+ALTER TABLE orders ADD COLUMN created_at TIMESTAMP DEFAULT clock_timestamp() NOT NULL;
 ALTER TABLE payments ADD COLUMN transaction_token UUID DEFAULT gen_random_uuid();

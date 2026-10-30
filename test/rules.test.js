@@ -6,13 +6,14 @@ const { RuleEngine, LockLevel, Severity, PgParser } = require('../src/core');
 
 const engine = new RuleEngine();
 
-test('RuleEngine - lists all 10 fatal anti-pattern rules', () => {
+test('RuleEngine - lists all 12 fatal anti-pattern rules', () => {
   const rules = engine.getRules();
-  assert.equal(rules.length, 10);
+  assert.equal(rules.length, 12);
   const ids = rules.map(r => r.id);
   assert.deepEqual(ids, [
     'LG-001', 'LG-002', 'LG-003', 'LG-004', 'LG-005',
-    'LG-006', 'LG-007', 'LG-008', 'LG-009', 'LG-010'
+    'LG-006', 'LG-007', 'LG-008', 'LG-009', 'LG-010',
+    'LG-011', 'LG-012'
   ]);
 });
 

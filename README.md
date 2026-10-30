@@ -20,7 +20,7 @@
 
 In PostgreSQL, seemingly harmless DDL operations like:
 ```sql
-ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT now();
+ALTER TABLE users ADD COLUMN token UUID DEFAULT gen_random_uuid();
 CREATE INDEX idx_orders_user_id ON orders (user_id);
 ALTER TABLE payments ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id);
 ```
@@ -103,13 +103,33 @@ jobs:
           script: |
             const fs = require('fs');
             if (fs.existsSync('lockguard-report.md')) {
-              const body = fs.readFileSync('lockguard-report.md', 'utf8');
-              github.rest.issues.createComment({
+              let body = fs.readFileSync('lockguard-report.md', 'utf8');
+              if (!body.includes('<!-- lockguard-report -->')) {
+                body = '<!-- lockguard-report -->\n' + body;
+              }
+              const { data: comments } = await github.rest.issues.listComments({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: body
+                repo: context.repo.repo
               });
+              const botComment = comments.find(comment =>
+                comment.body && comment.body.includes('<!-- lockguard-report -->')
+              );
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: body
+                });
+              }
             }
 ```
 

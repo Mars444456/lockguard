@@ -27,11 +27,8 @@ class GitHookManager {
 
 echo "🛡️  LockGuard: Auditing staged PostgreSQL migrations..."
 
-# Run LockGuard internal hook validator
-node -e "
-const hook = require('./src/cli/git-hook');
-process.exit(hook.runHook());
-"
+# Run LockGuard CLI gatekeeper on staged files
+npx --no-install lockguard check --staged
 
 STATUS=$?
 if [ $STATUS -ne 0 ]; then
@@ -50,6 +47,13 @@ exit 0
       hookPath: preCommitPath,
       message: '✔ Successfully installed LockGuard pre-commit hook into .git/hooks/pre-commit'
     };
+  }
+
+  /**
+   * Alias for runHook, invoked by CLI handleHookCommand.
+   */
+  static runPreCommitAudit() {
+    return this.runHook();
   }
 
   /**
