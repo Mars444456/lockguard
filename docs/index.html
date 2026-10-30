@@ -213,7 +213,7 @@
           <textarea id="sql-input" spellcheck="false" placeholder="Вставьте ваши SQL-миграции PostgreSQL сюда..."></textarea>
         </div>
         <div class="editor-footer">
-          <span>Движок: <b>LockGuard AST In-Browser Engine (0 dependencies)</b></span>
+          <span>Движок: <b>PostgreSQL parser / WASM, анализ в браузере</b></span>
           <span>Совместимость: <b>PostgreSQL 11 – 17+</b></span>
         </div>
       </div>
@@ -254,6 +254,12 @@
                 <div class="metric-label">Макс. Блокировка</div>
                 <div class="metric-value" id="res-max-lock">ACCESS EXCLUSIVE</div>
                 <div class="metric-sub" id="res-lock-sub">Замораживает всю таблицу</div>
+              </div>
+
+              <div class="metric-tile">
+                <div class="metric-label">Выявленные нарушения</div>
+                <div class="metric-value" id="res-violations-count">0</div>
+                <div class="metric-sub" id="res-violations-sub">Результат проверки правил</div>
               </div>
 
               <div class="metric-tile">

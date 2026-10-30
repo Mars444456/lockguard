@@ -382,20 +382,23 @@ class LockGuardWebPlayground {
     }
   }
 
-  showEmptyState() {
+  showEmptyState(errorMessage = '') {
+    this.lastAnalysis = null;
     this.emptyState.classList.remove('hidden');
     this.analysisDetails.classList.add('hidden');
     this.splitterPanel.classList.add('hidden');
-    this.verdictBadge.className = 'verdict-pill pending';
-    this.verdictBadge.textContent = 'Awaiting Analysis';
+    this.verdictBadge.className = errorMessage ? 'verdict-pill failed' : 'verdict-pill pending';
+    this.verdictBadge.textContent = errorMessage ? 'ANALYSIS ERROR' : 'Awaiting Analysis';
+    this.emptyState.querySelector('h3').textContent = errorMessage ? 'Анализ не выполнен' : 'Нажмите «Проверить DDL»';
+    this.emptyState.querySelector('p').textContent = errorMessage || 'Проверка известных рисков SQL. Оценки нагрузки являются моделью и требуют проверки на вашей базе.';
   }
 
   async runAnalysis() {
-    try { await window.LockGuard?.ready; this.runAnalysisInternal(); }
+    try { await window.LockGuard?.ready; return this.runAnalysisInternal(); }
     catch (error) {
       this.lastAnalysis = null;
-      this.showEmptyState();
-      alert('Analysis could not be completed: ' + error.message);
+      this.showEmptyState(error.message);
+      return null;
     }
   }
 
@@ -407,8 +410,7 @@ class LockGuardWebPlayground {
     }
 
     if (!window.LockGuard) {
-      alert('LockGuard Engine is still loading. Please wait 1 second.');
-      return;
+      throw new Error('Движок анализа ещё не загрузился. Повторите проверку после загрузки страницы.');
     }
 
     const rows = parseInt(this.sliderRows.value, 10);
@@ -437,6 +439,7 @@ class LockGuardWebPlayground {
     this.renderMetrics(analysis, simulation, rows);
     this.renderLockMatrix(analysis.highestLockLevel);
     this.renderViolations(analysis.violations);
+    return analysis;
   }
 
   renderVerdict(analysis) {
@@ -620,13 +623,11 @@ class LockGuardWebPlayground {
     });
   }
 
-  runSplitter() {
+  async runSplitter() {
     const sql = this.sqlInput.value.trim();
     if (!sql) return;
 
-    if (!this.lastAnalysis) {
-      this.runAnalysis();
-    }
+    if (!await this.runAnalysis()) return;
 
     this.splitterPanel.classList.remove('hidden');
     this.renderSplitterPhases();
@@ -635,11 +636,15 @@ class LockGuardWebPlayground {
 
   renderSplitterPhases() {
     if (!this.lastAnalysis) return;
+    if (this.lastAnalysis.analysisComplete === false) {
+      this.splitterPhases.textContent = 'Разбиение недоступно: анализ неполный. Необходима ручная проверка SQL.';
+      return;
+    }
     const plan = window.LockGuard.generatePlan(this.lastAnalysis, this.currentOrm);
     this.splitterPhases.innerHTML = '';
 
     if (!plan.phases || plan.phases.length === 0) {
-      this.splitterPhases.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">Migration is already safe. No multi-phase split required.</div>';
+      this.splitterPhases.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">Нет нарушений, для которых доступен шаблон разбиения.</div>';
       return;
     }
 
@@ -650,20 +655,24 @@ class LockGuardWebPlayground {
         ? plan.ormSnippets[idx].code 
         : (p.sql || p.code || '');
       const instruction = (plan.ormSnippets && plan.ormSnippets[idx] && plan.ormSnippets[idx].instruction)
-        ? `<div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:0.4rem; font-family:monospace;">${plan.ormSnippets[idx].instruction}</div>`
+        ? `<div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:0.4rem; font-family:monospace;">${escapeHtml(plan.ormSnippets[idx].instruction)}</div>`
         : '';
       card.innerHTML = `
         <div class="phase-title">📦 [PHASE ${p.phaseNumber || (idx + 1)}]: ${escapeHtml(p.title)}</div>
         <div class="phase-desc">${escapeHtml(p.description)}</div>
         ${instruction}
-        <pre class="phase-code">${snippet}</pre>
+        <pre class="phase-code">${escapeHtml(snippet)}</pre>
       `;
       this.splitterPhases.appendChild(card);
     });
   }
 
-  downloadSafeMigration() {
-    if (!this.lastAnalysis) this.runAnalysis();
+  async downloadSafeMigration() {
+    if (!await this.runAnalysis()) return;
+    if (this.lastAnalysis.analysisComplete === false) {
+      this.showEmptyState('Разбиение недоступно: анализ неполный. Необходима ручная проверка SQL.');
+      return;
+    }
     const plan = window.LockGuard.generatePlan(this.lastAnalysis, this.currentOrm);
     if (!plan.phases || plan.phases.length === 0) {
       alert('Миграция уже безопасна, разбиение не требуется.');
@@ -691,7 +700,7 @@ class LockGuardWebPlayground {
       }).join('\n\n');
     }
 
-    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob(['-- DRAFT: manual review required; compare with the complete original migration.\n' + fileContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -702,9 +711,8 @@ class LockGuardWebPlayground {
     URL.revokeObjectURL(url);
   }
 
-  exportPdfReport() {
-    this.runAnalysis();
-    const analysis = this.lastAnalysis;
+  async exportPdfReport() {
+    const analysis = await this.runAnalysis();
     if (!analysis) return;
 
     const rows = parseInt(this.sliderRows.value, 10);
@@ -718,7 +726,7 @@ class LockGuardWebPlayground {
       pgBouncerPoolSize: poolSize,
       cpuCores: cpuCores
     });
-    const splitPlan = window.LockGuard.generatePlan(analysis, 'sql');
+    const splitPlan = analysis.analysisComplete === false ? { phases: [] } : window.LockGuard.generatePlan(analysis, 'sql');
 
     const lossPerSec = gmv / 86400;
     const directLoss = lossPerSec * (simulation.totalLockWaitContentionMs / 1000);
@@ -744,7 +752,7 @@ class LockGuardWebPlayground {
           </span>
         </div>
         <div style="font-size:13px; color:#334155; margin-bottom:8px;">
-          <b>Таблица:</b> <code>${v.table || 'default'}</code> | <b>Строка:</b> L${v.line || '1'}
+          <b>Таблица:</b> <code>${escapeHtml(v.table || 'default')}</code> | <b>Строка:</b> L${v.line || '1'}
           <br>${escapeHtml(v.message)}
         </div>
         ${v.safeFix ? `
@@ -758,9 +766,9 @@ ${escapeHtml(v.safeFix)}
 
     const phasesHtml = (splitPlan.phases || []).map(p => `
       <div style="border:1px solid #E2E8F0; border-radius:6px; padding:12px; margin-bottom:10px; background:#F8FAFC; page-break-inside:avoid;">
-        <div style="font-weight:700; color:#0F172A; font-size:14px; margin-bottom:4px;">📦 [ЭТАП ${p.phase}]: ${escapeHtml(p.title)}</div>
+        <div style="font-weight:700; color:#0F172A; font-size:14px; margin-bottom:4px;">📦 [ЭТАП ${p.phaseNumber}]: ${escapeHtml(p.title)}</div>
         <div style="font-size:12px; color:#475569; margin-bottom:8px;">${escapeHtml(p.description)}</div>
-        <pre style="background:#0F172A; color:#4ADE80; padding:10px; border-radius:4px; font-family:Consolas, monospace; font-size:12px; line-height:1.4; margin:0; white-space:pre-wrap;">${p.code}</pre>
+        <pre style="background:#0F172A; color:#4ADE80; padding:10px; border-radius:4px; font-family:Consolas, monospace; font-size:12px; line-height:1.4; margin:0; white-space:pre-wrap;">${escapeHtml(p.sql || p.code || '')}</pre>
       </div>
     `).join('');
 
