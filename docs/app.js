@@ -65,6 +65,12 @@ ALTER TABLE users ADD CONSTRAINT uq_users_tax_id UNIQUE (tax_id);`,
   missing_timeout: `-- Missing SET lock_timeout directive (Head-of-Line Blocking risk!)
 ALTER TABLE orders ADD COLUMN notes TEXT;`,
 
+  drop_column: `-- Direct DROP COLUMN on production table (LG-006)
+-- ACCESS EXCLUSIVE lock crashes active ORM models and replica queries!
+SET lock_timeout = '3s';
+
+ALTER TABLE users DROP COLUMN legacy_pin;`,
+
   unsafe_not_null: `-- Unsafe ALTER COLUMN SET NOT NULL (LG-009)
 -- Scans entire table holding ACCESS EXCLUSIVE lock
 SET lock_timeout = '3s';
@@ -79,6 +85,23 @@ SET lock_timeout = '3s';
 CREATE INDEX CONCURRENTLY idx_users_email ON users (email);
 
 COMMIT;`,
+
+  unindexed_fk: `-- Unindexed Foreign Key causing cascading table locks (LG-011)
+-- Any UPDATE or DELETE on parent 'accounts' will lock and sequentially scan 'transactions'!
+SET lock_timeout = '3s';
+
+ALTER TABLE transactions 
+  ADD CONSTRAINT fk_tx_account 
+  FOREIGN KEY (account_id) 
+  REFERENCES accounts(id) 
+  NOT VALID;`,
+
+  truncate_matview: `-- Fatal TRUNCATE TABLE & Unconcurrent Materialized View Refresh (LG-012)
+-- Takes ACCESS EXCLUSIVE lock, completely freezing all reading queries!
+SET lock_timeout = '3s';
+
+TRUNCATE TABLE audit_logs;
+REFRESH MATERIALIZED VIEW mv_user_summaries;`,
 
   safe_migration: `-- 100% Zero-Downtime Safe PostgreSQL Migration
 SET lock_timeout = '3s';
