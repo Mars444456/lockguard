@@ -74,6 +74,18 @@ test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, cl
     });
     assert.equal(dashboardRes.statusCode, 200, 'Root dashboard should return 200 OK');
     assert.ok(dashboardRes.body.includes('LockGuard') || dashboardRes.body.includes('html'), 'Dashboard HTML should be served');
+    const priorDemoFlag = process.env.LOCKGUARD_EPHEMERAL_DEMO;
+    try {
+      process.env.LOCKGUARD_EPHEMERAL_DEMO = 'true';
+      const demoPage = await makeRequest(target, { path: '/', method: 'GET' });
+      assert.ok(demoPage.body.includes('Тестовый стенд: аккаунты, история и схемы могут сброситься'));
+      assert.equal(demoPage.headers['cache-control'], 'no-store');
+      const demoRules = await makeRequest(target, { path: '/api/v1/rules', method: 'GET' });
+      assert.equal(JSON.parse(demoRules.body).success, true, 'The demo notice must not change API responses');
+    } finally {
+      if (priorDemoFlag === undefined) delete process.env.LOCKGUARD_EPHEMERAL_DEMO;
+      else process.env.LOCKGUARD_EPHEMERAL_DEMO = priorDemoFlag;
+    }
 
     // 3. HTTP POST to /api/v1/analyze
     const analyzePayload = {

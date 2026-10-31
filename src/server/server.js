@@ -88,6 +88,14 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
+function serveFile(file, res) {
+  if (process.env.LOCKGUARD_EPHEMERAL_DEMO === 'true' && path.extname(file).toLowerCase() === '.html') {
+    const banner = '<aside role="note" style="padding:14px 20px;background:#302917;color:#ffebbd;border-bottom:1px solid #8f7846;text-align:center;font:14px/1.6 system-ui">Тестовый стенд: аккаунты, история и схемы могут сброситься при перезапуске. Используйте только учебные данные.</aside>';
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(fs.readFileSync(file, 'utf8').replace(/<body\b[^>]*>/i, match => match + banner));
+  } else fs.createReadStream(file).pipe(res);
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -216,7 +224,7 @@ const server = http.createServer(async (req, res) => {
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    fs.createReadStream(filePath).pipe(res);
+    serveFile(filePath, res);
     return;
   }
 
@@ -224,7 +232,7 @@ const server = http.createServer(async (req, res) => {
   const indexPath = path.join(uiDir, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    fs.createReadStream(indexPath).pipe(res);
+    serveFile(indexPath, res);
     return;
   }
 

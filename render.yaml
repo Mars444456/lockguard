@@ -1,0 +1,13 @@
+# Temporary synthetic-data demo only. Render Free does not persist SQLite.
+services:
+  - type: web
+    name: lockguard-test-cabinet
+    runtime: node
+    plan: free
+    buildCommand: node scripts/check-privacy.js && npm ci --omit=dev --ignore-scripts
+    startCommand: node scripts/cloud-demo-server.js
+    healthCheckPath: /api/v1/rules
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: NODE_VERSION
+        value: 24.12.0
