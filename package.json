@@ -13,6 +13,7 @@
     "restore": "node scripts/restore-db.js",
     "pro": "node --env-file-if-exists=.env scripts/manage-pro.js",
     "test:postgres": "node --test integration/postgres-locks.cjs",
+    "preview:server": "node scripts/preview-server.js",
     "start": "node src/server/server.js",
     "server": "node src/server/server.js",
     "dev": "node src/server/server.js",

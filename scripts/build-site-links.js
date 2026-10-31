@@ -28,12 +28,17 @@ function buildSiteLinks(root = path.resolve(__dirname, '..')) {
   const config = siteConfig(JSON.parse(fs.readFileSync(path.join(root, 'config/site.json'), 'utf8')));
   const donationUrl = escapeHtml(config.donationUrl);
   const support = fs.readFileSync(path.join(root, 'src/ui/support.html'), 'utf8').trim().replaceAll('{{donationUrl}}', donationUrl);
+  const seller = JSON.parse(fs.readFileSync(path.join(root, 'config/seller.json'), 'utf8'));
+  if (!/^[^\s@<>"&]+@[^\s@<>"&]+\.[^\s@<>"&]+$/.test(seller.email)) throw new Error('Invalid pilot contact email.');
+  const pilotEmail = 'mailto:' + seller.email + '?subject=' + encodeURIComponent('LockGuard: пилотная проверка миграций') + '&body=' + encodeURIComponent('Здравствуйте! Хотим обсудить пилот LockGuard.\n\nPostgreSQL и версия:\nИнструмент миграций (Prisma / Drizzle / SQL / другой):\nКак сейчас проверяем миграции:\n\nПароли, ключи и данные пользователей не прикладываем.');
+  const pilot = fs.readFileSync(path.join(root, 'src/ui/pilot.html'), 'utf8').trim().replaceAll('{{pilotEmail}}', escapeHtml(pilotEmail));
   const donateLink = `<a class="btn-secondary donation-link" href="${donationUrl}" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">♡</span> Донат</a>`;
   for (const directory of ['src/ui', 'docs']) {
     const file = path.join(root, directory, 'index.html');
     let html = fs.readFileSync(file, 'utf8');
     html = replaceSection(html, 'support-nav', donateLink);
     html = replaceSection(html, 'support-project', support);
+    html = replaceSection(html, 'team-pilot', pilot);
     if (directory === 'docs') {
       const login = config.applicationUrl
         ? `<a id="public-account-link" class="btn-primary" href="${escapeHtml(config.applicationUrl)}">Войти</a>`

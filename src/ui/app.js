@@ -181,6 +181,7 @@ class LockGuardApp {
       this.switchTab('billing');
       this.showToast(paymentReturn === 'cancelled' ? 'Оплата прервана. Заказ не активирован.' : 'Возврат с оплаты. Статус заказа проверяется по уведомлению Robokassa.');
     }
+    if (window.location.hash === '#team-pilot') document.getElementById('team-pilot').scrollIntoView({ behavior: 'instant', block: 'start' });
   }
 
   bindEvents() {

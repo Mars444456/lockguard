@@ -40,7 +40,7 @@ const pricing = `    <!-- Pricing & Commercial Monetization Section -->
       </div>
     </section>
 `;
-const support = '\n    <!-- support-project:start --><!-- support-project:end -->\n';
+const support = '\n    <!-- team-pilot:start --><!-- team-pilot:end -->\n    <!-- support-project:start --><!-- support-project:end -->\n';
 html = html.slice(0, start) + pricing + support + html.slice(end);
 html = html.replace(/\s*<!-- Modal: 30-Day Free Pro Trial Activation -->[\s\S]*?<!-- Scripts -->/, '\n  <!-- Scripts -->');
 html = html.replace('Командная подписка: 1 500 ₽/мес (30 дней бесплатно)', 'Pro: 1 500 ₽ за 30 дней, без автосписаний')

@@ -942,6 +942,7 @@ ${escapeHtml(v.safeFix)}
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new LockGuardWebPlayground();
   initLockMatrixExplorer();
+  if (window.location.hash === '#team-pilot') document.getElementById('team-pilot').scrollIntoView({ behavior: 'instant', block: 'start' });
 });
 
 // ==============================================================================

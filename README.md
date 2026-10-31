@@ -21,6 +21,9 @@
 
 [Сайт и демонстрация](https://mars444456.github.io/lockguard/) · [Контакты](https://mars444456.github.io/lockguard/contacts.html) · [Оферта и возвраты](https://mars444456.github.io/lockguard/offer.html) · [Конфиденциальность](https://mars444456.github.io/lockguard/privacy.html)
 
+**Для команд на PostgreSQL:** [обсудить пилот на 1–3 SQL-миграциях](https://mars444456.github.io/lockguard/#team-pilot). Покажем замечания анализатора и обсудим включение проверки в CI; доступ к рабочей БД не требуется. Объём и условия согласуются до начала работы.
+
+
 Текущая версия кода — **1.2.0**. Ядро, CLI и GitHub Action доступны по лицензии [MIT](LICENSE). Платные услуги описаны отдельно ниже.
 
 ## Возможности
