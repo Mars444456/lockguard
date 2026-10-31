@@ -16,9 +16,11 @@ function passwordValue(value) {
   return value;
 }
 async function passwordKey(password, salt) {
-  if (activeHashes >= 2) fail('Сервис входа занят. Повторите запрос через несколько секунд.', 429);
+  const isolated = process.env.LOCKGUARD_ISOLATE_PASSWORD_HASHES === 'true';
+  if (activeHashes >= (isolated ? 1 : 2)) fail('Сервис входа занят. Повторите запрос через несколько секунд.', 429);
   activeHashes++;
-  try { return await derive(password, salt, 64, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 }); }
+  try { return await (isolated ? require('./password-worker')(password, salt) :
+    derive(password, salt, 64, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 })); }
   finally { activeHashes--; }
 }
 async function hashPassword(password) {

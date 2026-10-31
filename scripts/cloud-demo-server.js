@@ -7,7 +7,8 @@ function cloudSettings(inherited, runtime) {
   if (!inherited.RENDER_EXTERNAL_URL) throw new Error('RENDER_EXTERNAL_URL is required for the isolated cloud demo.');
   const port = Number(inherited.PORT || '10000');
   return { ...previewSettings(inherited.RENDER_EXTERNAL_URL, runtime, port, inherited),
-    LOCKGUARD_EPHEMERAL_DEMO: 'true', UV_THREADPOOL_SIZE: '1', MALLOC_ARENA_MAX: '2' };
+    LOCKGUARD_EPHEMERAL_DEMO: 'true', LOCKGUARD_ISOLATE_PASSWORD_HASHES: 'true',
+    UV_THREADPOOL_SIZE: '1', MALLOC_ARENA_MAX: '2' };
 }
 
 function start() {
