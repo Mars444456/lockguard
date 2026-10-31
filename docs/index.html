@@ -8,7 +8,7 @@
 
 
 
-<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=7134f95cba11"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16"></head>
+<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=11b1f8bb1515"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16"></head>
 <body>
   <!-- Top Announcement Banner -->
 
@@ -25,7 +25,7 @@
   <!-- Main Container -->
   <main class="main-content">
     <!-- Hero / Intro -->
-    <div class="hero-section"><div class="workspace-intro"><p class="eyebrow">ОТКРЫТЫЙ ИНСТРУМЕНТ / POSTGRESQL</p><h1 class="hero-title">Изменения схемы —<br><span>под контролем.</span></h1><p class="hero-desc">Проверьте миграцию до релиза. Найдите риски блокировок, разберите замечания и подготовьте план изменений.</p><div class="hero-cta-group"><a href="#tab-playground" class="btn-primary">Проверить SQL <span>↗</span></a><a href="https://github.com/Mars444456/lockguard#readme" class="btn-secondary" target="_blank" rel="noopener noreferrer">Подключить к CI</a></div><div class="hero-facts"><span><i></i> 12 правил анализа</span><span>Без регистрации</span><span>SQL остаётся в браузере</span></div></div><div class="hero-code"><div class="hero-code-top"><span><i></i> ПЕРЕД ТЕМ КАК MERGE</span><span>migration.sql</span></div><pre><span class="code-muted">-- Создание индекса</span>
+    <div class="hero-section"><div class="workspace-intro"><p class="eyebrow">ОТКРЫТЫЙ ИНСТРУМЕНТ / POSTGRESQL</p><h1 class="hero-title">Изменения схемы —<br><span>под контролем.</span></h1><p class="hero-desc">Проверьте миграцию до релиза. Найдите риски блокировок, разберите замечания и подготовьте план изменений.</p><div class="hero-cta-group"><a href="#tab-playground" class="btn-primary">Открыть редактор SQL <span>↓</span></a><a href="https://github.com/Mars444456/lockguard#readme" class="btn-secondary" target="_blank" rel="noopener noreferrer">Подключить к CI</a></div><div class="hero-facts"><span><i></i> 12 правил анализа</span><span>Без регистрации</span><span>SQL остаётся в браузере</span></div></div><div class="hero-code"><div class="hero-code-top"><span><i></i> ПРИМЕР ПРОВЕРКИ</span><span>migration.sql</span></div><pre><span class="code-muted">-- Создание индекса</span>
 <span class="code-purple">CREATE INDEX</span> idx_orders_user
 <span class="code-purple">ON</span> orders (user_id);</pre><div class="code-finding"><span class="finding-mark">!</span><div><b>LG-002 · Блокировка записи</b><p>SHARE · INSERT / UPDATE / DELETE</p></div></div><div class="code-recommendation"><span>РЕКОМЕНДАЦИЯ ДЛЯ ПРОВЕРКИ</span><code>CREATE INDEX <b>CONCURRENTLY</b> …</code></div><div class="hero-code-bottom">AST-анализ <span>→</span> замечания <span>→</span> осознанный релиз</div></div></div><nav class="quick-access" aria-label="Быстрый доступ"><span>БЫСТРЫЙ ДОСТУП</span><a href="#tab-playground">Редактор SQL <span>↓</span></a><a href="#lock-matrix-explorer">Матрица блокировок <span>↓</span></a><a href="https://github.com/Mars444456/lockguard#readme">CLI и документация <span>↗</span></a><a href="https://t.me/lockguard_audit_bot">Telegram-бот <span>↗</span></a></nav><section aria-label="Параметры проверки" id="tab-playground" class="workspace-toolbar"><div class="preset-bar" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
         <div style="display:flex; flex-direction:column; gap:4px;">
@@ -106,7 +106,7 @@
     <div class="playground-grid">
       <!-- Left: Editor Card -->
       <div class="editor-card">
-        <div class="card-header">
+        <div class="card-header workspace-card-header">
           <div class="header-left">
             <span class="dot red"></span>
             <span class="dot yellow"></span>
@@ -123,18 +123,18 @@
         <div class="editor-wrapper">
           <textarea aria-label="SQL-миграция PostgreSQL" id="sql-input" spellcheck="false" placeholder="Вставьте ваши SQL-миграции PostgreSQL сюда..."></textarea>
         </div>
-        <div class="editor-footer"><span>PostgreSQL AST · <b>libpg_query / WASM</b></span><span>SQL остаётся в браузере</span></div>
+        <div class="editor-footer"><span>PostgreSQL AST · <b>libpg_query / WASM</b></span><span>SQL остаётся в браузере</span><span>Ctrl / ⌘ + Enter — проверить</span></div>
       </div>
 
       <!-- Right: Real-time Analysis Card -->
       <div class="analysis-card">
-        <div class="card-header">
+        <div class="card-header workspace-card-header">
           <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
             <span class="card-title">Результат проверки</span>
             <div id="verdict-badge" class="verdict-pill pending">Ожидает проверки</div>
           </div>
           <div class="header-actions">
-            <button id="btn-export-pdf" class="btn-secondary btn-sm" style="border-color: #EF4444; color: #F87171; font-weight: 700; display:inline-flex; align-items:center; gap:0.35rem;">
+            <button title="Открыть отчёт для печати или сохранения в PDF" id="btn-export-pdf" class="btn-secondary btn-sm">
               <span>Отчёт / PDF</span>
             </button>
           </div>
@@ -150,56 +150,59 @@
 
           <!-- Analysis Details -->
           <div id="analysis-details" class="analysis-details hidden">
-            <!-- DML Notice Banner (Natalya's Case) -->
+            <!-- DML notice -->
             <div id="dml-notice" class="hidden" style="margin-bottom: 1.25rem; border: 1px solid #10B981; border-left: 5px solid #10B981; background: rgba(16, 185, 129, 0.12); padding: 0.85rem 1.1rem; border-radius: 8px;">
               <b style="color: #34D399; font-size: 0.9rem;">ℹ️ DML ЗАПРОС ДАННЫХ (SELECT / INSERT / UPDATE):</b>
               <div id="dml-desc" style="font-size: 0.82rem; color: #E5E7EB; margin-top: 0.25rem;"></div>
             </div>
 
             <!-- Key Metric Tiles -->
-            <div class="metric-tiles" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+            <div class="metric-tiles primary-metrics">
               <div class="metric-tile">
-                <div class="metric-label">Макс. Блокировка</div>
+                <div class="metric-label">Блокировка по SQL</div>
                 <div class="metric-value" id="res-max-lock">ACCESS EXCLUSIVE</div>
                 <div class="metric-sub" id="res-lock-sub">Замораживает всю таблицу</div>
               </div>
 
               <div class="metric-tile">
-                <div class="metric-label">Выявленные нарушения</div>
+                <div class="metric-label">Замечания правил</div>
                 <div class="metric-value" id="res-violations-count">0</div>
                 <div class="metric-sub" id="res-violations-sub">Результат проверки правил</div>
               </div>
 
-              <div class="metric-tile">
-                <div class="metric-label">Время простоя (Downtime)</div>
-                <div class="metric-value text-red" id="res-downtime">45.2s</div>
-                <div class="metric-sub" id="res-downtime-sub">Расчет на 14.2M строк</div>
-              </div>
-
-              <div class="metric-tile">
-                <div class="metric-label">Зависнет запросов</div>
-                <div class="metric-value text-cyan" id="res-blocked-queries">~11,300</div>
-                <div class="metric-sub">504 Gateway Timeout</div>
-              </div>
-
-              <div class="metric-tile">
-                <div class="metric-label">Пул PgBouncer (100)</div>
-                <div class="metric-value text-amber" id="res-pool-time">0.4s</div>
-                <div class="metric-sub" id="res-pool-sub">Время до взрыва пула</div>
-              </div>
-
-              <div class="metric-tile" style="border-color: rgba(239, 68, 68, 0.4); background: linear-gradient(180deg, rgba(239,68,68,0.12) 0%, rgba(15,23,42,0.8) 100%);">
-                <div class="metric-label" style="color: #FCA5A5;">Убыток от простоя</div>
-                <div class="metric-value text-red" id="res-financial-loss">~52 300 ₽</div>
-                <div class="metric-sub" id="res-financial-sub">Остановка онлайн-платежей</div>
-              </div>
-
-              <div class="metric-tile" style="border-color: rgba(168, 85, 247, 0.4); background: linear-gradient(180deg, rgba(168,85,247,0.12) 0%, rgba(15,23,42,0.8) 100%);">
-                <div class="metric-label" style="color: #C084FC;">Вероятность коллизии</div>
-                <div class="metric-value text-purple" id="res-collision-prob">74.2%</div>
-                <div class="metric-sub" id="res-collision-sub">M/M/c модель очередей</div>
-              </div>
             </div>
+            <p id="res-affected-tables" class="affected-tables-note"></p>
+            <details class="simulation-estimates" id="simulation-estimates">
+              <summary>Оценочная модель нагрузки</summary>
+              <p>Это условный сценарий по заданным параметрам. Числа не измерены на вашей базе и не являются прогнозом простоя или финансовых потерь.</p>
+              <div class="metric-tiles">
+                <div class="metric-tile">
+                  <div class="metric-label">Оценка времени по модели</div>
+                  <div class="metric-value text-red" id="res-downtime">—</div>
+                  <div class="metric-sub" id="res-downtime-sub">По заданному размеру таблицы</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="metric-label">Ожидания запросов по модели</div>
+                  <div class="metric-value text-cyan" id="res-blocked-queries">—</div>
+                  <div class="metric-sub">Условная нагрузка, не измерение</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="metric-label">Насыщение пула по модели</div>
+                  <div class="metric-value text-amber" id="res-pool-time">—</div>
+                  <div class="metric-sub" id="res-pool-sub">По заданному лимиту пула</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="metric-label">Условная оценка потерь</div>
+                  <div class="metric-value text-red" id="res-financial-loss">—</div>
+                  <div class="metric-sub" id="res-financial-sub">По заданному обороту</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="metric-label">Вероятность ожидания по модели</div>
+                  <div class="metric-value text-purple" id="res-collision-prob">—</div>
+                  <div class="metric-sub" id="res-collision-sub">M/M/c модель очередей</div>
+                </div>
+              </div>
+            </details>
 
             <!-- Lock Conflict Matrix Grid -->
             <div class="lock-matrix-card">
@@ -351,6 +354,6 @@
 <!-- seller-footer:end -->
 <!-- Scripts -->
   <script src="lockguard-engine.js?v=5687015af341"></script>
-  <script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=449f98748109"></script>
+  <script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=12fba8b4e0ef"></script>
 </body>
 </html>
