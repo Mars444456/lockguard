@@ -107,7 +107,7 @@ class GitHubPrFormatter {
     md.push('> 💡 **Why does LockGuard block this?**');
     md.push('> In PostgreSQL, `ACCESS EXCLUSIVE` locks block even simple `SELECT` queries. If an incoming DDL transaction cannot acquire this lock immediately because of an in-flight query, it blocks in queue and subsequently freezes **all** following read and write requests, creating a catastrophic cascading outage.');
     md.push('');
-    md.push('*Report generated automatically by [LockGuard CI/CD Gatekeeper](https://lockguard.dev)*');
+    md.push('*Report generated automatically by [LockGuard](https://github.com/Mars444456/lockguard)*');
 
     return md.join('\n');
   }

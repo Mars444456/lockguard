@@ -16,9 +16,9 @@ CREATE INDEX idx_transactions_created_at ON transactions (created_at);
 ALTER TABLE accounts ADD COLUMN token UUID DEFAULT gen_random_uuid() NOT NULL;
 
 -- 3. Unvalidated Foreign Key (scans millions of rows under lock)
-ALTER TABLE transactions 
-  ADD CONSTRAINT fk_tx_account 
-  FOREIGN KEY (account_id) 
+ALTER TABLE transactions
+  ADD CONSTRAINT fk_tx_account
+  FOREIGN KEY (account_id)
   REFERENCES accounts(id);
 
 -- 4. Full Table Rewrite
@@ -47,9 +47,9 @@ CREATE UNIQUE INDEX idx_orders_reference ON orders (reference_number);`,
   unsafe_fk: `-- Heavy Foreign Key scan without NOT VALID
 SET lock_timeout = '3s';
 
-ALTER TABLE order_items 
-  ADD CONSTRAINT fk_order_items_product 
-  FOREIGN KEY (product_id) 
+ALTER TABLE order_items
+  ADD CONSTRAINT fk_order_items_product
+  FOREIGN KEY (product_id)
   REFERENCES products(id);`,
 
   alter_type: `-- Heavy column type change requiring rewrite
@@ -91,10 +91,10 @@ COMMIT;`,
 -- Any UPDATE or DELETE on parent 'accounts' will lock and sequentially scan 'transactions'!
 SET lock_timeout = '3s';
 
-ALTER TABLE transactions 
-  ADD CONSTRAINT fk_tx_account 
-  FOREIGN KEY (account_id) 
-  REFERENCES accounts(id) 
+ALTER TABLE transactions
+  ADD CONSTRAINT fk_tx_account
+  FOREIGN KEY (account_id)
+  REFERENCES accounts(id)
   NOT VALID;`,
 
   truncate_matview: `-- Fatal TRUNCATE TABLE & Unconcurrent Materialized View Refresh (LG-012)
@@ -104,7 +104,7 @@ SET lock_timeout = '3s';
 TRUNCATE TABLE audit_logs;
 REFRESH MATERIALIZED VIEW mv_user_summaries;`,
 
-  safe_migration: `-- 100% Zero-Downtime Safe PostgreSQL Migration
+  safe_migration: `-- Пример без выявленных нарушений; проверьте на тестовой базе
 SET lock_timeout = '3s';
 SET statement_timeout = '30s';
 
@@ -115,10 +115,10 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_accounts_status ON accounts (status)
 ALTER TABLE accounts ADD COLUMN is_verified BOOLEAN DEFAULT true;
 
 -- Step 3: Foreign Key in two safe phases (Not blocking)
-ALTER TABLE transactions 
-  ADD CONSTRAINT fk_tx_account_safe 
-  FOREIGN KEY (account_id) 
-  REFERENCES accounts(id) 
+ALTER TABLE transactions
+  ADD CONSTRAINT fk_tx_account_safe
+  FOREIGN KEY (account_id)
+  REFERENCES accounts(id)
   NOT VALID;
 
 -- Step 4: Validate existing data under weak lock
@@ -133,7 +133,7 @@ class LockGuardWebPlayground {
     this.btnAnalyze = document.getElementById('btn-analyze');
     this.btnSplit = document.getElementById('btn-split');
     this.btnClear = document.getElementById('btn-clear-sql');
-    
+
     this.sliderRows = document.getElementById('slider-rows');
     this.valRows = document.getElementById('val-rows');
     this.sliderRps = document.getElementById('slider-rps');
@@ -187,7 +187,7 @@ class LockGuardWebPlayground {
     this.lastAnalysis = null;
 
     this.initEventListeners();
-    
+
     // Check if permalink SQL is provided via URL hash
     const hash = window.location.hash;
     if (hash && hash.startsWith('#sql=')) {
@@ -227,7 +227,7 @@ class LockGuardWebPlayground {
 
     this.sliderRows.addEventListener('input', (e) => {
       const val = parseInt(e.target.value, 10);
-      const formatted = val >= 1000000 
+      const formatted = val >= 1000000
         ? (val / 1000000).toFixed(1) + 'M строк (~' + (val * 0.0006).toFixed(1) + ' GB)'
         : (val / 1000).toFixed(0) + 'K строк';
       this.valRows.textContent = formatted;
@@ -251,7 +251,7 @@ class LockGuardWebPlayground {
     if (this.sliderGmv) {
       this.sliderGmv.addEventListener('input', (e) => {
         const val = parseInt(e.target.value, 10);
-        const formatted = val >= 1000000 
+        const formatted = val >= 1000000
           ? (val / 1000000).toFixed(1) + 'M ₽ / день'
           : (val / 1000).toFixed(0) + 'K ₽ / день';
         this.valGmv.textContent = formatted;
@@ -324,17 +324,17 @@ class LockGuardWebPlayground {
         e.preventDefault();
         const contact = document.getElementById('trial-contact').value.trim();
         const project = document.getElementById('trial-project').value.trim();
-        
+
         // Generate random 30-day Pro Key
         const rand = () => Math.random().toString(36).substring(2, 6).toUpperCase();
         const generatedKey = `LG-PRO-TRIAL-30D-${rand()}-${rand()}-${rand()}`;
-        
+
         localStorage.setItem('lockguard_pro_key', generatedKey);
         localStorage.setItem('lockguard_pro_contact', contact);
-        
+
         this.displayKey.textContent = generatedKey;
         this.trialResult.classList.remove('hidden');
-        
+
         const tgMsg = encodeURIComponent(`Привет! Я активировал 30-дневный Pro триал в LockGuard.\nПроект: ${project}\nКонтакт: ${contact}\nКлюч: ${generatedKey}`);
         if (this.linkNotifyTg) {
           this.linkNotifyTg.href = `https://t.me/marswwu?text=${tgMsg}`;
@@ -388,7 +388,7 @@ class LockGuardWebPlayground {
     this.analysisDetails.classList.add('hidden');
     this.splitterPanel.classList.add('hidden');
     this.verdictBadge.className = errorMessage ? 'verdict-pill failed' : 'verdict-pill pending';
-    this.verdictBadge.textContent = errorMessage ? 'ANALYSIS ERROR' : 'Awaiting Analysis';
+    this.verdictBadge.textContent = errorMessage ? 'ANALYSIS ERROR' : 'Ожидает проверки';
     this.emptyState.querySelector('h3').textContent = errorMessage ? 'Анализ не выполнен' : 'Нажмите «Проверить DDL»';
     this.emptyState.querySelector('p').textContent = errorMessage || 'Проверка известных рисков SQL. Оценки нагрузки являются моделью и требуют проверки на вашей базе.';
   }
@@ -424,8 +424,8 @@ class LockGuardWebPlayground {
     this.lastAnalysis = analysis;
 
     // 2. Simulate Latency & Blocked Queries
-    const simulation = window.LockGuard.simulate(analysis, { 
-      simulatedRows: rows, 
+    const simulation = window.LockGuard.simulate(analysis, {
+      simulatedRows: rows,
       concurrentRps: rps,
       pgBouncerPoolSize: poolSize,
       cpuCores: cpuCores
@@ -448,10 +448,10 @@ class LockGuardWebPlayground {
       this.verdictBadge.innerHTML = '✔ DML: ПРОВЕРКИ DDL НЕ ПРИМЕНЯЮТСЯ';
     } else if (analysis.passed) {
       this.verdictBadge.className = 'verdict-pill passed';
-      this.verdictBadge.innerHTML = '✔ NO RULE VIOLATIONS DETECTED';
+      this.verdictBadge.innerHTML = 'Нарушений правил нет';
     } else {
       this.verdictBadge.className = 'verdict-pill failed';
-      this.verdictBadge.innerHTML = `✖ CI RELEASE BLOCKED (${analysis.criticalCount} Critical)`;
+      this.verdictBadge.innerHTML = `Найдены риски · ${analysis.violationsCount}`;
     }
   }
 
@@ -496,17 +496,17 @@ class LockGuardWebPlayground {
     this.resMaxLock.textContent = analysis.highestLockLevel || 'ACCESS SHARE';
     if (analysis.highestLockLevel === 'ACCESS EXCLUSIVE') {
       this.resMaxLock.className = 'metric-value text-red';
-      this.resLockSub.textContent = 'Freezes whole table (even SELECTs)';
+      this.resLockSub.textContent = 'Блокирует все обращения, включая SELECT';
     } else if (analysis.highestLockLevel === 'SHARE') {
       this.resMaxLock.className = 'metric-value text-amber';
-      this.resLockSub.textContent = 'Blocks all INSERT, UPDATE, DELETE';
+      this.resLockSub.textContent = 'Блокирует INSERT, UPDATE и DELETE';
     } else {
       this.resMaxLock.className = 'metric-value text-emerald';
-      this.resLockSub.textContent = 'Non-blocking concurrent safe';
+      this.resLockSub.textContent = 'Проверьте конфликты в матрице блокировок';
     }
 
     this.resViolationsCount.textContent = analysis.violationsCount;
-    this.resViolationsSub.textContent = `${analysis.criticalCount} Critical, ${analysis.highCount} High`;
+    this.resViolationsSub.textContent = `${analysis.criticalCount} критических, ${analysis.highCount} высоких`;
 
     const delayMs = simulation.totalLockWaitContentionMs;
     const estSec = (delayMs / 1000).toFixed(1);
@@ -527,8 +527,8 @@ class LockGuardWebPlayground {
       const gmv = this.sliderGmv ? parseInt(this.sliderGmv.value, 10) : 1000000;
       const lossPerSec = gmv / 86400;
       const directLoss = lossPerSec * (delayMs / 1000);
-      const dropoffCost = simulation.isPoolExhausted 
-        ? Math.min(simulation.totalBlockedQueriesEstimated * 20, gmv * 0.15) 
+      const dropoffCost = simulation.isPoolExhausted
+        ? Math.min(simulation.totalBlockedQueriesEstimated * 20, gmv * 0.15)
         : (simulation.totalBlockedQueriesEstimated * 5);
       const totalLossRub = Math.round(directLoss + dropoffCost);
       const approxUsd = Math.round(totalLossRub / 95);
@@ -548,8 +548,8 @@ class LockGuardWebPlayground {
       const prob = simulation.lockContentionProbability || 0;
       this.resCollisionProb.textContent = `${prob}%`;
       this.resCollisionProb.className = prob > 60 ? 'metric-value text-purple' : 'metric-value text-emerald';
-      this.resCollisionSub.textContent = prob > 70 
-        ? 'Высокий риск коллизии' 
+      this.resCollisionSub.textContent = prob > 70
+        ? 'Высокий риск коллизии'
         : (prob > 35 ? 'Средняя плотность очереди' : 'Низкая вероятность коллизии');
     }
   }
@@ -579,7 +579,7 @@ class LockGuardWebPlayground {
   renderViolations(violations) {
     this.violationsList.innerHTML = '';
     if (!violations || violations.length === 0) {
-      this.violationsList.innerHTML = '<div style="color:var(--accent-emerald); font-size:0.85rem; padding:0.5rem 0;">✔ No dangerous table lock anti-patterns detected.</div>';
+      this.violationsList.innerHTML = '<div style="color:var(--accent-emerald); font-size:0.85rem; padding:0.5rem 0;">✔ Правила не выявили нарушений. Перед релизом нужна проверка на тестовой базе.</div>';
       return;
     }
 
@@ -588,22 +588,22 @@ class LockGuardWebPlayground {
       card.className = `violation-card ${v.severity.toLowerCase()}`;
       card.innerHTML = `
         <div class="violation-header">
-          <div class="violation-title">#${idx + 1}. ${v.ruleName} (<code>${v.ruleId}</code>)</div>
+          <div class="violation-title">#${idx + 1}. ${window.LockGuardLabels?.titles[v.ruleId] || v.ruleName} (<code>${v.ruleId}</code>)</div>
           <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
             ${v.isPhysicalTableRewrite ? '<span style="background:rgba(239,68,68,0.2); color:#F87171; border:1px solid rgba(239,68,68,0.4); padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">💾 Рерайт диска</span>' : ''}
             ${v.rewriteReason === 'FAST_DEFAULT_METADATA_ONLY' ? '<span style="background:rgba(6,182,212,0.2); color:#22D3EE; border:1px solid rgba(6,182,212,0.4); padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">⚡ Fast Default (Метаданные)</span>' : ''}
-            <span class="badge-sev ${v.severity.toLowerCase()}">${v.severity} • ${v.lockLevel}</span>
+            <span class="badge-sev ${v.severity.toLowerCase()}">${window.LockGuardLabels?.severity[v.severity] || v.severity} • ${v.lockLevel}</span>
           </div>
         </div>
         <div class="violation-msg">
-          <b>Table:</b> <code>${escapeHtml(v.table || 'unknown')}</code> | <b>Line:</b> L${v.line || '1'}
+          <b>Таблица:</b> <code>${escapeHtml(v.table || 'unknown')}</code> | <b>Строка:</b> L${v.line || '1'}
           <br>${escapeHtml(v.message)}
         </div>
         ${v.safeFix ? `
           <div class="safe-fix-box">
             <div class="safe-fix-header">
-              <span>💡 Zero-Downtime Safe Fix</span>
-              <button class="btn-secondary btn-xs btn-copy-fix">Copy Fix</button>
+              <span>💡 Рекомендация для проверки</span>
+              <button class="btn-secondary btn-xs btn-copy-fix">Скопировать SQL</button>
             </div>
             <pre class="safe-fix-code">${escapeHtml(v.safeFix)}</pre>
           </div>
@@ -614,8 +614,8 @@ class LockGuardWebPlayground {
       if (copyBtn) {
         copyBtn.addEventListener('click', () => {
           navigator.clipboard.writeText(v.safeFix);
-          copyBtn.textContent = 'Copied!';
-          setTimeout(() => copyBtn.textContent = 'Copy Fix', 2000);
+          copyBtn.textContent = 'Скопировано';
+          setTimeout(() => copyBtn.textContent = 'Скопировать SQL', 2000);
         });
       }
 
@@ -651,8 +651,8 @@ class LockGuardWebPlayground {
     plan.phases.forEach((p, idx) => {
       const card = document.createElement('div');
       card.className = 'phase-card';
-      const snippet = (plan.ormSnippets && plan.ormSnippets[idx]) 
-        ? plan.ormSnippets[idx].code 
+      const snippet = (plan.ormSnippets && plan.ormSnippets[idx])
+        ? plan.ormSnippets[idx].code
         : (p.sql || p.code || '');
       const instruction = (plan.ormSnippets && plan.ormSnippets[idx] && plan.ormSnippets[idx].instruction)
         ? `<div style="font-size:0.75rem; color:var(--accent-cyan); margin-bottom:0.4rem; font-family:monospace;">${escapeHtml(plan.ormSnippets[idx].instruction)}</div>`
@@ -675,7 +675,7 @@ class LockGuardWebPlayground {
     }
     const plan = window.LockGuard.generatePlan(this.lastAnalysis, this.currentOrm);
     if (!plan.phases || plan.phases.length === 0) {
-      alert('Миграция уже безопасна, разбиение не требуется.');
+      alert('Правила не выявили нарушений. Разбиение не требуется.');
       return;
     }
 
@@ -684,12 +684,12 @@ class LockGuardWebPlayground {
 
     if (this.currentOrm === 'django') {
       fileName = '0042_lockguard_safe_migration.py';
-      fileContent = (plan.ormSnippets && plan.ormSnippets[0]) 
+      fileContent = (plan.ormSnippets && plan.ormSnippets[0])
         ? plan.ormSnippets.map(s => s.code).join('\n\n')
         : plan.phases.map(p => p.sql).join('\n\n');
     } else if (this.currentOrm === 'alembic') {
       fileName = 'alembic_safe_migration.py';
-      fileContent = (plan.ormSnippets && plan.ormSnippets[0]) 
+      fileContent = (plan.ormSnippets && plan.ormSnippets[0])
         ? plan.ormSnippets.map(s => s.code).join('\n\n')
         : plan.phases.map(p => p.sql).join('\n\n');
     } else {
@@ -720,8 +720,8 @@ class LockGuardWebPlayground {
     const poolSize = this.sliderPool ? parseInt(this.sliderPool.value, 10) : 100;
     const cpuCores = this.sliderCores ? parseInt(this.sliderCores.value, 10) : 8;
     const gmv = this.sliderGmv ? parseInt(this.sliderGmv.value, 10) : 1000000;
-    const simulation = window.LockGuard.simulate(analysis, { 
-      simulatedRows: rows, 
+    const simulation = window.LockGuard.simulate(analysis, {
+      simulatedRows: rows,
       concurrentRps: rps,
       pgBouncerPoolSize: poolSize,
       cpuCores: cpuCores
@@ -730,12 +730,12 @@ class LockGuardWebPlayground {
 
     const lossPerSec = gmv / 86400;
     const directLoss = lossPerSec * (simulation.totalLockWaitContentionMs / 1000);
-    const dropoffCost = simulation.isPoolExhausted 
-      ? Math.min(simulation.totalBlockedQueriesEstimated * 20, gmv * 0.15) 
+    const dropoffCost = simulation.isPoolExhausted
+      ? Math.min(simulation.totalBlockedQueriesEstimated * 20, gmv * 0.15)
       : (simulation.totalBlockedQueriesEstimated * 5);
     const totalLossRub = analysis.isDmlOnly ? 0 : Math.round(directLoss + dropoffCost);
 
-    const formattedRows = rows >= 1000000 
+    const formattedRows = rows >= 1000000
       ? (rows / 1000000).toFixed(1) + 'M строк (~' + (rows * 0.0006).toFixed(1) + ' GB)'
       : (rows / 1000).toFixed(0) + 'K строк';
 
@@ -746,9 +746,9 @@ class LockGuardWebPlayground {
     const violationsHtml = (analysis.violations || []).map((v, idx) => `
       <div style="border:1px solid #CBD5E1; border-left:4px solid ${v.severity === 'CRITICAL' ? '#DC2626' : '#D97706'}; border-radius:6px; padding:14px; margin-bottom:14px; background:#F8FAFC; page-break-inside:avoid;">
         <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-          <strong style="color:#0F172A; font-size:15px;">#${idx + 1}. ${v.ruleName} (<code>${v.ruleId}</code>)</strong>
+          <strong style="color:#0F172A; font-size:15px;">#${idx + 1}. ${window.LockGuardLabels?.titles[v.ruleId] || v.ruleName} (<code>${v.ruleId}</code>)</strong>
           <span style="background:${v.severity === 'CRITICAL' ? '#FEE2E2' : '#FEF3C7'}; color:${v.severity === 'CRITICAL' ? '#991B1B' : '#92400E'}; padding:2px 8px; border-radius:4px; font-weight:700; font-size:12px;">
-            ${v.severity} • ${v.lockLevel}
+            ${window.LockGuardLabels?.severity[v.severity] || v.severity} • ${v.lockLevel}
           </span>
         </div>
         <div style="font-size:13px; color:#334155; margin-bottom:8px;">
@@ -838,12 +838,12 @@ ${escapeHtml(v.safeFix)}
   </table>
 
   <div class="banner ${analysis.isDmlOnly ? 'safe' : (isSafe ? 'safe' : 'critical')}">
-    <div class="banner-title">${analysis.isDmlOnly ? 'ℹ️ СТАТУС: DML ОПЕРАЦИЯ ДАННЫХ (БЛОКИРОВОК СХЕМЫ НЕТ)' : (isSafe ? '✅ СТАТУС: МИГРАЦИЯ БЕЗОПАСНА (ZERO-DOWNTIME COMPLIANT)' : '⚠️ СТАТУС: КРИТИЧЕСКИЙ РИСК ПРОСТОЯ ПРОДАКШЕНА (OUTAGE IMMINENT)')}</div>
-    <div>${analysis.isDmlOnly 
+    <div class="banner-title">${analysis.isDmlOnly ? 'ℹ️ СТАТУС: DML ОПЕРАЦИЯ ДАННЫХ (БЛОКИРОВОК СХЕМЫ НЕТ)' : (isSafe ? 'ПРАВИЛА НЕ ВЫЯВИЛИ НАРУШЕНИЙ' : 'НАЙДЕНЫ РИСКИ: НУЖНА ПРОВЕРКА')}</div>
+    <div>${analysis.isDmlOnly
       ? 'Запрос является операцией чтения/записи данных (SELECT / INSERT / UPDATE / DELETE). Структура и схема базы данных не изменяются, блокировок DDL нет. Расчетный простой базы: 0.0 сек.'
-      : (isSafe 
-        ? 'Анализ AST-дерева подтвердил: запрошенные операции не вызывают длительных эксклюзивных блокировок. Миграция безопасна для боевого деплоя под живым трафиком.' 
-        : 'В миграционном скрипте обнаружены операции с блокировкой <b>ACCESS EXCLUSIVE</b>. Выкатка приведет к полной заморозке таблицы, накоплению очереди входящих транзакций и лавинообразным ошибкам 504 Gateway Timeout.')}</div>
+      : (isSafe
+        ? 'Проверенные правила не выявили нарушений. Результат не гарантирует отсутствие простоев; проверьте схему, нагрузку и транзакции на тестовой базе.'
+        : 'В миграционном скрипте обнаружены операции с блокировкой <b>ACCESS EXCLUSIVE</b>. Такие операции могут задерживать другие транзакции. Длительность зависит от схемы, нагрузки и границ транзакций; оценка ниже является моделью.')}</div>
   </div>
 
   <div class="stats-grid" style="grid-template-columns: repeat(6, 1fr);">
@@ -877,7 +877,7 @@ ${escapeHtml(v.safeFix)}
   ${violationsHtml || '<p style="color:#16A34A;">Антипаттернов блокировок не обнаружено.</p>'}
 
   ${splitPlan.phases && splitPlan.phases.length > 0 ? `
-    <h2 style="page-break-before:always;">2. Рекомендуемый безопасный план релиза (4 этапа Auto-Splitter)</h2>
+    <h2 style="page-break-before:always;">2. Черновой план изменений для ручной проверки</h2>
     <p style="font-size:12px; color:#475569; margin-bottom:12px;">Для предотвращения простоя опасная миграция автоматически разделена на изолированные неблокирующие шаги:</p>
     ${phasesHtml}
   ` : ''}
@@ -975,7 +975,7 @@ const PG_LOCK_CONFLICTS = {
   'ROW SHARE': ['EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'ROW EXCLUSIVE': ['SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'SHARE UPDATE EXCLUSIVE': ['SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
-  'SHARE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'SHARE ROW EXCLUSIVE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'EXCLUSIVE': ['ROW SHARE', 'ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'ACCESS EXCLUSIVE': [
@@ -994,12 +994,12 @@ const PG_LOCK_DETAILS = {
   'SHARE': {
     title: '⛔ SHARE: Блокировка пользовательской записи (Write Freeze)',
     desc: 'Позволяет продолжать чтение (<code>SELECT</code>), но <b>полностью блокирует все операции изменения данных</b>: <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>! Все пользовательские транзакции записи встают колом до тех пор, пока не построится весь индекс.',
-    blocked: ['INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'Любой ALTER TABLE (ACCESS EXCLUSIVE)'],
+    blocked: ['INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY (SHARE UPDATE EXCLUSIVE)', 'ALTER TABLE (ACCESS EXCLUSIVE)'],
     safe: ['Параллельные SELECT (ACCESS SHARE)', 'SELECT FOR UPDATE (ROW SHARE)']
   },
   'SHARE UPDATE EXCLUSIVE': {
-    title: '✅ SHARE UPDATE EXCLUSIVE: Безопасный параллельный режим (Zero-Downtime)',
-    desc: '<b>Золотой стандарт Zero-Downtime в PostgreSQL!</b> Конфликтует ТОЛЬКО с другими параллельными изменениями схемы или VACUUM, но <b>100% совместим с клиентским чтением (<code>SELECT</code>) и записью (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>)</b>! Таблица работает на полной скорости без зависаний.',
+    title: '✅ SHARE UPDATE EXCLUSIVE: Режим параллельных операций',
+    desc: 'Совместим с обычным чтением и записью на уровне табличных блокировок. Конфликтует с другим SHARE UPDATE EXCLUSIVE и более сильными режимами. Это не гарантирует отсутствие ожиданий, нагрузки или блокировок других объектов.',
     blocked: ['Параллельный VACUUM / ANALYZE', 'Другой CREATE INDEX CONCURRENTLY', 'ALTER TABLE (ACCESS EXCLUSIVE)'],
     safe: ['Клиентские SELECT (ACCESS SHARE)', 'Клиентские INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'SELECT FOR UPDATE']
   },
@@ -1011,7 +1011,7 @@ const PG_LOCK_DETAILS = {
   },
   'ACCESS SHARE': {
     title: '📖 ACCESS SHARE: Стандартный рабочий поток чтения',
-    desc: 'Этот лок берется обычным <code>SELECT</code> запросом. Совместим со всеми остальными режимами, кроме самого тяжелого — <code>ACCESS EXCLUSIVE</code>. Именно поэтому любая монолитная миграция замораживает сайт целиком.',
+    desc: 'Этот лок берется обычным <code>SELECT</code> запросом. Совместим со всеми остальными режимами, кроме самого тяжелого — <code>ACCESS EXCLUSIVE</code>. Длительное ожидание ACCESS EXCLUSIVE может задерживать последующие запросы.',
     blocked: ['ALTER TABLE (ACCESS EXCLUSIVE)', 'DROP TABLE', 'TRUNCATE'],
     safe: ['Параллельные SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
   },

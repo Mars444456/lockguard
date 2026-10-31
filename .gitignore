@@ -14,5 +14,9 @@ private/
 tools/
 data/
 *.db.json
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.pre-sqlite-*.bak
 .idea/
 .vscode/
