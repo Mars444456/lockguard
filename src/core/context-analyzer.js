@@ -171,8 +171,8 @@ class ContextAnalyzer {
       : stats.sizeMb + ' MB';
 
     return `Table '${violation.table}' contains ${rowsFormatted} (~${sizeFormatted}). ` +
-      `Operation will hold ${violation.lockLevel} lock for at least ${lockDuration.formatted}, ` +
-      `blocking concurrent client traffic. Calculated risk: ${lockDuration.riskLevel}.`;
+      `Model estimate: ~${lockDuration.formatted} with ${violation.lockLevel}; actual duration and waiting depend on workload and transaction boundaries. ` +
+      `Estimated contention: ${lockDuration.riskLevel}. This is not a measured lower bound.`;
   }
 
   static formatSeconds(sec) {

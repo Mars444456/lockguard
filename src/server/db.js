@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync, backup } = require('node:sqlite');
+const { features } = require('./pro-features');
 
 const PRIMARY = 'org_lockguard_primary';
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -15,10 +16,10 @@ class OrganizationStore {
   getOrganization() {
     let org = this.database.readOrganization(this.organizationId);
     if (!org) throw new Error('Organization not found');
-    if (org.billingProvider === 'robokassa' && Date.parse(org.accessUntil) <= Date.now() && org.plan !== 'free') {
+    if (org.accessUntil && Date.parse(org.accessUntil) <= Date.now() && org.plan !== 'free') {
       org = this.database.transaction(() => {
         const current = this.database.readOrganization(this.organizationId);
-        return current.billingProvider === 'robokassa' && Date.parse(current.accessUntil) <= Date.now() && current.plan !== 'free'
+        return current.accessUntil && Date.parse(current.accessUntil) <= Date.now() && current.plan !== 'free'
           ? this.updateOrganization({ plan: 'free', subscriptionStatus: 'expired', monthlyChecksQuota: 100 }) : current;
       });
     }
@@ -67,17 +68,34 @@ class OrganizationStore {
     });
   }
   getRuns() {
-    return this.sql.prepare('SELECT data FROM runs WHERE organization_id=? ORDER BY rowid DESC LIMIT 100').all(this.organizationId).map(row => JSON.parse(row.data));
+    return this.sql.prepare('SELECT data FROM runs WHERE organization_id=? ORDER BY rowid DESC LIMIT ?').all(this.organizationId, features(this.getOrganization()).historyLimit).map(row => JSON.parse(row.data));
   }
+  getRun(id) { const row = this.sql.prepare('SELECT data FROM runs WHERE id=? AND organization_id=?').get(id, this.organizationId); return row ? JSON.parse(row.data) : null; }
   addRun(runData) {
     return this.database.transaction(() => {
       const record = { ...runData, id: 'run_' + crypto.randomUUID(), organizationId: this.organizationId, timestamp: new Date().toISOString() };
       this.sql.prepare('INSERT INTO runs(id,organization_id,data) VALUES(?,?,?)').run(record.id, this.organizationId, json(record));
-      this.sql.prepare('DELETE FROM runs WHERE organization_id=? AND id NOT IN (SELECT id FROM runs WHERE organization_id=? ORDER BY rowid DESC LIMIT 100)').run(this.organizationId, this.organizationId);
+      this.sql.prepare('DELETE FROM runs WHERE organization_id=? AND id NOT IN (SELECT id FROM runs WHERE organization_id=? ORDER BY rowid DESC LIMIT ?)').run(this.organizationId, this.organizationId, features(this.getOrganization()).historyLimit);
       return record;
     });
   }
   clearRuns() { this.sql.prepare('DELETE FROM runs WHERE organization_id=?').run(this.organizationId); return true; }
+  getSchemas() {
+    return this.sql.prepare('SELECT data FROM schema_profiles WHERE organization_id=? ORDER BY rowid DESC').all(this.organizationId)
+      .map(row => { const { schema, ...meta } = JSON.parse(row.data); return meta; });
+  }
+  getSchema(id) { const row=this.sql.prepare('SELECT data FROM schema_profiles WHERE id=? AND organization_id=?').get(id,this.organizationId); return row ? JSON.parse(row.data) : null; }
+  saveSchema({ name, schema, summary }) {
+    return this.database.transaction(() => {
+      const { requirePro } = require('./pro-features'); requirePro(this);
+      if (typeof name !== 'string' || !name.trim() || name.trim().length > 80) throw Object.assign(new Error('Название схемы: от 1 до 80 символов.'), { statusCode:400 });
+      if (this.getSchemas().length >= 10) throw Object.assign(new Error('В Pro можно сохранить до 10 схем. Удалите ненужную перед добавлением.'), { statusCode:409 });
+      const record={ id:'schema_'+crypto.randomUUID(), organizationId:this.organizationId, name:name.trim(), schema, summary, revision:hash(json(schema)), createdAt:new Date().toISOString() };
+      this.sql.prepare('INSERT INTO schema_profiles(id,organization_id,data) VALUES(?,?,?)').run(record.id,this.organizationId,json(record));
+      return record;
+    });
+  }
+  deleteSchema(id) { return !!this.sql.prepare('DELETE FROM schema_profiles WHERE id=? AND organization_id=?').run(id,this.organizationId).changes; }
   createPaymentOrder({ product, email, requestId, testMode, merchantLogin }) {
     return this.database.transaction(() => {
       const existing = this.sql.prepare('SELECT data FROM payment_orders WHERE organization_id=? AND request_id=?').get(this.organizationId, requestId);
@@ -154,7 +172,9 @@ class PersistentDatabase {
         'CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,organization_id TEXT NOT NULL REFERENCES organizations(id),email TEXT NOT NULL UNIQUE COLLATE NOCASE,password_hash TEXT NOT NULL,created_at TEXT NOT NULL)',
         'CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL)',
         'CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)',
-        'CREATE TABLE IF NOT EXISTS auth_limits(key TEXT PRIMARY KEY,started_at INTEGER NOT NULL,attempts INTEGER NOT NULL)'
+        'CREATE TABLE IF NOT EXISTS auth_limits(key TEXT PRIMARY KEY,started_at INTEGER NOT NULL,attempts INTEGER NOT NULL)',
+        'CREATE TABLE IF NOT EXISTS schema_profiles(id TEXT PRIMARY KEY,organization_id TEXT NOT NULL REFERENCES organizations(id),data TEXT NOT NULL CHECK(json_valid(data)))',
+        'CREATE INDEX IF NOT EXISTS schema_profiles_org ON schema_profiles(organization_id)'
       ].join(';'));
       const schema = this.getMeta('schema_version');
       if (schema && schema !== '1') throw new Error('Unsupported SQLite schema version');
@@ -316,7 +336,7 @@ class PersistentDatabase {
 }
 
 for (const method of ['getOrganization', 'updateOrganization', 'updatePlan', 'getApiKeys', 'createApiKey', 'revokeApiKey',
-  'recordCheck', 'getRuns', 'addRun', 'clearRuns', 'createPaymentOrder', 'getPaymentOrder', 'getPaymentOrders', 'completePaymentOrder']) {
+  'recordCheck', 'getRuns', 'getRun', 'addRun', 'clearRuns', 'getSchemas', 'getSchema', 'saveSchema', 'deleteSchema', 'createPaymentOrder', 'getPaymentOrder', 'getPaymentOrders', 'completePaymentOrder']) {
   PersistentDatabase.prototype[method] = function(...args) { return this.forOrganization()[method](...args); };
 }
 

@@ -12,6 +12,9 @@ const requireAdmin = require('./admin-auth');
 const GitHubService = require('./github-service');
 const RobokassaProvider = require('./robokassa-provider');
 const AuthService = require('./auth-service');
+const SchemaCatalog = require('../core/schema-catalog');
+const { features, requirePro } = require('./pro-features');
+const RunComparison = require('./run-comparison');
 
 const ruleEngine = new RuleEngine();
 
@@ -67,20 +70,34 @@ function registerRoutes(router) {
         if (req.auth && req.auth.organizationId !== verifiedKey.organizationId) return res.status(403).json({ error: 'API key belongs to another organization.' });
       }
       const store = verifiedKey ? db.forOrganization(verifiedKey.organizationId) : req.store;
+      let profile = null;
+      if (req.body.schemaId !== undefined || req.body.schema !== undefined) {
+        if (!verifiedKey && !req.auth && !requireAdmin.isAdmin(req)) return res.status(401).json({ error:'Войдите для анализа с сохранённой схемой.' });
+        requirePro(store);
+        if (req.body.schemaId !== undefined) {
+          if (typeof req.body.schemaId !== 'string') return res.status(400).json({ error:'Неверный идентификатор схемы.' });
+          profile = store.getSchema(req.body.schemaId);
+          if (!profile) return res.status(404).json({ error:'Схема не найдена.' });
+        } else return res.status(400).json({ error:'Передайте schemaId сохранённой схемы.' });
+      }
 
       let result = ruleEngine.analyze(sql, {
-        filename: filename || 'custom_migration.sql'
+        filename: filename || 'custom_migration.sql',
+        schema: profile?.schema
       });
 
-      if (withContext) {
+      if (withContext && !profile) {
         result = ContextAnalyzer.enrich(result, { demoMode: true });
       }
 
       const markdownReport = GitHubPrFormatter.format([result]);
+      let run = null;
       // Save the real origin and report; a manual check must not invent a GitHub PR.
       if (recordRun || repo) {
         if (!verifiedKey && !req.auth && !requireAdmin(req, res)) return;
-        store.addRun({
+        run = store.addRun({
+          filename: result.filename, findingsVersion: 1, findings: RunComparison.findings(result), analysisComplete: result.analysisComplete,
+          schemaId: profile?.id || null, schemaRevision: profile?.revision || null,
           source: repo ? 'api' : 'dashboard',
           repo: repo || '',
           prNumber: prNumber || null,
@@ -104,12 +121,14 @@ function registerRoutes(router) {
         success: true,
         data: {
           ...result,
+          runId: run?.id || null,
+          schemaProfile: profile ? { id:profile.id, name:profile.name, revision:profile.revision } : null,
           markdownReport
         }
       });
     } catch (err) {
-      console.error('API /analyze error:', err);
-      return res.status(err instanceof SyntaxError ? 422 : 500).json({ error: err.message });
+      if (!err.statusCode && !(err instanceof SyntaxError)) console.error('API /analyze error:', err);
+      return res.status(err.statusCode || (err instanceof SyntaxError ? 422 : 500)).json({ error: err.message });
     }
   });
 
@@ -141,7 +160,7 @@ function registerRoutes(router) {
   router.get('/api/v1/organization', async (req, res) => {
     return res.status(200).json({
       success: true,
-      organization: req.store.getOrganization()
+      organization: { ...req.store.getOrganization(), features: features(req.store.getOrganization()) }
     });
   });
 
@@ -201,6 +220,29 @@ function registerRoutes(router) {
   });
 
   // 6. Audit Runs History
+  router.get('/api/v1/runs/compare', async (req,res) => {
+    requirePro(req.store);
+    const before=req.store.getRun(req.query.before || ''), after=req.store.getRun(req.query.after || '');
+    if(!before || !after) return res.status(404).json({error:'Проверка не найдена.'});
+    if(before.id===after.id) return res.status(400).json({error:'Выберите две разные проверки.'});
+    res.json({success:true,comparison:RunComparison.compare(before,after)});
+  });
+  router.get('/api/v1/schemas', async (req,res) => res.json({success:true,schemas:req.store.getSchemas(),features:features(req.store.getOrganization())}));
+  router.post('/api/v1/schemas', async (req,res) => {
+    requirePro(req.store);
+    const catalog = req.body.sql !== undefined ? SchemaCatalog.fromSQL(req.body.sql,{pgVersion:req.body.pgVersion || 17,defaultSchema:req.body.defaultSchema || 'public'}) : SchemaCatalog.from(req.body.schema);
+    const { schema, ...meta }=req.store.saveSchema({name:req.body.name,schema:catalog.toJSON(),summary:catalog.summary()});
+    res.status(201).json({success:true,profile:meta});
+  });
+  router.get('/api/v1/schemas/:id', async (req,res) => {
+    const profile=req.store.getSchema(req.params.id);
+    if(!profile)return res.status(404).json({error:'Схема не найдена.'});
+    res.json({success:true,profile});
+  });
+  router.delete('/api/v1/schemas/:id', async (req,res) => {
+    if(!req.store.deleteSchema(req.params.id))return res.status(404).json({error:'Схема не найдена.'});
+    res.json({success:true});
+  });
   router.get('/api/v1/runs', async (req, res) => {
     return res.status(200).json({
       success: true,
@@ -291,7 +333,16 @@ function registerRoutes(router) {
   router.post('/api/v1/split', async (req, res) => {
     const { sql, orm = 'sql' } = req.body || {};
     if (typeof sql !== 'string' || !sql.trim()) return res.status(400).json({ error: 'Missing or invalid sql' });
-    const analysis = ruleEngine.analyze(sql);
+    let schema;
+    if (req.body.schemaId !== undefined) {
+      if(typeof req.body.schemaId!=='string')return res.status(400).json({error:'Неверный идентификатор схемы.'});
+      if (!req.auth && !requireAdmin.isAdmin(req)) return res.status(401).json({error:'Войдите для использования сохранённой схемы.'});
+      requirePro(req.store);
+      const profile=req.store.getSchema(req.body.schemaId);
+      if(!profile)return res.status(404).json({error:'Схема не найдена.'});
+      schema=profile.schema;
+    }
+    const analysis = ruleEngine.analyze(sql,{schema});
     const plan = AutoSplitter.generatePlan(analysis, orm);
     return res.status(200).json({ success: true, plan });
   });

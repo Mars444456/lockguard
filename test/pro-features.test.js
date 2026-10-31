@@ -1,0 +1,80 @@
+require('./helpers/initialize');
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http');
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'lockguard-pro-'));
+process.env.LOCKGUARD_DB_FILE=path.join(tmp,'qa.sqlite3');process.env.NODE_ENV='test';process.env.LOCKGUARD_ALLOW_REGISTRATION='true';process.env.LOCKGUARD_ADMIN_TOKEN='operator-pro-test';
+const db=require('../src/server/db'), server=require('../src/server/server');
+const {features}=require('../src/server/pro-features');
+const {findings,compare}=require('../src/server/run-comparison');
+const {RuleEngine}=require('../src/core');
+let a,b,profile,before,after;
+async function request(route,method='GET',body,cookie) {
+  return new Promise((resolve,reject)=>{const req=http.request({host:'127.0.0.1',port:server.address().port,path:route,method,headers:{...(body?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{})}},res=>{let data='';res.on('data',c=>data+=c);res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(data),cookie:res.headers['set-cookie']?.[0].split(';')[0]}));});req.on('error',reject);req.end(body?JSON.stringify(body):undefined);});
+}
+const post=(route,body,cookie)=>request(route,'POST',body,cookie);
+const schemaSQL='CREATE TABLE accounts(id int PRIMARY KEY); CREATE TABLE orders(account_id int); CREATE INDEX ix_account ON orders(account_id);';
+const migration="SET lock_timeout='3s'; ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY(account_id) REFERENCES accounts(id) NOT VALID;";
+test.before(async()=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));process.env.APP_URL='http://127.0.0.1:'+server.address().port;
+  a=await post('/api/v1/auth/register',{email:'pro@example.invalid',password:'Long Pro test password 2026',organizationName:'Pro team'});
+  b=await post('/api/v1/auth/register',{email:'free@example.invalid',password:'Long Pro test password 2026',organizationName:'Free team'});
+});
+test.after(async()=>{await new Promise(resolve=>server.close(resolve));db.close();fs.rmSync(tmp,{recursive:true,force:true});});
+test('Pro features cannot be enabled by client flags, expired plans, audit orders or invalid dates',async()=>{
+  const body={name:'Unsafe client upgrade',sql:schemaSQL,plan:'team',pro:true,subscriptionStatus:'active'};
+  assert.equal((await post('/api/v1/schemas',body,a.cookie)).status,403);
+  assert.equal((await post('/api/v1/organization',{plan:'team',features:{pro:true}},a.cookie)).status,400);
+  assert.equal(features({plan:'team',subscriptionStatus:'active',accessUntil:'invalid'}).pro,false);
+  assert.equal(features({plan:'business',subscriptionStatus:'active'}).pro,false);
+  assert.equal(features({plan:'team',subscriptionStatus:'active',accessUntil:new Date(0).toISOString()}).pro,false);
+  db.forOrganization(a.body.user.organizationId).updateOrganization({plan:'team',subscriptionStatus:'active',billingProvider:'manual',accessUntil:new Date(Date.now()+86400000).toISOString()});
+  const org=await request('/api/v1/organization','GET',null,a.cookie);
+  assert.equal(org.body.organization.features.pro,true);
+  assert.equal(org.body.organization.features.historyLimit,1000);
+});
+test('Saved schemas are normalized, scoped to one organization and Pro-gated during analysis',async()=>{
+  const result=await post('/api/v1/schemas',{name:'Production snapshot',sql:schemaSQL},a.cookie);
+  assert.equal(result.status,201,JSON.stringify(result.body));profile=result.body.profile;
+  assert.equal(result.body.profile.schema,undefined);
+  assert.equal((await request('/api/v1/schemas/'+profile.id,'GET',null,b.cookie)).status,404);
+  assert.equal((await request('/api/v1/schemas/'+profile.id,'DELETE',null,b.cookie)).status,404);
+  assert.equal((await post('/api/v1/analyze',{sql:migration,schemaId:profile.id},b.cookie)).status,403);
+  assert.equal((await post('/api/v1/analyze',{sql:migration,schemaId:profile.id})).status,401);
+  const run=await post('/api/v1/analyze',{sql:migration,schemaId:profile.id,recordRun:true,withContext:true},a.cookie);
+  assert.equal(run.status,200,JSON.stringify(run.body));
+  assert.equal(run.body.data.violations.some(v=>v.ruleId==='LG-011'),false);
+  assert.equal(run.body.data.hasLiveContext,undefined,'A structural snapshot must not trigger demo row estimates');
+  assert.equal(run.body.data.schemaProfile.revision,profile.revision);
+  const key=await post('/api/v1/keys',{name:'Pro CI'},a.cookie);
+  const api=await post('/api/v1/analyze',{sql:migration,schemaId:profile.id,apiKey:key.body.key.key});
+  assert.equal(api.status,200);
+});
+test('Comparison finds resolved, introduced and persisting findings without leaking other organizations',async()=>{
+  before=(await post('/api/v1/analyze',{sql:"SET lock_timeout='3s'; CREATE INDEX ix ON orders(account_id);",recordRun:true},a.cookie)).body.data.runId;
+  after=(await post('/api/v1/analyze',{sql:"SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY ix ON orders(account_id);",recordRun:true},a.cookie)).body.data.runId;
+  const result=await request(`/api/v1/runs/compare?before=${before}&after=${after}`,'GET',null,a.cookie);
+  assert.equal(result.status,200);assert.equal(result.body.comparison.resolved.length,1);assert.equal(result.body.comparison.introduced.length,0);
+  assert.equal((await request(`/api/v1/runs/compare?before=${before}&after=${after}`,'GET',null,b.cookie)).status,403);
+  db.forOrganization(b.body.user.organizationId).updatePlan('team');
+  assert.equal((await request(`/api/v1/runs/compare?before=${before}&after=${after}`,'GET',null,b.cookie)).status,404);
+  const incomplete=db.forOrganization(a.body.user.organizationId).addRun({findingsVersion:1,analysisComplete:false,findings:[]});
+  assert.equal((await request(`/api/v1/runs/compare?before=${incomplete.id}&after=${after}`,'GET',null,a.cookie)).status,409);
+});
+test('Comparison matches duplicate findings individually and ignores line movement',()=>{
+  const engine=new RuleEngine(),result=engine.analyze('CREATE INDEX a ON orders(id); CREATE INDEX a ON orders(id);');
+  const f=findings(result), old={id:'old',findingsVersion:1,findings:f,analysisComplete:true};
+  const next={id:'new',findingsVersion:1,findings:f.slice(0,1).map(v=>({...v,line:99})),analysisComplete:true};
+  const delta=compare(old,next);assert.equal(delta.persisting.length,1);assert.equal(delta.resolved.length,f.length-1);
+  assert.throws(()=>compare({findingsVersion:0},next));
+});
+test('Pro retains 1000 runs; expiry blocks premium actions while export and deletion remain available',async()=>{
+  const store=db.forOrganization(a.body.user.organizationId);
+  db.transaction(()=>{for(let i=0;i<1005;i++)store.addRun({summary:'run '+i});});
+  assert.equal(store.getRuns().length,1000);
+  for(let i=1;i<10;i++)assert.equal((await post('/api/v1/schemas',{name:'Snapshot '+i,sql:schemaSQL},a.cookie)).status,201);
+  assert.equal((await post('/api/v1/schemas',{name:'Beyond limit',sql:schemaSQL},a.cookie)).status,409);
+  store.updateOrganization({accessUntil:new Date(0).toISOString()});
+  assert.equal((await post('/api/v1/analyze',{sql:migration,schemaId:profile.id},a.cookie)).status,403);
+  assert.equal((await post('/api/v1/schemas',{name:'Expired',sql:schemaSQL},a.cookie)).status,403);
+  assert.equal((await request('/api/v1/schemas/'+profile.id,'GET',null,a.cookie)).status,200);
+  assert.equal((await request('/api/v1/schemas/'+profile.id,'DELETE',null,a.cookie)).status,200);
+  assert.equal(store.getRuns().length,100);
+});

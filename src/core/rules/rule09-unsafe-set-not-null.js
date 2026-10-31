@@ -1,5 +1,6 @@
 const { LockLevel, Severity } = require('../types');
 const { generatedName } = require('../sql-identifiers');
+const { quote } = require('../schema-catalog');
 
 module.exports = {
   id: 'LG-009',
@@ -16,11 +17,24 @@ module.exports = {
     // Track validated check constraints: "table:column"
     const validatedChecks = new Set(context.validatedChecks || (context.sharedState && context.sharedState.validatedChecks) || []);
     const candidateChecks = new Map(); // constraintName -> { table, column }
+    const catalog = context.schemaCatalog;
+    let allowUnqualified = true;
+    const invalidatedTables = new Set();
 
     for (const stmt of astStatements) {
+      if (['SET_VARIABLE', 'RESET_VARIABLE'].includes(stmt.type) && ['search_path', 'all'].includes(stmt.variable)) { allowUnqualified = false; validatedChecks.clear(); candidateChecks.clear(); }
+      const baseline = catalog?.lookup(stmt.table || '', allowUnqualified);
+      if (stmt.type === 'DROP_TABLE' || stmt.subcommands?.some(sub => ['DROP_COLUMN', 'DROP_CONSTRAINT', 'DROP_NOT_NULL', 'ALTER_COLUMN_TYPE', 'UNSUPPORTED'].includes(sub.subtype))) {
+        if (baseline) invalidatedTables.add(baseline);
+      }
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
-          if (sub.subtype === 'SET_NOT_NULL') sub.hasValidatedNotNullCheck = validatedChecks.has(`${sub.table}:${sub.column}`);
+          if (sub.subtype === 'SET_NOT_NULL') {
+            const existing = baseline && !invalidatedTables.has(baseline) &&
+              (baseline.columns.some(c => quote(c.name) === sub.column && c.notNull) ||
+                (catalog.pgVersion >= 12 && baseline.checks.some(c => quote(c.column) === sub.column && c.validated)));
+            sub.hasValidatedNotNullCheck = (validatedChecks.has(`${sub.table}:${sub.column}`) && (!catalog || catalog.pgVersion >= 12)) || !!existing;
+          }
           if (sub.subtype === 'ADD_CHECK_CONSTRAINT' && sub.validatedColumn) {
             candidateChecks.set(`${sub.table}:${sub.constraintName}`, {
               table: sub.table,

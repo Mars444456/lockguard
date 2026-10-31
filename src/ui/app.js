@@ -38,9 +38,9 @@ CREATE INDEX idx_transactions_created_at ON transactions (created_at);
 ALTER TABLE accounts ADD COLUMN token UUID DEFAULT gen_random_uuid() NOT NULL;
 
 -- 3. Unvalidated Foreign Key (scans millions of rows under lock)
-ALTER TABLE transactions 
-  ADD CONSTRAINT fk_tx_account 
-  FOREIGN KEY (account_id) 
+ALTER TABLE transactions
+  ADD CONSTRAINT fk_tx_account
+  FOREIGN KEY (account_id)
   REFERENCES accounts(id);
 
 -- 4. Full Table Rewrite
@@ -69,9 +69,9 @@ CREATE UNIQUE INDEX idx_orders_reference ON orders (reference_number);`,
   unsafe_fk: `-- Heavy Foreign Key scan without NOT VALID
 SET lock_timeout = '3s';
 
-ALTER TABLE order_items 
-  ADD CONSTRAINT fk_order_items_product 
-  FOREIGN KEY (product_id) 
+ALTER TABLE order_items
+  ADD CONSTRAINT fk_order_items_product
+  FOREIGN KEY (product_id)
   REFERENCES products(id);`,
 
   alter_type: `-- Heavy column type change requiring rewrite
@@ -99,10 +99,10 @@ ALTER TABLE users DROP COLUMN legacy_pin;`,
 -- Any UPDATE or DELETE on parent 'accounts' will lock and sequentially scan 'transactions'!
 SET lock_timeout = '3s';
 
-ALTER TABLE transactions 
-  ADD CONSTRAINT fk_tx_account 
-  FOREIGN KEY (account_id) 
-  REFERENCES accounts(id) 
+ALTER TABLE transactions
+  ADD CONSTRAINT fk_tx_account
+  FOREIGN KEY (account_id)
+  REFERENCES accounts(id)
   NOT VALID;`,
 
   truncate_matview: `-- Fatal TRUNCATE TABLE & Unconcurrent Materialized View Refresh (LG-012)
@@ -112,34 +112,39 @@ SET lock_timeout = '3s';
 TRUNCATE TABLE audit_logs;
 REFRESH MATERIALIZED VIEW mv_user_summaries;`,
 
-  safe_migration: `-- Пример без выявленных нарушений; перед применением проверьте на тестовой базе
--- 1. Mandatory Safeguard: fail fast instead of queueing locks
+  safe_migration: `-- Fixture 10: example without known rule violations. Test on your own schema before deployment.
+
+-- 1. Essential Safeguard: fail quickly instead of queueing behind long transactions
 SET lock_timeout = '3s';
 SET statement_timeout = '30s';
 
--- 2. Add column nullable without default (Instant catalog change)
+-- 2. Add column as nullable without default (Instant catalog change, no table rewrite)
 ALTER TABLE accounts ADD COLUMN updated_at TIMESTAMP;
 
--- 3. Set default for future rows only
+-- 3. Set default only for future incoming inserts
 ALTER TABLE accounts ALTER COLUMN updated_at SET DEFAULT now();
 
--- 4. Non-blocking Foreign Key with NOT VALID
-ALTER TABLE transactions 
-  ADD CONSTRAINT fk_tx_account 
-  FOREIGN KEY (account_id) 
-  REFERENCES accounts(id) 
+-- 3b. Supporting index for Foreign Key (prevents table lock escalation on parent updates/deletes)
+CREATE INDEX CONCURRENTLY idx_transactions_account_id ON transactions (account_id);
+
+-- 4. Foreign Key: Add with NOT VALID (instant catalog lock)
+ALTER TABLE transactions
+  ADD CONSTRAINT fk_tx_account
+  FOREIGN KEY (account_id)
+  REFERENCES accounts(id)
   NOT VALID;
 
--- 5. Validate Foreign Key separately (weak lock, reads & writes proceed!)
+
+-- 5. Validate Foreign Key separately (takes only weak SHARE UPDATE EXCLUSIVE - writes proceed!)
 ALTER TABLE transactions VALIDATE CONSTRAINT fk_tx_account;
 
--- 6. Concurrent Unique Index
+-- 6. Concurrent Unique Index (Safe, no lock)
 CREATE UNIQUE INDEX CONCURRENTLY idx_accounts_iban_unique ON accounts (iban);
 
--- 7. Attach constraint to existing index (instant catalog change)
+-- 7. Attach Unique Constraint using existing concurrent index
 ALTER TABLE accounts ADD CONSTRAINT uq_account_iban UNIQUE USING INDEX idx_accounts_iban_unique;
 
--- 8. Concurrent Index
+-- 8. Non-blocking index creation
 CREATE INDEX CONCURRENTLY idx_transactions_created_at ON transactions (created_at);`
 };
 
@@ -153,6 +158,7 @@ class LockGuardApp {
     this.accountMode = 'login';
     this.registrationEnabled = true;
     this.analysisRequestId = 0;
+    this.pro = window.LockGuardPro ? new window.LockGuardPro(this) : null;
     this.ready = this.init();
   }
 
@@ -179,6 +185,7 @@ class LockGuardApp {
   bindEvents() {
     document.getElementById('sql-input').addEventListener('input', () => {
       document.getElementById('current-filename').textContent = 'custom_migration.sql';
+      this.invalidateAnalysis();
     });
     document.getElementById('sql-input').addEventListener('keydown', event => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); if (!document.getElementById('btn-analyze').disabled) this.analyzeCurrentSql(); }
@@ -307,6 +314,7 @@ class LockGuardApp {
     document.getElementById('account-profile-email').textContent = this.account?.email || '';
   }
   resetPrivateData() {
+    this.pro?.reset();
     this.identityVersion++;
     this.runs = [];
     const report = document.getElementById('run-report');
@@ -344,7 +352,9 @@ class LockGuardApp {
   async refreshPrivateData() {
     if (!this.account && !adminToken) return;
     await Promise.all([this.fetchOrganization(), this.fetchRuns(), this.fetchKeys()]);
+    await this.pro?.refresh();
   }
+  hasIdentity() { return !!this.account || !!adminToken; }
   async submitAccount() {
     const button = document.getElementById('account-auth-submit');
     button.disabled = true;
@@ -377,6 +387,7 @@ class LockGuardApp {
   }
 
   switchTab(tabId) {
+    window.scrollTo?.({top:0,behavior:'instant'});
     this.currentTab = tabId;
     document.querySelectorAll('.nav-tab').forEach(b => { b.classList.toggle('active', b.dataset.tab === tabId); b.setAttribute('aria-selected', String(b.dataset.tab === tabId)); });
     if (['runs', 'keys'].includes(tabId) && !this.account && !adminToken) { this.toggleAccount(true); this.accountMessage('Войдите, чтобы открыть данные своей организации.'); }
@@ -388,6 +399,11 @@ class LockGuardApp {
     const sql = PRESETS[key] || '';
     document.getElementById('sql-input').value = sql;
     document.getElementById('current-filename').textContent = `${key}_migration.sql`;
+    this.invalidateAnalysis();
+  }
+  invalidateAnalysis() {
+    this.analysisRequestId++;
+    this.latestMarkdownReport='';
     document.getElementById('empty-state').classList.remove('hidden');
     document.getElementById('analysis-details').classList.add('hidden');
     document.getElementById('verdict-badge').className = 'verdict-pill pending';
@@ -415,7 +431,8 @@ class LockGuardApp {
           sql,
           filename: document.getElementById('current-filename').textContent,
           withContext,
-          recordRun: !!this.account
+          recordRun: !!this.account,
+          ...(this.pro?.selectedSchemaId() ? {schemaId:this.pro.selectedSchemaId()} : {})
         })
       });
 
@@ -426,6 +443,7 @@ class LockGuardApp {
       }
 
       this.renderAnalysis(data.data);
+      this.pro?.renderContext(data.data);
     } catch (err) {
       if (identityVersion === this.identityVersion) this.showToast('Ошибка анализа: ' + err.message);
     } finally {
@@ -450,7 +468,7 @@ class LockGuardApp {
       const res = await apiFetch('/api/v1/split', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql, orm: 'sql' })
+        body: JSON.stringify({ sql, orm: 'sql', ...(this.pro?.selectedSchemaId() ? {schemaId:this.pro.selectedSchemaId()} : {}) })
       });
 
       const data = await res.json();
@@ -511,7 +529,10 @@ class LockGuardApp {
     document.getElementById('analysis-details').classList.remove('hidden');
 
     const verdictBadge = document.getElementById('verdict-badge');
-    if (result.passed) {
+    if (result.passed && result.violationsCount > 0) {
+      verdictBadge.className = 'verdict-pill warning';
+      verdictBadge.textContent = `Замечания · ${result.violationsCount}`;
+    } else if (result.passed) {
       verdictBadge.className = 'verdict-pill passed';
       verdictBadge.textContent = 'Нарушений правил нет';
     } else {
@@ -645,6 +666,7 @@ class LockGuardApp {
       tbody.innerHTML = '';
 
       this.runs = data.runs;
+      this.pro?.setRuns(data.runs);
       if (!data.runs.length) tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Здесь появятся ваши проверки. Начните с редактора SQL.</td></tr>';
       data.runs.forEach(run => {
         const tr = document.createElement('tr');

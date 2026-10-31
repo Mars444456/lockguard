@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "pgVersion": 17,
+  "defaultSchema": "public",
+  "tables": [
+    {
+      "schema": "public",
+      "name": "accounts",
+      "columns": [{ "name": "id", "notNull": true }],
+      "indexes": [{ "name": "accounts_pkey", "columns": ["id"], "method": "btree", "valid": true }]
+    },
+    {
+      "schema": "public",
+      "name": "orders",
+      "columns": [{ "name": "id" }, { "name": "account_id" }],
+      "indexes": [{ "name": "ix_orders_account", "columns": ["account_id"], "method": "btree", "valid": true }]
+    }
+  ]
+}

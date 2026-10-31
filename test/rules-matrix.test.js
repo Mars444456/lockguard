@@ -82,7 +82,7 @@ test('Matrix LG-003 - Positive: Foreign Key without NOT VALID', () => {
   const v = res.violations.find(v => v.ruleId === 'LG-003');
   assert.ok(v, 'LG-003 violation must be reported');
   assert.equal(v.ruleId, 'LG-003');
-  assert.equal(v.lockLevel, LockLevel.ACCESS_EXCLUSIVE);
+  assert.equal(v.lockLevel, LockLevel.SHARE_ROW_EXCLUSIVE);
   assert.equal(v.severity, Severity.CRITICAL);
   assert.equal(v.line, 3);
   assert.ok(v.safeFix && v.safeFix.length > 0, 'Safe SQL Recipe must be non-empty');

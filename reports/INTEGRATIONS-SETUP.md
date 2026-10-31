@@ -4,7 +4,7 @@
 
 ## Установка и проверки
 
-Требуется Node.js 18+. В PowerShell используйте `npm.cmd`, если политика выполнения блокирует npm.ps1:
+Требуется Node.js 24+. В PowerShell используйте `npm.cmd`, если политика выполнения блокирует npm.ps1:
 
 ```powershell
 npm.cmd ci --ignore-scripts

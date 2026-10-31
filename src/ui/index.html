@@ -9,7 +9,7 @@
 
 
 
-<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=20261031"></head>
+<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=20261031"><link rel="stylesheet" href="pro.css?v=20261031"></head>
 <body class="bg-dark text-light antialiased">
   <!-- Top Announcement Banner -->
 
@@ -17,7 +17,7 @@
   <!-- Top Navigation Bar -->
   <header class="navbar">
     <div class="nav-container">
-      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.1</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
+      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.2</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
 
 
 
@@ -36,7 +36,7 @@
         <button aria-selected="true" class="nav-tab active" data-tab="playground">SQL-проверка</button>
         <button aria-selected="false" class="nav-tab" data-tab="runs">История проверок</button>
         <button aria-selected="false" class="nav-tab" data-tab="keys">Ключи API</button>
-        <button aria-selected="false" class="nav-tab" data-tab="rules">Правила</button>
+        <button class="nav-tab" data-tab="schemas" aria-selected="false">Схемы <span class="pro-label">PRO</span></button><button aria-selected="false" class="nav-tab" data-tab="rules">Правила</button>
         <button aria-selected="false" class="nav-tab" data-tab="billing">Тарифы</button>
       </nav></div>
   </header>
@@ -95,7 +95,7 @@
             <option value="truncate_matview">TRUNCATE и REFRESH MATVIEW · LG-012</option>
             <option value="safe_migration">Пример без выявленных нарушений</option>
           </select>
-        </div>
+        </div><div class="analysis-schema-bar"><label for="analysis-schema-select" id="schema-workspace-status">PRO · сохранённые схемы</label><select id="analysis-schema-select" disabled><option value="">Без сохранённой схемы</option></select><button class="btn-secondary btn-sm" onclick="app.switchTab('schemas')">Управлять схемами ↗</button></div><p id="schema-analysis-notice" class="notice-strip" hidden role="status"></p>
 
       <div class="playground-grid">
         <!-- Left: Code Editor -->
@@ -242,7 +242,7 @@
         </button>
       </div>
 
-      <div class="runs-table-card">
+      <section class="run-comparison-panel"><div class="schema-library-heading"><h2>Что изменилось после исправления <span class="pro-label">PRO</span></h2></div><p id="compare-pro-note" class="account-hint">Pro сравнивает две проверки: новые замечания, устранённые и оставшиеся. Нужны результаты новых полных анализов.</p><form id="compare-form"><label>До<select id="compare-before" required></select></label><label>После<select id="compare-after" required></select></label><button id="btn-compare-runs" class="btn-primary" type="submit" disabled>Сравнить проверки</button></form><p id="compare-message" class="inline-status" role="status" aria-live="polite"></p><div id="comparison-result" class="comparison-grid"></div></section><div class="runs-table-card">
         <table class="data-table">
           <thead>
             <tr>
@@ -296,7 +296,20 @@
     </section>
 
     <!-- TAB 4: RULE CATALOG -->
-    <section id="tab-rules" class="tab-pane">
+    <section id="tab-schemas" class="tab-pane">
+  <div class="section-header"><div><p class="eyebrow">КОНТЕКСТ ВАШЕГО ПРОЕКТА <span>/ PRO</span></p><h1 class="page-title">Анализ с учётом схемы.</h1><p class="page-desc">Сохраните структуру таблиц и индексов. LockGuard учтёт существующие индексы и подтверждённые ограничения при следующих проверках.</p></div></div>
+  <div id="pro-locked-note" class="pro-callout"><div><span class="pro-label">LOCKGUARD PRO</span><h2>Один раз загрузите схему.<br>Используйте в каждом релизе.</h2><p>До 10 схем организации, 1000 последних проверок и сравнение замечаний до и после исправления.</p><p>Бесплатный анализ и все 12 правил остаются доступны в Community.</p></div><div><button class="btn-primary" onclick="app.switchTab('billing')">Посмотреть возможности Pro →</button><p class="account-hint">Онлайн-оплата подключается. Платный доступ активирует сервер.</p></div></div>
+  <p id="pro-active-note" class="notice-strip" hidden>Pro активен. Схемы доступны только вашей организации. Снимок следует обновлять после изменений базы.</p>
+  <div class="schema-layout"><form id="schema-form" class="schema-import-card"><h2>Добавить снимок структуры</h2><p class="account-hint">Только описание схемы, без строк данных. SQL не выполняется. Сохраняется нормализованная структура, а не исходный файл.</p>
+    <fieldset id="schema-fields" disabled><label>Название снимка<input id="schema-name" maxlength="80" required placeholder="Например, production · октябрь"></label>
+    <div class="schema-fields-row"><label>Версия PostgreSQL<select id="schema-pg-version"><option value="17">PostgreSQL 17</option><option value="18">PostgreSQL 18</option><option value="16">PostgreSQL 16</option><option value="14">PostgreSQL 14</option><option value="12">PostgreSQL 12</option><option value="11">PostgreSQL 11</option></select></label><label>Схема по умолчанию<input id="schema-default" value="public" maxlength="63" required></label></div>
+    <label>Файл структуры · SQL или JSON · до 512 КБ<input id="schema-upload" type="file" accept=".sql,.json,application/json,text/plain"></label>
+    <label>Структура схемы<textarea id="schema-source" rows="10" required spellcheck="false" placeholder="CREATE TABLE orders (id bigint, account_id bigint);
+CREATE INDEX ix_account ON orders (account_id);"></textarea></label>
+    <p class="account-hint">SQL: CREATE TABLE, CREATE INDEX, добавление ограничений. Полный pg_dump с функциями, данными или search_path не принимается. JSON: формат LockGuard v1. При неполном или устаревшем снимке результаты требуют дополнительной проверки.</p>
+    <button id="btn-schema-save" type="submit" class="btn-primary">Сохранить схему</button></fieldset><p id="schema-message" class="inline-status" role="status" aria-live="polite"></p>
+  </form><section class="schema-library"><div class="schema-library-heading"><h2>Схемы организации</h2><button id="btn-schemas-refresh" class="btn-secondary btn-sm">Обновить</button></div><div id="schema-list"></div><p class="account-hint">Экспорт и удаление своих схем доступны и после окончания Pro.</p></section></div>
+</section><section id="tab-rules" class="tab-pane">
       <div class="section-header">
         <div>
           <h1 class="page-title">Правила анализа</h1>
@@ -318,14 +331,14 @@
         </div>
       </div>
 
-      <p style="margin-bottom:1rem">До оплаты ознакомьтесь с <a rel="noopener noreferrer" href="offer.html" target="_blank">офертой и правилами возврата</a> и <a rel="noopener noreferrer" href="contacts.html" target="_blank">реквизитами исполнителя</a>.</p><div class="pricing-grid">
+      <p style="margin-bottom:1rem">До оплаты ознакомьтесь с <a rel="noopener noreferrer" href="offer.html" target="_blank">офертой и правилами возврата</a> и <a rel="noopener noreferrer" href="contacts.html" target="_blank">реквизитами исполнителя</a>.</p><!-- plan-comparison:start --><div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr></tbody></table></div><!-- plan-comparison:end --><div class="pricing-grid">
         <!-- Free Card -->
         <div class="pricing-card" id="card-plan-free">
           <div class="pricing-badge">ОТКРЫТОЕ ЯДРО</div>
           <h3 class="plan-name">Community</h3>
           <div class="plan-price">0 ₽ <span class="per-month">/ бесплатно</span></div>
           <p class="plan-desc">Для локального анализа, обучения и собственных проектов.</p>
-          <ul class="plan-features"><li>Анализ SQL и 12 правил блокировок</li><li>Локальный CLI без лимита проверок</li><li>Открытый код и GitHub Action</li></ul>
+          <ul class="plan-features"><li>Анализ SQL и 12 правил блокировок</li><li>Локальный CLI без лимита проверок</li><li>Открытый код и GitHub Action</li><li>100 последних проверок в личном кабинете</li></ul>
           <button class="btn-plan btn-secondary" onclick="app.selectPlan('free')">Current Plan</button>
         </div>
 
@@ -335,14 +348,7 @@
           <h3 class="plan-name">LockGuard Pro</h3>
           <div class="plan-price">1 500 ₽ <span class="per-month">/ 30 дней</span></div>
           <p class="plan-desc">Доступ к согласованному экземпляру LockGuard и поддержка по его использованию. Возможности и адрес подтверждаются до оплаты.</p>
-          <ul class="plan-features">
-            <li>✔ 30 дней доступа с подтверждения оплаты</li>
-            <li>✔ Анализ SQL-миграций и отчёты о рисках</li>
-            <li>✔ Черновые рекомендации Auto-Splitter для ручной проверки</li>
-            <li>✔ Состав функций согласуется в заказе</li>
-            <li>✔ Поддержка по email</li>
-            <li>✔ Продление по разовой оплате, без автосписаний</li>
-          </ul>
+          <ul class="plan-features"><li>До 10 сохранённых схем организации</li><li>Анализ с учётом существующих индексов и ограничений</li><li>До 1000 последних проверок</li><li>Сравнение: новые, устранённые и оставшиеся замечания</li><li>Экспорт нормализованной схемы в JSON</li><li>Поддержка по email · без автосписаний</li></ul>
           <button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Подключение оплаты</button>
         </div>
 
@@ -376,8 +382,8 @@
 <footer class="seller-footer" style="max-width:1200px;margin:2rem auto;padding:2rem 1.5rem;border-top:1px solid #334155;color:#cbd5e1;line-height:1.8"><h2 style="font-size:1.1rem;color:#fff">Контакты и реквизиты исполнителя</h2><p>Минсафин Марсель Ренатович · Самозанятый (НПД) · ИНН 631112758865</p><p><a href="mailto:minsafinmarsel02@gmail.com">minsafinmarsel02@gmail.com</a> · <a href="https://t.me/marswwu">Telegram @marswwu</a></p><p><a href="contacts.html">Услуги, цены и реквизиты</a> · <a href="offer.html">Публичная оферта, предоставление услуг и возврат</a> · <a href="privacy.html">Политика конфиденциальности</a></p><p>Pro — 1 500 ₽ за 30 дней без автосписаний. Аудит — 30 000 ₽ разово, объём и сроки согласуются до оплаты. Услуги предоставляются электронно.</p></footer>
 <!-- seller-footer:end -->
 <!-- Notification Toast Container -->
-  <div id="toast" class="toast"></div>
+  <div role="status" id="toast" class="toast"></div>
 
-  <script src="labels.js?v=20261031"></script><script src="app.js"></script>
+  <script src="labels.js?v=20261031"></script><script src="pro.js?v=20261031"></script><script src="app.js"></script>
 </body>
 </html>
