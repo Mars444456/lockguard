@@ -9,13 +9,15 @@
 [![Telegram Audit Bot](https://img.shields.io/badge/Telegram_Bot-@lockguard__audit__bot-0088cc?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/lockguard_audit_bot)
 [![CI](https://github.com/Mars444456/lockguard/actions/workflows/lockguard.yml/badge.svg?branch=main)](https://github.com/Mars444456/lockguard/actions/workflows/lockguard.yml)
 [![MIT License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](LICENSE)
+[![Поддержать проект](https://img.shields.io/badge/Донат-DonationAlerts-b88049?style=for-the-badge)](https://www.donationalerts.com/r/marswwu)
 
-**Быстрый доступ:** [🚀 Запуск](#быстрый-запуск) · [🌐 Демо](https://mars444456.github.io/lockguard/) · [🤖 Бот](https://t.me/lockguard_audit_bot) · [📜 Правила](#каталог-правил) · [🖥️ CLI](#локальный-cli) · [💳 Тарифы](#услуги-и-оплата) · [📬 Контакты](#контакты-и-реквизиты-исполнителя)
+**Быстрый доступ:** [🚀 Запуск](#быстрый-запуск) · [🌐 Сайт](https://mars444456.github.io/lockguard/) · [🤖 Бот](https://t.me/lockguard_audit_bot) · [📜 Правила](#каталог-правил) · [🖥️ CLI](#локальный-cli) · [💳 Тарифы](#услуги-и-оплата) · [♡ Донат](https://www.donationalerts.com/r/marswwu) · [📬 Контакты](#контакты-и-реквизиты-исполнителя)
 
 </div>
 
 
-Демо на GitHub Pages проверяет SQL в браузере. Личный кабинет, история, ключи API и SQLite работают в серверном приложении: `npm start`, затем `http://localhost:3000`. Открытие `src/ui/index.html` через `file://` сервер не запускает.
+
+[Поддержать автора разовым донатом на DonationAlerts](https://www.donationalerts.com/r/marswwu). Добровольная поддержка не включает доступ Pro и не заменяет оплату услуги.
 
 [Сайт и демонстрация](https://mars444456.github.io/lockguard/) · [Контакты](https://mars444456.github.io/lockguard/contacts.html) · [Оферта и возвраты](https://mars444456.github.io/lockguard/offer.html) · [Конфиденциальность](https://mars444456.github.io/lockguard/privacy.html)
 

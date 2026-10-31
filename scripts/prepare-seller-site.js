@@ -40,7 +40,8 @@ const pricing = `    <!-- Pricing & Commercial Monetization Section -->
       </div>
     </section>
 `;
-html = html.slice(0, start) + pricing + html.slice(end);
+const support = '\n    <!-- support-project:start --><!-- support-project:end -->\n';
+html = html.slice(0, start) + pricing + support + html.slice(end);
 html = html.replace(/\s*<!-- Modal: 30-Day Free Pro Trial Activation -->[\s\S]*?<!-- Scripts -->/, '\n  <!-- Scripts -->');
 html = html.replace('Командная подписка: 1 500 ₽/мес (30 дней бесплатно)', 'Pro: 1 500 ₽ за 30 дней, без автосписаний')
   .replace('Подписка Pro (1 500 ₽/мес)', 'Доступ Pro (1 500 ₽ / 30 дней)').replace('30 ДНЕЙ ТРИАЛ', '30 ДНЕЙ ДОСТУПА');
@@ -51,3 +52,4 @@ local = local.replace(/<!-- plan-comparison:start -->[\s\S]*?<!-- plan-compariso
 local = local.replace(/(<section id="tab-billing"[\s\S]*?)(<div class="pricing-grid">)/, '$1<!-- plan-comparison:start -->'+comparison+'<!-- plan-comparison:end -->$2');
 fs.writeFileSync(localFile, local);
 console.log('Public pricing aligned with seller documents.');
+require('./build-site-links').buildSiteLinks();

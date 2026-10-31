@@ -165,6 +165,7 @@ class LockGuardApp {
   async init() {
     this.bindEvents();
     this.bindAccountEvents();
+    if (window.location.hash === '#account') this.toggleAccount(true);
     if (window.location.protocol === 'file:') {
       document.getElementById('file-mode-notice').hidden = false;
       document.getElementById('sql-input').value = PRESETS.catastrophic;
