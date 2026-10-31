@@ -1,5 +1,7 @@
 const PgParser = require('./pg-parser');
 const CascadeGraph = require('./cascade-graph');
+const SchemaCatalog = require('./schema-catalog');
+const statementLock = require('./statement-lock');
 const { LockLevel, Severity, LockMatrix } = require('./types');
 
 const rule01 = require('./rules/rule01-add-column-default');
@@ -108,6 +110,7 @@ class RuleEngine {
       ...options
     };
 
+    context.schemaCatalog = options.schema ? SchemaCatalog.from(options.schema) : null;
     // 3. Run Rules
     const unsupported = astStatements.filter(stmt =>
       ['DO_BLOCK', 'CREATE_ROUTINE', 'REINDEX'].includes(stmt.type) ||
@@ -205,8 +208,12 @@ class RuleEngine {
     ];
 
     let highestLock = LockLevel.ACCESS_SHARE;
+    for (const stmt of astStatements) {
+      const lock=statementLock(stmt);
+      if(lockPriority.indexOf(lock)>lockPriority.indexOf(highestLock))highestLock=lock;
+    }
     for (const v of violations) {
-      if (v.lockLevel && lockPriority.indexOf(v.lockLevel) > lockPriority.indexOf(highestLock)) {
+      if (v.ruleId !== 'LG-008' && v.lockLevel && lockPriority.indexOf(v.lockLevel) > lockPriority.indexOf(highestLock)) {
         highestLock = v.lockLevel;
       }
     }
@@ -260,13 +267,15 @@ class RuleEngine {
       criticalCount,
       highCount,
       mediumCount,
-      highestLockLevel: violations.length > 0 ? highestLock : LockLevel.ACCESS_SHARE,
+      highestLockLevel: highestLock,
+      highestLockLevelBasis: 'inferred_table_locks',
       lockImpact: LockMatrix[highestLock] || null,
       affectedTables,
       cascadeWarnings,
       violations,
       astStatementsCount: astStatements.length,
-      analyzedAt: new Date().toISOString()
+      analyzedAt: new Date().toISOString(),
+      schemaContext: context.schemaCatalog ? { ...context.schemaCatalog.summary(), source: 'imported_snapshot', verifiedAgainstDatabase: false } : null
     };
   }
 }

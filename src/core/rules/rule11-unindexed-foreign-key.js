@@ -1,4 +1,5 @@
 const { LockLevel, Severity } = require('../types');
+const SchemaCatalog = require('../schema-catalog');
 
 module.exports = {
   id: 'LG-011',
@@ -10,16 +11,26 @@ module.exports = {
 
   check(astStatements, context = {}) {
     const violations = [];
-    const indexes = [];
+    let indexes = [];
+    const catalog = context.schemaCatalog;
+    const disabledTables = new Set(), droppedIndexes = new Set();
+    let allowUnqualified = true;
 
-    // Gather indexes created in the current migration file
     for (const stmt of astStatements) {
-      if (stmt.type === 'CREATE_INDEX' && stmt.table && stmt.columns) {
-        if (!stmt.isPartial && stmt.accessMethod === 'btree' && !stmt.columns.includes('(expression)')) indexes.push(stmt);
+      if (['SET_VARIABLE', 'RESET_VARIABLE'].includes(stmt.type) && ['search_path', 'all'].includes(stmt.variable)) { allowUnqualified = false; indexes = []; }
+      if (stmt.type === 'CREATE_INDEX' && !stmt.pgAst?.if_not_exists && !stmt.isPartial && stmt.accessMethod === 'btree' && !stmt.columns.includes('(expression)') &&
+        !stmt.pgAst?.indexParams?.some(p => p.IndexElem.collation?.length || p.IndexElem.opclass?.length)) indexes.push(stmt);
+      if (stmt.type === 'DROP_INDEX') {
+        for (const item of stmt.pgAst?.objects || []) {
+          const names = item.List?.items?.map(v => v.String.sval) || [];
+          if (names.length) droppedIndexes.add(names.at(-1));
+        }
+        indexes = indexes.filter(i => !droppedIndexes.has(i.pgAst?.idxname));
       }
-    }
-
-    for (const stmt of astStatements) {
+      if (stmt.type === 'DROP_TABLE' || stmt.subcommands?.some(sub => ['DROP_COLUMN', 'DROP_CONSTRAINT', 'ALTER_COLUMN_TYPE', 'UNSUPPORTED'].includes(sub.subtype))) {
+        const table = catalog?.lookup(stmt.table || '', allowUnqualified); if (table) disabledTables.add(table);
+        indexes = indexes.filter(i => i.table !== stmt.table);
+      }
       if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
         for (const sub of stmt.subcommands) {
           if (sub.subtype === 'ADD_FOREIGN_KEY' && sub.columns && sub.columns.length > 0) {
@@ -27,8 +38,12 @@ module.exports = {
             const cols = sub.columns.map(c => c);
 
             // Check if all FK columns have an index
-            const hasIndex = indexes.some(index => index.table === table &&
-              cols.every((col, i) => index.columns[i] === col));
+            const baseline = catalog?.lookup(table, allowUnqualified);
+            const hasNewIndex = indexes.some(index => (allowUnqualified || (index.table.includes('.') && table.includes('.'))) &&
+              (index.table === table || (baseline && catalog.lookup(index.table, allowUnqualified) === baseline)) && cols.every((col, i) => index.columns[i] === col));
+            const hasExistingIndex = baseline && !disabledTables.has(baseline) && baseline.indexes.some(index => index.valid && !index.partial && !index.expression && !index.customSemantics && index.method === 'btree' && !droppedIndexes.has(index.name) &&
+              cols.every((col, i) => SchemaCatalog.quote(index.columns[i] || '') === col));
+            const hasIndex = hasNewIndex || hasExistingIndex;
 
             if (!hasIndex) {
               const colList = sub.columns.join(', ');

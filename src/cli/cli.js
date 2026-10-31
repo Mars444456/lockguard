@@ -12,7 +12,8 @@ const {
   CascadeGraph,
   PostDeployWatchdog,
   ShadowReplaySimulator,
-  PgParser
+  PgParser,
+  SchemaCatalog
 } = require('../core');
 const GitHookManager = require('./git-hook');
 const GitStaged = require('./git-staged');
@@ -23,7 +24,7 @@ class LockGuardCLI {
     const args = this.parseArgs(argv, config);
 
     if (args.version) {
-      console.log('LockGuard v1.1.0');
+      console.log('LockGuard v'+require('../../package.json').version);
       return 0;
     }
 
@@ -142,6 +143,10 @@ class LockGuardCLI {
         args.schemaStats = arg.split('=')[1];
       } else if (arg === '--schema-stats' && argv[i + 1]) {
         args.schemaStats = argv[++i];
+      } else if (arg.startsWith('--schema=')) {
+        args.schemaFile = arg.slice('--schema='.length);
+      } else if (arg === '--schema' && argv[i + 1]) {
+        args.schemaFile = argv[++i];
       } else if (arg === '--write') {
         args.write = true;
       } else if (arg.startsWith('--out-dir=')) {
@@ -212,6 +217,7 @@ OPTIONS:
   --out-dir=<dir>         Output directory for generated migration files (used with split)
   --isolated              Check each migration file in isolation without inter-file shared context
   --schema-stats=<file>   Load real-world table size/row counts from JSON to enrich lock duration
+  --schema=<file>         Import SQL/JSON structure for one migration (or independent --isolated files)
   --context               Enrich analysis with live table row count & estimated lock durations
   --format=<type>         Output format: 'table' (default), 'json', 'sarif', 'github-pr-comment', 'markdown'
   --strict                Exit with code 1 on warnings as well as critical/high errors
@@ -426,6 +432,13 @@ jobs:
 
     const engine = new RuleEngine();
     const results = [];
+    let schema = null;
+    if (args.schemaFile) {
+      if (sqlFiles.length > 1 && !args.isolated) throw new Error('--schema supports one migration; use --isolated to check multiple files independently against the same snapshot.');
+      if (fs.statSync(args.schemaFile).size > 512 * 1024) throw new Error('Schema file exceeds 512 KiB.');
+      const source = fs.readFileSync(args.schemaFile, 'utf8').replace(/^\uFEFF/, '');
+      schema = /^\s*\{/.test(source) ? new SchemaCatalog(JSON.parse(source)) : SchemaCatalog.fromSQL(source);
+    }
     const sharedState = args.isolated ? null : {
       createdTables: new Set(),
       createdIndexes: new Set(),
@@ -449,7 +462,8 @@ jobs:
         filename: relativeName,
         failOnSeverity: args.failOn,
         ignoreRules: args.ignoreRules,
-        sharedState
+        sharedState,
+        schema
       });
 
       if (args.withContext || args.context || args.schemaStats) {

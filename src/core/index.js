@@ -10,6 +10,7 @@ const ContextAnalyzer = require('./context-analyzer');
 const CascadeGraph = require('./cascade-graph');
 const PostDeployWatchdog = require('./watchdog');
 const ShadowReplaySimulator = require('./shadow-replay');
+const SchemaCatalog = require('./schema-catalog');
 
 module.exports = {
   RuleEngine,
@@ -25,5 +26,6 @@ module.exports = {
   ContextAnalyzer,
   CascadeGraph,
   PostDeployWatchdog,
-  ShadowReplaySimulator
+  ShadowReplaySimulator,
+  SchemaCatalog
 };

@@ -19,6 +19,22 @@ function createTempDir(prefix = 'lockguard-e2e-') {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+test('CLI --schema uses an imported index and rejects schema data without executing it', () => {
+  const tmp=createTempDir('lockguard-schema-cli-');
+  try {
+    const schema=path.join(tmp,'schema.sql'),migration=path.join(tmp,'migration.sql');
+    fs.writeFileSync(schema,'CREATE TABLE orders(account_id int); CREATE INDEX ix_account ON orders(account_id);');
+    fs.writeFileSync(migration,"SET lock_timeout='3s'; ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY(account_id) REFERENCES accounts(id) NOT VALID;");
+    const without=runCli(['check',migration,'--format=json','--strict']);
+    assert.equal(without.status,1);
+    const withSchema=runCli(['check',migration,'--schema',schema,'--format=json','--strict']);
+    assert.equal(withSchema.status,0,withSchema.stderr);
+    assert.ok(withSchema.stdout.includes('imported_snapshot'));
+    fs.appendFileSync(schema,'INSERT INTO orders VALUES(1);');
+    assert.equal(runCli(['check',migration,'--schema',schema]).status,2);
+  } finally {fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
 // ==============================================================================
 // 1. Exit Codes (status)
 // ==============================================================================

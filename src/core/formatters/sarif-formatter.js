@@ -58,7 +58,7 @@ class SarifFormatter {
           tool: {
             driver: {
               name: 'LockGuard',
-              version: '1.1.0',
+              version: require('../../../package.json').version,
               informationUri: 'https://github.com/Mars444456/lockguard',
               rules: Array.from(rulesMap.values())
             }
