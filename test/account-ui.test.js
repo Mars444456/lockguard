@@ -9,7 +9,7 @@ const { RuleEngine } = require('../src/core');
 const html = fs.readFileSync(path.join(__dirname, '../src/ui/index.html'), 'utf8');
 const script = fs.readFileSync(path.join(__dirname, '../src/ui/app.js'), 'utf8');
 
-async function page() {
+async function page({ hash = '' } = {}) {
   const { document, Event } = parseHTML(html);
   for (const form of document.querySelectorAll('form')) form.reset = function() { for (const input of this.querySelectorAll('input')) input.value = ''; };
   const user = { id: 'user-a', email: 'alice@example.invalid', organizationId: 'org-a' };
@@ -18,7 +18,7 @@ async function page() {
   const requests = [];
   let authenticated = false, delayedKeys;
   const respond = body => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
-  const window = { location: { search: '' }, prompt: () => null };
+  const window = { location: { search: '', hash }, prompt: () => null };
   const fetch = async (url, options = {}) => {
     requests.push({ url, options });
     if (url === '/api/v1/auth/session') return respond({ user: authenticated ? user : null, registrationEnabled: true });
@@ -63,6 +63,13 @@ test('Header registration button opens the registration form directly', async ()
   assert.equal(document.getElementById('account-mode-register').getAttribute('aria-pressed'), 'true');
   assert.equal(document.getElementById('account-auth-submit').textContent, 'Создать аккаунт');
   assert.equal(app.accountMode, 'register');
+});
+
+test('The account entry link opens the real server sign-in form', async () => {
+  const { document } = await page({ hash: '#account' });
+  assert.equal(document.getElementById('account-panel').hidden, false);
+  assert.equal(document.getElementById('btn-account').getAttribute('aria-expanded'), 'true');
+  assert.equal(document.getElementById('account-auth-submit').textContent, 'Войти');
 });
 
 test('History opens the stored report as text and logout removes it', async () => {

@@ -8,19 +8,43 @@
 
 
 
-<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=11b1f8bb1515"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16"></head>
+<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=01fb22a3738a"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16"></head>
 <body>
   <!-- Top Announcement Banner -->
 
 
   <!-- Top Navigation Bar -->
-  <header class="navbar">
+  <header class="navbar public-navbar">
     <div class="nav-container">
       <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.2</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
 
-      <div class="nav-links"><a href="#tab-playground" class="nav-btn">SQL-проверка</a><a href="#lock-matrix-explorer" class="nav-btn">Матрица блокировок</a><a href="#pricing" class="nav-btn">Тарифы</a><a href="contacts.html" class="nav-btn">Контакты</a><a href="https://github.com/Mars444456/lockguard" class="nav-btn" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
+      <div class="nav-actions">
+        <!-- public-account:start -->
+<a id="public-account-link" class="btn-primary" href="#account-access" aria-haspopup="dialog" aria-controls="account-access-dialog">Войти</a>
+<!-- public-account:end -->
+        <!-- support-nav:start -->
+<a class="btn-secondary donation-link" href="https://www.donationalerts.com/r/marswwu" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">♡</span> Донат</a>
+<!-- support-nav:end -->
+      </div>
+      <nav class="nav-links" aria-label="Разделы LockGuard"><a href="#tab-playground" class="nav-btn">SQL-проверка</a><a href="#lock-matrix-explorer" class="nav-btn">Матрица блокировок</a><a href="#pricing" class="nav-btn">Тарифы</a><a href="contacts.html" class="nav-btn">Контакты</a><a href="https://github.com/Mars444456/lockguard" class="nav-btn" target="_blank" rel="noopener noreferrer">GitHub ↗</a></nav>
     </div>
   </header>
+
+  <dialog id="account-access-dialog" class="access-dialog" aria-labelledby="account-access-title" aria-describedby="account-access-description">
+    <div class="access-dialog-heading">
+      <span class="eyebrow">ЛИЧНЫЙ КАБИНЕТ</span>
+      <button type="button" class="btn-secondary btn-sm" data-close-access aria-label="Закрыть окно входа" autofocus>Закрыть</button>
+    </div>
+    <h2 id="account-access-title">Кабинет ещё не опубликован</h2>
+    <p id="account-access-description">Проверка SQL уже работает на этом сайте без регистрации. Вход, история проверок и функции Pro пока доступны в локальном приложении LockGuard.</p>
+    <div class="access-local-option">
+      <h3>LockGuard запущен на этом компьютере?</h3>
+      <p>Перейдите в локальный кабинет, чтобы войти или зарегистрироваться. Ссылка работает только на компьютере, где запущено приложение.</p>
+      <a class="btn-primary" href="http://localhost:3000/#account" target="_blank" rel="noopener noreferrer">Открыть локальный кабинет <span aria-hidden="true">↗</span></a>
+      <a class="access-setup-link" href="https://github.com/Mars444456/lockguard#быстрый-запуск" target="_blank" rel="noopener noreferrer">Как запустить LockGuard</a>
+    </div>
+    <button type="button" class="btn-secondary" data-continue-analysis>Продолжить проверку без входа</button>
+  </dialog>
 
   <!-- Main Container -->
   <main class="main-content">
@@ -348,11 +372,24 @@
         <p><a href="contacts.html">Контакты и реквизиты</a> · <a href="offer.html">Публичная оферта</a> · <a href="privacy.html">Конфиденциальность</a></p>
       </div>
     </section>
+
+    <!-- support-project:start -->
+<section class="support-project" aria-labelledby="support-project-title">
+  <div>
+    <p class="eyebrow">ОТКРЫТЫЙ ПРОЕКТ</p>
+    <h2 id="support-project-title">Поддержать развитие LockGuard</h2>
+    <p>Если инструмент помогает вам в работе, можно поддержать автора разовым донатом через DonationAlerts.</p>
+    <p class="support-note">Добровольная поддержка автора. Доступ Pro оформляется отдельно.</p>
+  </div>
+  <a class="btn-secondary donation-link" href="https://www.donationalerts.com/r/marswwu" target="_blank" rel="noopener noreferrer">Поддержать на DonationAlerts <span aria-hidden="true">↗</span></a>
+</section>
+<!-- support-project:end -->
   </main>
 <!-- seller-footer:start -->
 <footer class="seller-footer" style="max-width:1200px;margin:2rem auto;padding:2rem 1.5rem;border-top:1px solid #334155;color:#cbd5e1;line-height:1.8"><h2 style="font-size:1.1rem;color:#fff">Контакты и реквизиты исполнителя</h2><p>Минсафин Марсель Ренатович · Самозанятый (НПД) · ИНН 631112758865</p><p><a href="mailto:minsafinmarsel02@gmail.com">minsafinmarsel02@gmail.com</a> · <a href="https://t.me/marswwu">Telegram @marswwu</a></p><p><a href="contacts.html">Услуги, цены и реквизиты</a> · <a href="offer.html">Публичная оферта, предоставление услуг и возврат</a> · <a href="privacy.html">Политика конфиденциальности</a></p><p>Pro — 1 500 ₽ за 30 дней без автосписаний. Аудит — 30 000 ₽ разово, объём и сроки согласуются до оплаты. Услуги предоставляются электронно.</p></footer>
 <!-- seller-footer:end -->
 <!-- Scripts -->
+  <script src="site-access.js?v=6c7531bb874d"></script>
   <script src="lockguard-engine.js?v=5687015af341"></script>
   <script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=12fba8b4e0ef"></script>
 </body>
