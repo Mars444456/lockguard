@@ -8,6 +8,7 @@
   },
   "scripts": {
     "check:privacy": "node scripts/check-privacy.js",
+    "demo:pilot": "node scripts/build-pilot.js",
     "build:browser": "node scripts/build-browser.js",
     "build:legal": "node scripts/build-legal.js && node scripts/prepare-seller-site.js",
     "backup": "node --env-file-if-exists=.env scripts/backup-db.js",

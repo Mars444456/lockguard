@@ -1,5 +1,5 @@
-name: 'LockGuard: PostgreSQL Zero-Downtime Gatekeeper'
-description: 'Detect fatal PostgreSQL table locks (ACCESS EXCLUSIVE) and block PRs before production outages.'
+name: 'LockGuard: PostgreSQL Migration Review'
+description: 'Review PostgreSQL migration SQL for known lock risks and report findings in CI.'
 author: 'LockGuard Team'
 branding:
   icon: 'shield'

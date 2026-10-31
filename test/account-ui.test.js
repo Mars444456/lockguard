@@ -31,12 +31,20 @@ async function page({ hash = '' } = {}) {
     if (url === '/api/v1/keys') return delayedKeys ? delayedKeys() : respond({ keys: [] });
     throw new Error('Unexpected request ' + url);
   };
-  const scope = { window, document, Event, fetch, Headers, URLSearchParams, console, navigator: { clipboard: { writeText: async () => {} } },
+  const scope = { window, document, Event, fetch, Headers, URLSearchParams, TextEncoder, console, navigator: { clipboard: { writeText: async () => {} } },
     setTimeout: (fn, ms) => ms === 3500 ? 0 : setTimeout(fn, ms), clearTimeout };
   vm.runInNewContext(script, scope);
   await window.app.ready;
   return { app: window.app, document, user, requests, respond, delayKeys: handler => { delayedKeys = handler; } };
 }
+
+test('Server editor opens pilot SQL from a link without submitting or saving that SQL', async () => {
+  const sql = "SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY pilot ON orders(id);";
+  const { document, requests } = await page({ hash: '#sql=' + encodeURIComponent(sql) });
+  assert.equal(document.getElementById('sql-input').value, sql);
+  assert.equal(document.getElementById('current-filename').textContent, 'pilot_migration.sql');
+  assert.ok(!requests.some(r => r.options.body && JSON.parse(r.options.body).sql === sql));
+});
 
 test('Account form switches registration mode, signs in and clears passwords after submission', async () => {
   const { app, document, user, requests } = await page();

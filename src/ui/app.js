@@ -174,6 +174,16 @@ class LockGuardApp {
     }
     await this.restoreAccount();
     this.loadPreset('catastrophic');
+    if (window.location.hash?.startsWith('#sql=')) {
+      try {
+        const sql = decodeURIComponent(window.location.hash.slice(5));
+        if (sql.trim() && new TextEncoder().encode(sql).length <= 1024 * 1024) {
+          document.getElementById('sql-input').value = sql;
+          document.getElementById('current-filename').textContent = 'pilot_migration.sql';
+          this.invalidateAnalysis();
+        }
+      } catch { this.showToast('Не удалось прочитать SQL из ссылки. Вставьте его в редактор.'); }
+    }
     await this.fetchRules();
     await this.refreshPrivateData();
     const paymentReturn = new URLSearchParams(window.location.search).get('payment');

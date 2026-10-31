@@ -4,6 +4,7 @@ const esbuild = require('esbuild');
 const { createHash } = require('node:crypto');
 require('./check-privacy').assertPublishable();
 require('./build-site-links').buildSiteLinks();
+require('node:child_process').execFileSync(process.execPath, [path.join(__dirname, 'build-pilot.js')], { stdio: 'inherit' });
 esbuild.buildSync({ entryPoints: [path.join(__dirname, '../src/browser-entry.js')],
   outfile: path.join(__dirname, '../docs/lockguard-engine.js'), bundle: true, platform: 'browser',
   format: 'iife', external: ['fs', 'path', 'child_process', 'node:fs', 'node:path', 'node:crypto'],
