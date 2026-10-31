@@ -15,6 +15,7 @@
 
 </div>
 
+[Актуальное браузерное демо](https://mars444456.github.io/lockguard/)
 
 
 [Поддержать автора разовым донатом на DonationAlerts](https://www.donationalerts.com/r/marswwu). Добровольная поддержка не включает доступ Pro и не заменяет оплату услуги.
