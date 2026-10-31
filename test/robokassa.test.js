@@ -8,14 +8,17 @@ const os = require('node:os');
 const http = require('node:http');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lockguard-robokassa-'));
 process.env.LOCKGUARD_DB_FILE = path.join(tmp, 'server.json');
-const { PersistentDatabase } = require('../src/server/db');
+const mainDatabase = require('../src/server/db');
+const { PersistentDatabase } = mainDatabase;
+const connections = [mainDatabase];
 const Robokassa = require('../src/server/robokassa-provider');
 const env = { ROBOKASSA_MERCHANT_LOGIN: 'qa-shop', ROBOKASSA_TEST_MODE: 'false', ROBOKASSA_HASH_ALGORITHM: 'sha256',
   ROBOKASSA_PASSWORD1: 'qa-live-first', ROBOKASSA_PASSWORD2: 'qa-live-second',
   ROBOKASSA_TEST_PASSWORD1: 'qa-test-first', ROBOKASSA_TEST_PASSWORD2: 'qa-test-second' };
-test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+test.after(() => { for (const db of connections) db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 function fixture(options = {}) {
   const db = new PersistentDatabase({ memoryOnly: true, ...options });
+  connections.push(db);
   const provider = new Robokassa({ db, env: { ...env } });
   return { db, provider };
 }
@@ -112,11 +115,11 @@ test('Failed persistence does not acknowledge payment or leave a partially grant
   const { db, provider } = fixture({ memoryOnly: false, dbFilePath });
   const checkout = buy(provider);
   const notification = callback(provider, checkout.orderId);
-  fs.writeFileSync(dbFilePath + '.lock', 'simulate another writer');
+  db.sql.exec("CREATE TRIGGER reject_entitlement BEFORE UPDATE ON organizations BEGIN SELECT RAISE(ABORT, 'simulated storage failure'); END");
   assert.throws(() => provider.process(notification), /Unable to save/);
   assert.equal(db.getOrganization().plan, 'free');
   assert.equal(db.getPaymentOrder(checkout.orderId).status, 'pending');
-  fs.unlinkSync(dbFilePath + '.lock');
+  db.sql.exec('DROP TRIGGER reject_entitlement');
   assert.equal(provider.process(notification), `OK${checkout.orderId}`);
   assert.equal(db.getOrganization().plan, 'team');
 });

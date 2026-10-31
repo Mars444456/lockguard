@@ -11,19 +11,35 @@ const BillingService = require('./billing-service');
 const requireAdmin = require('./admin-auth');
 const GitHubService = require('./github-service');
 const RobokassaProvider = require('./robokassa-provider');
+const AuthService = require('./auth-service');
 
 const ruleEngine = new RuleEngine();
 
 function registerRoutes(router) {
+  const auth = new AuthService(db);
+  const authPaths = new Set(['/api/v1/auth/session', '/api/v1/auth/register', '/api/v1/auth/login', '/api/v1/auth/logout', '/api/v1/auth/password']);
   const publicPaths = new Set(['/api/v1/analyze', '/api/v1/rules', '/api/v1/verify-key', '/api/v1/split', '/api/v1/simulate', '/api/v1/watchdog']);
   const targetRouter = router;
   router = Object.fromEntries(['get', 'post', 'delete'].map(method => [method, (path, handler) => {
     targetRouter[method](path, async (req, res) => {
-      await RuleEngine.initialize();
-      const providerWebhook = path === '/api/v1/billing/robokassa/result' || path === '/billing/success' || path === '/billing/fail' ||
-        (path === '/api/v1/github/webhook' && req.headers?.['x-github-event']);
-      if (!publicPaths.has(path) && !providerWebhook && !requireAdmin(req, res)) return;
-      try { return await handler(req, res); }
+      try {
+        res.setHeader?.('Cache-Control', 'no-store');
+        await RuleEngine.initialize();
+        req.auth = requireAdmin.isAdmin(req) ? null : auth.authenticate(req);
+        req.store = req.auth ? db.forOrganization(req.auth.organizationId) : db;
+        const providerWebhook = path === '/api/v1/billing/robokassa/result' || path === '/billing/success' || path === '/billing/fail' ||
+          (path === '/api/v1/github/webhook' && req.headers?.['x-github-event']);
+        if (req.auth && !providerWebhook) auth.validateMutation(req);
+        if (!publicPaths.has(path) && !authPaths.has(path) && !providerWebhook && !req.auth) {
+          if (!process.env.LOCKGUARD_ADMIN_TOKEN) return res.status(401).json({ error: 'Войдите в аккаунт для доступа к своей организации.' });
+          if (!requireAdmin(req, res)) return;
+        }
+        // Payment onboarding stays with the operator while the merchant is being activated.
+        if (req.auth && ['/api/v1/billing/checkout', '/api/v1/billing/b2b-invoice', '/api/v1/billing/invoice'].includes(path)) {
+          return res.status(403).json({ error: 'Онлайн-оплата ещё подключается. Согласуйте заказ с исполнителем по контактам на сайте.' });
+        }
+        return await handler(req, res);
+      }
       catch (error) {
         if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
         if (error instanceof SyntaxError) return res.status(422).json({ error: error.message });
@@ -31,6 +47,7 @@ function registerRoutes(router) {
       }
     });
   }]));
+  auth.registerRoutes(router);
   // 1. Analyze Migration SQL
   router.post('/api/v1/analyze', async (req, res) => {
     try {
@@ -47,7 +64,9 @@ function registerRoutes(router) {
         if (!verifiedKey) {
           return res.status(401).json({ error: 'Invalid or revoked LockGuard API Key.' });
         }
+        if (req.auth && req.auth.organizationId !== verifiedKey.organizationId) return res.status(403).json({ error: 'API key belongs to another organization.' });
       }
+      const store = verifiedKey ? db.forOrganization(verifiedKey.organizationId) : req.store;
 
       let result = ruleEngine.analyze(sql, {
         filename: filename || 'custom_migration.sql'
@@ -57,15 +76,18 @@ function registerRoutes(router) {
         result = ContextAnalyzer.enrich(result, { demoMode: true });
       }
 
-      // Optionally record into audit run history
+      const markdownReport = GitHubPrFormatter.format([result]);
+      // Save the real origin and report; a manual check must not invent a GitHub PR.
       if (recordRun || repo) {
-        if (!requireAdmin(req, res)) return;
-        db.addRun({
-          repo: repo || 'acme/main-app',
-          prNumber: prNumber || Math.floor(Math.random() * 500) + 100,
-          branch: branch || 'feat/db-migration',
-          commit: Math.random().toString(16).substring(2, 9),
-          author: 'dev-user',
+        if (!verifiedKey && !req.auth && !requireAdmin(req, res)) return;
+        store.addRun({
+          source: repo ? 'api' : 'dashboard',
+          repo: repo || '',
+          prNumber: prNumber || null,
+          branch: branch || '',
+          commit: '',
+          author: req.auth?.email || 'api',
+          markdownReport,
           status: result.passed ? 'PASSED' : 'BLOCKED',
           highestLockLevel: result.highestLockLevel,
           violationsCount: result.violationsCount,
@@ -76,8 +98,7 @@ function registerRoutes(router) {
             : `Blocked: ${result.criticalCount} critical, ${result.highCount} high lock violations.`
         });
       }
-
-      const markdownReport = GitHubPrFormatter.format([result]);
+      if (verifiedKey || req.auth || requireAdmin.isAdmin(req)) store.recordCheck();
 
       return res.status(200).json({
         success: true,
@@ -107,11 +128,11 @@ function registerRoutes(router) {
     }
     return res.status(200).json({
       valid: true,
-      organization: db.getOrganization(),
+      organization: db.forOrganization(valid.organizationId).getOrganization(),
       keyDetails: {
         id: valid.id,
         name: valid.name,
-        plan: db.getOrganization().plan
+        plan: db.forOrganization(valid.organizationId).getOrganization().plan
       }
     });
   });
@@ -120,16 +141,19 @@ function registerRoutes(router) {
   router.get('/api/v1/organization', async (req, res) => {
     return res.status(200).json({
       success: true,
-      organization: db.getOrganization()
+      organization: req.store.getOrganization()
     });
   });
 
   router.post('/api/v1/organization', async (req, res) => {
     const { name, plan } = req.body || {};
     const patch = {};
-    if (name) patch.name = name;
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) return res.status(400).json({ error: 'Organization name must contain 1–100 characters.' });
+      patch.name = name.trim();
+    }
     if (plan) return res.status(400).json({ error: 'Plan activation requires verified payment.' });
-    const updated = db.updateOrganization(patch);
+    const updated = req.store.updateOrganization(patch);
     return res.status(200).json({ success: true, organization: updated });
   });
 
@@ -154,13 +178,13 @@ function registerRoutes(router) {
   router.get('/api/v1/keys', async (req, res) => {
     return res.status(200).json({
       success: true,
-      keys: db.getApiKeys()
+      keys: req.store.getApiKeys()
     });
   });
 
   router.post('/api/v1/keys', async (req, res) => {
     const { name } = req.body || {};
-    const newKey = db.createApiKey(name || 'New Production Key');
+    const newKey = req.store.createApiKey(name || 'New Production Key');
     return res.status(201).json({
       success: true,
       key: newKey
@@ -169,7 +193,7 @@ function registerRoutes(router) {
 
   router.delete('/api/v1/keys/:id', async (req, res) => {
     const id = req.params.id;
-    const success = db.revokeApiKey(id);
+    const success = req.store.revokeApiKey(id);
     if (!success) {
       return res.status(404).json({ error: 'Key not found.' });
     }
@@ -180,7 +204,7 @@ function registerRoutes(router) {
   router.get('/api/v1/runs', async (req, res) => {
     return res.status(200).json({
       success: true,
-      runs: db.getRuns()
+      runs: req.store.getRuns()
     });
   });
 
@@ -200,7 +224,7 @@ function registerRoutes(router) {
     res.end(acknowledgement);
   });
 
-  router.get('/api/v1/billing/orders', async (req, res) => res.json({ success: true, orders: db.getPaymentOrders() }));
+  router.get('/api/v1/billing/orders', async (req, res) => res.json({ success: true, orders: req.store.getPaymentOrders() }));
 
   for (const [route, status] of [['/billing/success', 'return'], ['/billing/fail', 'cancelled']]) {
     router.get(route, async (req, res) => {
@@ -239,7 +263,7 @@ function registerRoutes(router) {
     const analysis = ruleEngine.analyze(sampleSql, { filename: 'migration_pr_' + prNumber + '.sql' });
     const markdown = GitHubPrFormatter.format([analysis]);
 
-    const runRecord = db.addRun({
+    const runRecord = req.store.addRun({
       repo,
       prNumber: Number(prNumber),
       branch,

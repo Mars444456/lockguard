@@ -36,7 +36,8 @@ test('Published HTML and app render a complete unsafe migration report', async (
   const result = await app.runAnalysis();
   assert.ok(result, document.getElementById('empty-state').textContent);
   assert.equal(result.passed, false);
-  assert.ok(document.getElementById('verdict-badge').textContent.includes('BLOCKED'));
+  assert.ok(document.getElementById('verdict-badge').classList.contains('failed'));
+  assert.ok(document.getElementById('verdict-badge').textContent.includes('Найдены риски'));
   assert.ok(Number(document.getElementById('res-violations-count').textContent) >= 6);
   assert.ok(document.querySelectorAll('.violation-card').length >= 6);
   assert.equal(document.getElementById('analysis-details').classList.contains('hidden'), false);

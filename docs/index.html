@@ -1,155 +1,66 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html translate="no" lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LockGuard - PostgreSQL CI/CD Gatekeeper & Migration AST Playground</title>
+  <title>LockGuard — проверка миграций PostgreSQL</title>
   <link rel="stylesheet" href="styles.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-</head>
+
+
+
+<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=7134f95cba11"></head>
 <body>
   <!-- Top Announcement Banner -->
-  <div style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.12)); border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 0.55rem 1rem; text-align: center; font-size: 0.88rem; color: #F3F4F6;">
-    🛡️ <b>LockGuard v1.1.0:</b> Zero-Downtime PostgreSQL Gatekeeper • 12 правил предотвращения аварий 
-    <span style="margin: 0 8px; color: var(--text-dim);">|</span>
-    <a href="#pricing" style="color: #A5B4FC; font-weight: 700; text-decoration: none;">💎 Pro: 1 500 ₽ за 30 дней, без автосписаний</a>
-    <span style="margin: 0 8px; color: var(--text-dim);">|</span>
-    <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="color: #38BDF8; font-weight: 700; text-decoration: none;">💬 Аудит миграций под ключ: 30 000 ₽</a>
-    <span style="margin: 0 8px; color: var(--text-dim);">|</span>
-    <a href="https://www.donationalerts.com/r/marswwu" target="_blank" style="color: #FBBF24; font-weight: 700; text-decoration: underline; margin-left: 4px;">Донат автору 🧡</a>
-  </div>
+
 
   <!-- Top Navigation Bar -->
   <header class="navbar">
     <div class="nav-container">
-      <a href="#" class="brand">
-        <div class="brand-logo">🛡️</div>
-        <div>
-          <div class="brand-title">LockGuard <span class="brand-tag">v1.1.0</span></div>
-          <div class="brand-subtitle">PostgreSQL DDL Lock Analyzer & CI Gatekeeper</div>
-        </div>
-      </a>
+      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.1</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
 
-      <div class="nav-links">
-        <a href="https://www.donationalerts.com/r/marswwu" target="_blank" class="nav-btn" style="border-color: #F59E0B; color: #FBBF24; font-weight: 700;">
-          <span>☕ Донат</span>
-        </a>
-        <a href="#lock-matrix-explorer" class="nav-btn" style="border-color: #6366F1; color: #A5B4FC; font-weight: 700;">
-          <span>🔒 Матрица локов</span>
-        </a>
-        <a href="#pricing" class="nav-btn" style="border-color: #8B5CF6; color: #C084FC; font-weight: 700;">
-          <span>💎 Тарифы</span>
-        </a>
-        <a href="https://github.com/Mars444456/lockguard" target="_blank" class="nav-btn">
-          <span>⭐ GitHub (v1.1.0)</span>
-        </a>
-        <a href="habr_article.html" target="_blank" class="nav-btn">
-          <span>📖 Статья на Хабре</span>
-        </a>
-        <a href="https://t.me/marswwu" target="_blank" class="nav-btn btn-tg">
-          <span>💬 Аудит миграций (@marswwu)</span>
-        </a>
-      </div>
+      <div class="nav-links"><a href="#tab-playground" class="nav-btn">SQL-проверка</a><a href="#lock-matrix-explorer" class="nav-btn">Матрица блокировок</a><a href="#pricing" class="nav-btn">Тарифы</a><a href="contacts.html" class="nav-btn">Контакты</a><a href="https://github.com/Mars444456/lockguard" class="nav-btn" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
     </div>
   </header>
 
   <!-- Main Container -->
   <main class="main-content">
     <!-- Hero / Intro -->
-    <div class="hero-section">
-      <div>
-        <h1 class="hero-title">Zero-Downtime <span>PostgreSQL Gatekeeper</span></h1>
-        <p class="hero-desc">
-          Интерактивный AST-анализатор блокировок PostgreSQL. Проверяет DDL-миграции на наличие опасных замков (<code>ACCESS EXCLUSIVE</code>, <code>SHARE</code>), рассчитывает риск простоя продакшена и автоматически генерирует безопасные многоэтапные паттерны.
-        </p>
-
-        <!-- Hero Actions -->
-        <div class="hero-cta-group" style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.15rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-          <a href="#tab-playground" class="btn-primary" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.35rem; font-weight: 800; font-size: 0.95rem; border-radius: 8px; text-decoration: none;">
-            <span>⚡ Запустить AST-анализ</span>
-          </a>
-          <a href="#pricing" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.15rem; background: rgba(99, 102, 241, 0.15); border: 1px solid #6366F1; color: #A5B4FC; font-weight: 700; font-size: 0.95rem; border-radius: 8px; text-decoration: none; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.25);">
-            <span>💎 Доступ Pro (1 500 ₽ / 30 дней)</span>
-            <span style="background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">30 ДНЕЙ ДОСТУПА</span>
-          </a>
-          <a href="https://t.me/marswwu?text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9%20%D0%B4%D0%B5%D0%BD%D1%8C!%20%D0%A5%D0%BE%D1%87%D1%83%20%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C%20%D1%8D%D0%BA%D1%81%D0%BF%D1%80%D0%B5%D1%81%D1%81-%D0%B0%D1%83%D0%B4%D0%B8%D1%82%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85%20%D0%B8%20%D0%BC%D0%B8%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B9%20(30%20000%20%D1%80%D1%83%D0%B1)." target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.15rem; background: rgba(56, 189, 248, 0.12); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 700; font-size: 0.95rem; border-radius: 8px; text-decoration: none;">
-            <span>💬 Экспресс-аудит (30 000 ₽)</span>
-            <span style="background: rgba(56, 189, 248, 0.2); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">ПОД КЛЮЧ</span>
-          </a>
-          <a href="https://t.me/lockguard_audit_bot" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.7rem 1.15rem; background: rgba(59, 130, 246, 0.15); border: 1px solid #3B82F6; color: #60A5FA; font-weight: 700; font-size: 0.95rem; border-radius: 8px; text-decoration: none;">
-            <span>🤖 Телеграм Бот</span>
-            <span style="background: #10B981; color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 800;">24/7 ONLINE</span>
-          </a>
-        </div>
-
-        <!-- Terminal One-Liner Snippet -->
-        <div class="hero-terminal-container">
-          <div class="hero-terminal">
-            <div class="terminal-bar">
-              <div class="terminal-dots">
-                <span class="dot dot-red"></span>
-                <span class="dot dot-yellow"></span>
-                <span class="dot dot-green"></span>
-              </div>
-              <div class="terminal-title">bash — npx lockguard</div>
-              <button class="terminal-copy-btn" id="btn-copy-terminal" onclick="copyHeroTerminalCommand()" title="Скопировать команду в буфер">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                <span id="copy-terminal-label">Копировать</span>
-              </button>
-            </div>
-            <div class="terminal-body">
-              <div class="terminal-line">
-                <span class="terminal-prompt">$</span>
-                <span class="terminal-cmd">npx lockguard check ./migrations --strict</span>
-              </div>
-              <div class="terminal-output">
-                <span class="term-dim">🛡️  LockGuard AST Gatekeeper v1.1.0</span><br>
-                <span class="term-red">✖ [LG-002] CREATE INDEX idx_orders_user without CONCURRENTLY</span><br>
-                <span class="term-yellow">  Lock Level: SHARE (Blocks all INSERT/UPDATE/DELETE)</span><br>
-                <span class="term-cyan">💡 Safe Fix: CREATE INDEX CONCURRENTLY idx_orders_user ON orders(user_id);</span><br>
-                <span class="term-red">🚨 1 Critical Violation found. Deployment halted (Exit 1).</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="preset-bar" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+    <div class="hero-section"><div class="workspace-intro"><p class="eyebrow">ОТКРЫТЫЙ ИНСТРУМЕНТ / POSTGRESQL</p><h1 class="hero-title">Изменения схемы —<br><span>под контролем.</span></h1><p class="hero-desc">Проверьте миграцию до релиза. Найдите риски блокировок, разберите замечания и подготовьте план изменений.</p><div class="hero-cta-group"><a href="#tab-playground" class="btn-primary">Проверить SQL <span>↗</span></a><a href="https://github.com/Mars444456/lockguard#readme" class="btn-secondary" target="_blank" rel="noopener noreferrer">Подключить к CI</a></div><div class="hero-facts"><span><i></i> 12 правил анализа</span><span>Без регистрации</span><span>SQL остаётся в браузере</span></div></div><div class="hero-code"><div class="hero-code-top"><span><i></i> ПЕРЕД ТЕМ КАК MERGE</span><span>migration.sql</span></div><pre><span class="code-muted">-- Создание индекса</span>
+<span class="code-purple">CREATE INDEX</span> idx_orders_user
+<span class="code-purple">ON</span> orders (user_id);</pre><div class="code-finding"><span class="finding-mark">!</span><div><b>LG-002 · Блокировка записи</b><p>SHARE · INSERT / UPDATE / DELETE</p></div></div><div class="code-recommendation"><span>РЕКОМЕНДАЦИЯ ДЛЯ ПРОВЕРКИ</span><code>CREATE INDEX <b>CONCURRENTLY</b> …</code></div><div class="hero-code-bottom">AST-анализ <span>→</span> замечания <span>→</span> осознанный релиз</div></div></div><nav class="quick-access" aria-label="Быстрый доступ"><span>БЫСТРЫЙ ДОСТУП</span><a href="#tab-playground">Редактор SQL <span>↓</span></a><a href="#lock-matrix-explorer">Матрица блокировок <span>↓</span></a><a href="https://github.com/Mars444456/lockguard#readme">CLI и документация <span>↗</span></a><a href="https://t.me/lockguard_audit_bot">Telegram-бот <span>↗</span></a></nav><section aria-label="Параметры проверки" id="tab-playground" class="workspace-toolbar"><div class="preset-bar" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
         <div style="display:flex; flex-direction:column; gap:4px;">
           <label for="preset-select">Готовый сценарий:</label>
           <select id="preset-select" class="select-input">
-            <option value="catastrophic">🚨 Катастрофический PR (Набор фатальных блокировок)</option>
-            <option value="add_column">⚠️ Опасный ADD COLUMN с volatile DEFAULT (LG-001)</option>
-            <option value="blocking_index">⛔ Блокирующий CREATE INDEX без CONCURRENTLY (LG-002)</option>
-            <option value="unsafe_fk">⏳ Тяжелый Foreign Key без NOT VALID (LG-003)</option>
-            <option value="alter_type">🔄 Полный rewrite таблицы: ALTER COLUMN TYPE (LG-004)</option>
-            <option value="direct_unique">🔒 Прямой UNIQUE Constraint (LG-005)</option>
-            <option value="drop_column">💥 Опасный DROP COLUMN на проде (LG-006)</option>
-            <option value="missing_timeout">⏱️ Пропущенный SET lock_timeout (LG-008)</option>
+            <option value="catastrophic">Несколько рисков в одной миграции</option>
+            <option value="add_column">DEFAULT с вычислением · LG-001</option>
+            <option value="blocking_index">CREATE INDEX без CONCURRENTLY · LG-002</option>
+            <option value="unsafe_fk">Внешний ключ без NOT VALID · LG-003</option>
+            <option value="alter_type">Изменение типа столбца · LG-004</option>
+            <option value="direct_unique">Прямое ограничение UNIQUE · LG-005</option>
+            <option value="drop_column">Удаление столбца · LG-006</option>
+            <option value="missing_timeout">Не задан lock_timeout · LG-008</option>
             <option value="unsafe_not_null">🚫 Опасный ALTER COLUMN SET NOT NULL (LG-009)</option>
             <option value="concurrent_in_tx">⛔ CONCURRENTLY внутри транзакции (LG-010)</option>
-            <option value="unindexed_fk">🔗 Неиндексированный Foreign Key: локи дочерней таблицы (LG-011)</option>
-            <option value="truncate_matview">⚡ TRUNCATE TABLE & REFRESH MATVIEW без CONCURRENTLY (LG-012)</option>
-            <option value="safe_migration">✅ Пример без выявленных нарушений (Fixture 10)</option>
+            <option value="unindexed_fk">Внешний ключ без индекса · LG-011</option>
+            <option value="truncate_matview">TRUNCATE и REFRESH MATVIEW · LG-012</option>
+            <option value="safe_migration">Пример без выявленных нарушений</option>
           </select>
         </div>
         <div style="display:flex; flex-direction:column; gap:4px;">
           <label for="version-select">Версия / Форк PostgreSQL:</label>
           <select id="version-select" class="select-input">
-            <option value="17" selected>🐘 PostgreSQL 17 (Latest Vanilla)</option>
-            <option value="16">🐘 PostgreSQL 14 – 16 (Standard)</option>
-            <option value="11">🐘 PostgreSQL 11 – 13</option>
-            <option value="pgpro">🚀 Postgres Pro Enterprise (64TB+)</option>
-            <option value="citus">🌐 Citus Distributed Postgres</option>
-            <option value="10">⚠️ PostgreSQL ≤ 10 (Legacy: All DEFAULTs rewrite)</option>
+            <option value="17" selected>PostgreSQL 17</option>
+            <option value="16">PostgreSQL 14–16</option>
+            <option value="11">PostgreSQL 11–13</option>
+            <option value="pgpro">Postgres Pro · модель</option>
+            <option value="citus">Citus · модель</option>
+            <option value="10">PostgreSQL 10 и старше</option>
           </select>
         </div>
-      </div>
-    </div>
+      </div></section>
 
     <!-- Simulation Parameters Bar -->
-    <div class="sim-controls-bar">
+    <details class="simulation-options"><summary>Параметры оценки нагрузки <span>Не измерения: модель по заданным условиям</span></summary><div class="sim-controls-bar">
       <div class="slider-group">
         <div class="slider-header">
           <span class="slider-label">📊 Размер боевой таблицы в базе:</span>
@@ -189,7 +100,7 @@
         </div>
         <input type="range" id="slider-cores" min="2" max="64" step="2" value="8">
       </div>
-    </div>
+    </div></details>
 
     <!-- Playground Workspace -->
     <div class="playground-grid">
@@ -204,30 +115,27 @@
           </div>
           <div class="header-actions">
             <button id="btn-share" class="btn-secondary btn-sm" title="Скопировать ссылку на этот запрос">🔗 Поделиться</button>
-            <button id="btn-split" class="btn-secondary btn-sm btn-cyan">🔀 Auto-Splitter</button>
+            <button id="btn-split" class="btn-secondary btn-sm btn-cyan">План изменений</button>
             <button id="btn-clear-sql" class="btn-secondary btn-sm">Очистить</button>
-            <button id="btn-analyze" class="btn-primary btn-sm">⚡ Проверить DDL</button>
+            <button id="btn-analyze" class="btn-primary btn-sm">Проверить SQL</button>
           </div>
         </div>
         <div class="editor-wrapper">
-          <textarea id="sql-input" spellcheck="false" placeholder="Вставьте ваши SQL-миграции PostgreSQL сюда..."></textarea>
+          <textarea aria-label="SQL-миграция PostgreSQL" id="sql-input" spellcheck="false" placeholder="Вставьте ваши SQL-миграции PostgreSQL сюда..."></textarea>
         </div>
-        <div class="editor-footer">
-          <span>Движок: <b>PostgreSQL parser / WASM, анализ в браузере</b></span>
-          <span>Совместимость: <b>PostgreSQL 11 – 17+</b></span>
-        </div>
+        <div class="editor-footer"><span>PostgreSQL AST · <b>libpg_query / WASM</b></span><span>SQL остаётся в браузере</span></div>
       </div>
 
       <!-- Right: Real-time Analysis Card -->
       <div class="analysis-card">
         <div class="card-header">
           <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-            <span class="card-title">Вердикт безопасности & Анализ блокировок</span>
-            <div id="verdict-badge" class="verdict-pill pending">Awaiting Analysis</div>
+            <span class="card-title">Результат проверки</span>
+            <div id="verdict-badge" class="verdict-pill pending">Ожидает проверки</div>
           </div>
           <div class="header-actions">
             <button id="btn-export-pdf" class="btn-secondary btn-sm" style="border-color: #EF4444; color: #F87171; font-weight: 700; display:inline-flex; align-items:center; gap:0.35rem;">
-              <span>📄 Скачать PDF-отчет для руководства</span>
+              <span>Отчёт / PDF</span>
             </button>
           </div>
         </div>
@@ -236,8 +144,8 @@
           <!-- Empty State -->
           <div class="empty-state" id="empty-state">
             <div class="empty-icon">🛡️</div>
-            <h3>Нажмите «Проверить DDL»</h3>
-            <p>LockGuard мгновенно разберет SQL в абстрактное синтаксическое дерево (AST), сопоставит операции с матрицей блокировок Postgres и покажет задержки в миллисекундах.</p>
+            <h3>Сначала проверим ваш SQL</h3>
+            <p>Выберите пример или вставьте миграцию слева. Здесь появятся риски блокировок и рекомендации. SQL анализируется в браузере и не исполняется.</p>
           </div>
 
           <!-- Analysis Details -->
@@ -320,8 +228,8 @@
             <div id="splitter-panel" class="splitter-panel hidden">
               <div class="splitter-header">
                 <div>
-                  <div style="font-size:0.95rem; font-weight:800; color:#FFF;">🔀 Auto-Splitter: Безопасный 4-этапный план релиза</div>
-                  <div style="font-size:0.75rem; color:var(--text-muted);">Разбивает монолитный опасный DDL на неблокирующие фазы без простоя базы</div>
+                  <div style="font-size:0.95rem; font-weight:800; color:#FFF;">Черновой план изменений</div>
+                  <div style="font-size:0.75rem; color:var(--text-muted);">Проверьте фазы на тестовой базе: выполнение и отсутствие простоев не гарантируются.</div>
                 </div>
                 <div class="splitter-tabs">
                   <button class="splitter-tab active" data-orm="sql">Raw SQL</button>
@@ -339,7 +247,7 @@
 
             <!-- Violations List -->
             <div class="violations-section">
-              <h3 class="violations-title">Найденные антипаттерны и безопасные альтернативы:</h3>
+              <h3 class="violations-title">Замечания и рекомендации</h3>
               <div id="violations-list" class="violations-list"></div>
             </div>
           </div>
@@ -350,27 +258,24 @@
     <!-- PostgreSQL Lock Compatibility Matrix Explorer -->
     <section id="lock-matrix-explorer" class="lock-matrix-section">
       <div class="matrix-header">
-        <h2>🛡️ Интерактивная матрица совместимости блокировок PostgreSQL</h2>
-        <p>
-          Почему падает продакшен при накатывании миграций? В PostgreSQL блокировки берутся не только на строки, но и на всю таблицу целиком. 
-          Выберите любой уровень блокировки или типовую операцию, чтобы увидеть конфликты в реальном времени и понять, почему ваш DDL может вызвать лавину 504 ошибок.
-        </p>
+        <h2>Какие блокировки конфликтуют</h2>
+        <p>Выберите режим блокировки: матрица покажет, какие параллельные операции будут ждать её завершения.</p>
       </div>
 
       <div class="matrix-quick-filters" id="matrix-quick-filters">
-        <button class="matrix-filter-btn active" data-lock="ACCESS EXCLUSIVE">🚨 ACCESS EXCLUSIVE (ALTER / DROP)</button>
-        <button class="matrix-filter-btn" data-lock="SHARE">⛔ SHARE (CREATE INDEX)</button>
-        <button class="matrix-filter-btn" data-lock="SHARE UPDATE EXCLUSIVE">✅ SHARE UPDATE EXCL (CONCURRENTLY)</button>
-        <button class="matrix-filter-btn" data-lock="ROW EXCLUSIVE">⚡ ROW EXCLUSIVE (INSERT / UPDATE / DELETE)</button>
-        <button class="matrix-filter-btn" data-lock="ACCESS SHARE">📖 ACCESS SHARE (SELECT)</button>
-        <button class="matrix-filter-btn" data-lock="EXCLUSIVE">🔒 EXCLUSIVE (REFRESH MATVIEW)</button>
+        <button class="matrix-filter-btn active" data-lock="ACCESS EXCLUSIVE">ACCESS EXCLUSIVE (ALTER / DROP)</button>
+        <button class="matrix-filter-btn" data-lock="SHARE">SHARE (CREATE INDEX)</button>
+        <button class="matrix-filter-btn" data-lock="SHARE UPDATE EXCLUSIVE">SHARE UPDATE EXCL (CONCURRENTLY)</button>
+        <button class="matrix-filter-btn" data-lock="ROW EXCLUSIVE">ROW EXCLUSIVE (INSERT / UPDATE / DELETE)</button>
+        <button class="matrix-filter-btn" data-lock="ACCESS SHARE">ACCESS SHARE (SELECT)</button>
+        <button class="matrix-filter-btn" data-lock="EXCLUSIVE">EXCLUSIVE (REFRESH MATVIEW)</button>
       </div>
 
       <div class="matrix-table-wrapper">
         <table class="matrix-table" id="pg-lock-matrix-table">
           <thead>
             <tr>
-              <th style="text-align:left; padding-left:1rem;">Запрашиваемый Lock (Строка) \ Существующий (Столбец)</th>
+              <th style="text-align:left; padding-left:1rem;">Запрашиваемая ↓ / удерживаемая →</th>
               <th data-col="ACCESS SHARE">ACCESS SHARE</th>
               <th data-col="ROW SHARE">ROW SHARE</th>
               <th data-col="ROW EXCLUSIVE">ROW EXCL</th>
@@ -404,29 +309,10 @@
     </section>
 
     <!-- Commercial B2B Callout -->
-    <div class="b2b-card">
-      <div class="b2b-content">
-        <h4>🚀 Нужен профессиональный аудит миграций для вашей команды?</h4>
-        <p>Поможем настроить Zero-Downtime пайплайн в GitHub Actions / GitLab CI, исключить 504 Gateway Timeouts и защитить базу под высокими нагрузками.</p>
-      </div>
-      <a href="https://t.me/marswwu" target="_blank" class="nav-btn btn-tg" style="padding: 0.65rem 1.25rem; font-size: 0.9rem;">
-        <span>💬 Написать автору в Telegram: @marswwu</span>
-      </a>
-    </div>
+
 
     <!-- GitHub Badge Embed Card -->
-    <div class="b2b-card" style="margin-top: 1rem; border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05);">
-      <div class="b2b-content">
-        <h4 style="color: #34D399; margin-bottom: 0.25rem;">🛡️ Добавьте бейдж защиты LockGuard в README вашего проекта</h4>
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Показывает всей команде и руководству, что в вашем CI/CD настроена автоматическая защита базы данных от блокировок.</p>
-        <div>
-          <img src="https://img.shields.io/badge/PostgreSQL-Zero--Downtime_Protected-10B981?style=flat-square&logo=postgresql&logoColor=white" alt="LockGuard Protected">
-        </div>
-      </div>
-      <button id="btn-copy-badge" class="btn-secondary btn-sm" style="border-color: #10B981; color: #34D399; font-weight: 700; white-space: nowrap;">
-        📋 Скопировать Markdown
-      </button>
-    </div>
+
     <!-- Pricing & Commercial Monetization Section -->
     <section id="pricing" class="pricing-section">
       <div class="pricing-header"><h2 class="pricing-title">Услуги и стоимость</h2>
@@ -463,7 +349,7 @@
 <footer class="seller-footer" style="max-width:1200px;margin:2rem auto;padding:2rem 1.5rem;border-top:1px solid #334155;color:#cbd5e1;line-height:1.8"><h2 style="font-size:1.1rem;color:#fff">Контакты и реквизиты исполнителя</h2><p>Минсафин Марсель Ренатович · Самозанятый (НПД) · ИНН 631112758865</p><p><a href="mailto:minsafinmarsel02@gmail.com">minsafinmarsel02@gmail.com</a> · <a href="https://t.me/marswwu">Telegram @marswwu</a></p><p><a href="contacts.html">Услуги, цены и реквизиты</a> · <a href="offer.html">Публичная оферта, предоставление услуг и возврат</a> · <a href="privacy.html">Политика конфиденциальности</a></p><p>Pro — 1 500 ₽ за 30 дней без автосписаний. Аудит — 30 000 ₽ разово, объём и сроки согласуются до оплаты. Услуги предоставляются электронно.</p></footer>
 <!-- seller-footer:end -->
 <!-- Scripts -->
-  <script src="lockguard-engine.js?v=26326db43bb0"></script>
-  <script src="app.js?v=cbcb746609b0"></script>
+  <script src="lockguard-engine.js?v=3a20458552b9"></script>
+  <script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=6992aeb32a00"></script>
 </body>
 </html>

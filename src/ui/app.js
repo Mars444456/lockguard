@@ -4,21 +4,24 @@
 
 let adminToken = '';
 function setAdminToken() {
-  const value = window.prompt('Administrator token (leave empty to sign out):');
+  const value = window.prompt('Токен администратора (оставьте пустым для выхода):');
   if (value === null) return;
   adminToken = value.trim();
-  app.fetchOrganization();
-  app.fetchKeys();
-  app.fetchRuns();
+  app.resetPrivateData();
+  app.restoreAccount().then(() => app.refreshPrivateData());
 }
 
 async function apiFetch(url, options = {}) {
+  if (window.location.protocol === 'file:') throw new Error('Откройте http://localhost:3000 после запуска npm start или используйте браузерное демо.');
   const headers = new Headers(options.headers);
   if (adminToken) headers.set('Authorization', `Bearer ${adminToken}`);
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { credentials: 'same-origin', ...options, headers });
   if (!response.ok) {
     const data = await response.json();
-    throw new Error(data.error || `Request failed: ${response.status}`);
+    const error = new Error(data.error || `Request failed: ${response.status}`);
+    error.status = response.status;
+    if (response.status === 401 && !url.startsWith('/api/v1/auth/') && !adminToken) document.dispatchEvent(new Event('lockguard:signed-out'));
+    throw error;
   }
   return response;
 }
@@ -109,7 +112,7 @@ SET lock_timeout = '3s';
 TRUNCATE TABLE audit_logs;
 REFRESH MATERIALIZED VIEW mv_user_summaries;`,
 
-  safe_migration: `-- 100% Safe Zero-Downtime PostgreSQL Migration Pattern
+  safe_migration: `-- Пример без выявленных нарушений; перед применением проверьте на тестовой базе
 -- 1. Mandatory Safeguard: fail fast instead of queueing locks
 SET lock_timeout = '3s';
 SET statement_timeout = '30s';
@@ -145,16 +148,27 @@ class LockGuardApp {
     this.currentTab = 'playground';
     this.latestMarkdownReport = '';
     this.organization = null;
-    this.init();
+    this.account = null;
+    this.identityVersion = 0;
+    this.accountMode = 'login';
+    this.registrationEnabled = true;
+    this.analysisRequestId = 0;
+    this.ready = this.init();
   }
 
   async init() {
     this.bindEvents();
+    this.bindAccountEvents();
+    if (window.location.protocol === 'file:') {
+      document.getElementById('file-mode-notice').hidden = false;
+      document.getElementById('sql-input').value = PRESETS.catastrophic;
+      this.showAccountState();
+      return;
+    }
+    await this.restoreAccount();
     this.loadPreset('catastrophic');
-    await this.fetchOrganization();
     await this.fetchRules();
-    await this.fetchRuns();
-    await this.fetchKeys();
+    await this.refreshPrivateData();
     const paymentReturn = new URLSearchParams(window.location.search).get('payment');
     if (paymentReturn) {
       this.switchTab('billing');
@@ -163,6 +177,12 @@ class LockGuardApp {
   }
 
   bindEvents() {
+    document.getElementById('sql-input').addEventListener('input', () => {
+      document.getElementById('current-filename').textContent = 'custom_migration.sql';
+    });
+    document.getElementById('sql-input').addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); if (!document.getElementById('btn-analyze').disabled) this.analyzeCurrentSql(); }
+    });
     // Navigation Tabs
     document.querySelectorAll('.nav-tab').forEach(tabBtn => {
       tabBtn.addEventListener('click', () => {
@@ -214,9 +234,153 @@ class LockGuardApp {
     });
   }
 
+  bindAccountEvents() {
+    if (typeof BroadcastChannel !== 'undefined') {
+      this.accountChannel = new BroadcastChannel('lockguard-account');
+      this.accountChannel.onmessage = async () => {
+        if (adminToken) return;
+        this.resetPrivateData();
+        await this.restoreAccount();
+        await this.refreshPrivateData();
+      };
+    }
+    document.getElementById('btn-account').addEventListener('click', () => this.toggleAccount());
+    document.getElementById('btn-account-register').addEventListener('click', () => this.openRegistration());
+    document.getElementById('btn-account-close').addEventListener('click', () => this.toggleAccount(false));
+    document.getElementById('account-mode-login').addEventListener('click', () => this.setAccountMode('login'));
+    document.getElementById('account-mode-register').addEventListener('click', () => this.setAccountMode('register'));
+    document.getElementById('account-auth-form').addEventListener('submit', event => { event.preventDefault(); this.submitAccount(); });
+    document.getElementById('btn-account-logout').addEventListener('click', () => this.signOut());
+    document.addEventListener('lockguard:signed-out', () => { this.resetPrivateData(); this.showAccountState(); });
+    document.getElementById('account-organization-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        await apiFetch('/api/v1/organization', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: document.getElementById('account-organization-name').value.trim() }) });
+        await this.fetchOrganization();
+        this.accountMessage('Название сохранено.');
+      } catch (error) { this.accountMessage(error.message); }
+    });
+    document.getElementById('account-password-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = event.target.querySelector('button');
+      button.disabled = true;
+      try {
+        await apiFetch('/api/v1/auth/password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword: document.getElementById('account-current-password').value,
+            password: document.getElementById('account-new-password').value }) });
+        event.target.reset();
+        this.accountChannel?.postMessage('changed');
+        this.accountMessage('Пароль изменён. Остальные сеансы завершены.');
+      } catch (error) { this.accountMessage(error.message); }
+      finally { button.disabled = false; }
+    });
+  }
+
+  accountMessage(text) { document.getElementById('account-message').textContent = text; }
+  toggleAccount(open = document.getElementById('account-panel').hidden) {
+    document.getElementById('account-panel').hidden = !open;
+    document.getElementById('btn-account').setAttribute('aria-expanded', String(open));
+    if (open) document.getElementById(this.account ? 'account-organization-name' : 'account-email').focus();
+  }
+  openRegistration() {
+    this.toggleAccount(true);
+    this.setAccountMode('register');
+  }
+  setAccountMode(mode) {
+    this.accountMode = mode;
+    const registration = mode === 'register';
+    document.getElementById('account-organization-field').hidden = !registration;
+    document.getElementById('account-organization').required = registration;
+    document.getElementById('account-password').autocomplete = registration ? 'new-password' : 'current-password';
+    document.getElementById('account-auth-submit').textContent = registration ? 'Создать аккаунт' : 'Войти';
+    document.getElementById('account-mode-login').setAttribute('aria-pressed', String(!registration));
+    document.getElementById('account-mode-register').setAttribute('aria-pressed', String(registration));
+    this.accountMessage('');
+  }
+  showAccountState() {
+    document.getElementById('account-guest').hidden = !!this.account;
+    document.getElementById('account-profile').hidden = !this.account;
+    document.getElementById('btn-account-logout').hidden = !this.account && !adminToken;
+    document.getElementById('btn-account').textContent = this.account ? 'Личный кабинет' : adminToken ? 'Администратор' : 'Войти';
+    document.getElementById('btn-account-register').hidden = !this.registrationEnabled || !!this.account || !!adminToken;
+    document.getElementById('account-profile-email').textContent = this.account?.email || '';
+  }
+  resetPrivateData() {
+    this.identityVersion++;
+    this.runs = [];
+    const report = document.getElementById('run-report');
+    if (report) { report.hidden = true; document.getElementById('run-report-body').textContent = ''; }
+    this.analysisRequestId++;
+    this.account = null;
+    this.organization = null;
+    this.latestMarkdownReport = '';
+    for (const id of ['runs-tbody', 'keys-tbody', 'billing-orders', 'pr-markdown-box', 'violations-list']) document.getElementById(id)?.replaceChildren();
+    document.getElementById('account-organization-name').value = '';
+    document.getElementById('account-password-form').reset();
+    document.getElementById('sql-input').value = '';
+    document.getElementById('billing-payment-link').value = '';
+    document.getElementById('billing-payment-section').hidden = true;
+    document.getElementById('analysis-details').classList.add('hidden');
+    document.getElementById('empty-state').classList.remove('hidden');
+    document.getElementById('verdict-badge').textContent = 'Ожидает проверки';
+    document.getElementById('verdict-badge').className = 'verdict-pill pending';
+    document.getElementById('org-name').textContent = adminToken ? 'Администратор' : 'Гость';
+    document.getElementById('org-plan-badge').textContent = 'Community';
+    document.getElementById('org-plan-badge').className = 'plan-pill free';
+  }
+  async restoreAccount() {
+    const identityVersion = this.identityVersion;
+    try {
+      const response = await apiFetch('/api/v1/auth/session');
+      const data = await response.json();
+      if (identityVersion !== this.identityVersion) return;
+      this.account = adminToken ? null : data.user;
+      this.registrationEnabled = data.registrationEnabled !== false;
+      document.getElementById('account-mode-register').hidden = !this.registrationEnabled;
+    } catch (error) { this.accountMessage('Не удалось подключиться к серверу: ' + error.message); }
+    this.showAccountState();
+  }
+  async refreshPrivateData() {
+    if (!this.account && !adminToken) return;
+    await Promise.all([this.fetchOrganization(), this.fetchRuns(), this.fetchKeys()]);
+  }
+  async submitAccount() {
+    const button = document.getElementById('account-auth-submit');
+    button.disabled = true;
+    this.accountMessage('');
+    try {
+      const response = await apiFetch('/api/v1/auth/' + this.accountMode, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: document.getElementById('account-email').value.trim(), password: document.getElementById('account-password').value,
+          organizationName: document.getElementById('account-organization').value.trim() }) });
+      const data = await response.json();
+      adminToken = '';
+      this.resetPrivateData();
+      this.account = data.user;
+      this.accountChannel?.postMessage('changed');
+      document.getElementById('account-auth-form').reset();
+      this.showAccountState();
+      await this.refreshPrivateData();
+      this.accountMessage('Вы вошли. Ключи и история доступны только вашей организации.');
+    } catch (error) { this.accountMessage(error.message); }
+    finally { button.disabled = false; }
+  }
+  async signOut() {
+    try {
+      await apiFetch('/api/v1/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      adminToken = '';
+      this.resetPrivateData();
+      this.accountChannel?.postMessage('changed');
+      this.showAccountState();
+      this.accountMessage('Вы вышли из аккаунта.');
+    } catch (error) { this.accountMessage(error.message); }
+  }
+
   switchTab(tabId) {
     this.currentTab = tabId;
-    document.querySelectorAll('.nav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+    document.querySelectorAll('.nav-tab').forEach(b => { b.classList.toggle('active', b.dataset.tab === tabId); b.setAttribute('aria-selected', String(b.dataset.tab === tabId)); });
+    if (['runs', 'keys'].includes(tabId) && !this.account && !adminToken) { this.toggleAccount(true); this.accountMessage('Войдите, чтобы открыть данные своей организации.'); }
+    if (tabId === 'runs' && (this.account || adminToken)) this.fetchRuns();
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
   }
 
@@ -224,20 +388,24 @@ class LockGuardApp {
     const sql = PRESETS[key] || '';
     document.getElementById('sql-input').value = sql;
     document.getElementById('current-filename').textContent = `${key}_migration.sql`;
-    this.analyzeCurrentSql();
+    document.getElementById('empty-state').classList.remove('hidden');
+    document.getElementById('analysis-details').classList.add('hidden');
+    document.getElementById('verdict-badge').className = 'verdict-pill pending';
+    document.getElementById('verdict-badge').textContent = 'Ожидает проверки';
   }
 
   async analyzeCurrentSql() {
+    const requestId = ++this.analysisRequestId, identityVersion = this.identityVersion;
     const sql = document.getElementById('sql-input').value.trim();
     if (!sql) {
-      this.showToast('Please enter SQL statements to analyze.');
+      this.showToast('Вставьте SQL для проверки.');
       return;
     }
 
     const withContext = document.getElementById('chk-context')?.checked ?? true;
     const btn = document.getElementById('btn-analyze');
     btn.disabled = true;
-    btn.textContent = 'Analyzing AST...';
+    btn.textContent = 'Проверяем SQL…';
 
     try {
       const res = await apiFetch('/api/v1/analyze', {
@@ -246,34 +414,37 @@ class LockGuardApp {
         body: JSON.stringify({
           sql,
           filename: document.getElementById('current-filename').textContent,
-          withContext
+          withContext,
+          recordRun: !!this.account
         })
       });
 
       const data = await res.json();
+      if (requestId !== this.analysisRequestId || identityVersion !== this.identityVersion) return;
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to analyze SQL');
+        throw new Error(data.error || 'Не удалось проверить SQL');
       }
 
       this.renderAnalysis(data.data);
     } catch (err) {
-      this.showToast('Analysis error: ' + err.message);
+      if (identityVersion === this.identityVersion) this.showToast('Ошибка анализа: ' + err.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = '⚡ Analyze Migration';
+      btn.textContent = 'Проверить SQL';
     }
   }
 
   async splitCurrentSql() {
+    const identityVersion = this.identityVersion;
     const sql = document.getElementById('sql-input').value.trim();
     if (!sql) {
-      this.showToast('Please enter SQL statements to split.');
+      this.showToast('Вставьте SQL для подготовки плана.');
       return;
     }
 
     const btn = document.getElementById('btn-split');
     btn.disabled = true;
-    btn.textContent = 'Splitting...';
+    btn.textContent = 'Готовим план…';
 
     try {
       const res = await apiFetch('/api/v1/split', {
@@ -283,16 +454,17 @@ class LockGuardApp {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to split migration');
+      if (identityVersion !== this.identityVersion) return;
+      if (!res.ok) throw new Error(data.error || 'Не удалось подготовить план');
 
       if (data.plan.isSafe) {
-        this.showToast('Migration is already safe! No splitting required.');
+        this.showToast('Правила не выявили нарушений. План изменений не требуется.');
       } else {
         const violationsList = document.getElementById('violations-list');
         violationsList.innerHTML = `
           <div style="background: rgba(6, 182, 212, 0.1); border: 1px solid var(--accent-cyan); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
-            <h4 style="color: var(--accent-cyan); margin-bottom: 0.5rem;">🔀 Auto-Splitter: Decomposed into ${data.plan.totalPhases} Zero-Downtime Releases</h4>
-            <p style="font-size: 0.8rem; color: var(--text-muted);">Apply these releases sequentially across deployments to eliminate production locking.</p>
+            <h4 style="color: var(--accent-cyan); margin-bottom: 0.5rem;">🔀 Черновой план: ${data.plan.totalPhases} этапов</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted);">Проверьте полноту и порядок этапов на тестовой базе перед применением.</p>
           </div>
         `;
 
@@ -302,13 +474,13 @@ class LockGuardApp {
           item.style.borderLeftColor = 'var(--accent-cyan)';
           item.innerHTML = `
             <div class="violation-header">
-              <span class="violation-title">📦 Phase ${p.phaseNumber}: ${this.escapeHtml(p.title)}</span>
+              <span class="violation-title">Этап ${p.phaseNumber}: ${this.escapeHtml(p.title)}</span>
             </div>
             <div class="violation-desc" style="color: var(--text-muted);">${this.escapeHtml(p.description)}</div>
             <div class="fix-box">
               <div class="fix-header">
-                <span>SQL Release Script</span>
-                <button class="btn-secondary btn-xs btn-copy-snippet" data-fix="${encodeURIComponent(p.sql)}">Copy Script</button>
+                <span>SQL для проверки</span>
+                <button class="btn-secondary btn-xs btn-copy-snippet" data-fix="${encodeURIComponent(p.sql)}">Скопировать SQL</button>
               </div>
               <div class="fix-code">${this.escapeHtml(p.sql)}</div>
             </div>
@@ -320,17 +492,17 @@ class LockGuardApp {
           b.addEventListener('click', (e) => {
             const raw = decodeURIComponent(e.target.dataset.fix);
             navigator.clipboard.writeText(raw);
-            this.showToast('Copied phase script to clipboard!');
+            this.showToast('SQL этапа скопирован.');
           });
         });
 
-        this.showToast(`Auto-Split into ${data.plan.totalPhases} zero-downtime releases!`);
+        this.showToast(`Подготовлено этапов: ${data.plan.totalPhases}. Нужна ручная проверка.`);
       }
     } catch (err) {
-      this.showToast('Split error: ' + err.message);
+      if (identityVersion === this.identityVersion) this.showToast('Ошибка подготовки плана: ' + err.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = '🔀 Auto-Split';
+      btn.textContent = 'План изменений';
     }
   }
 
@@ -341,19 +513,19 @@ class LockGuardApp {
     const verdictBadge = document.getElementById('verdict-badge');
     if (result.passed) {
       verdictBadge.className = 'verdict-pill passed';
-      verdictBadge.textContent = '✔ No rule violations detected';
+      verdictBadge.textContent = 'Нарушений правил нет';
     } else {
       verdictBadge.className = 'verdict-pill blocked';
-      verdictBadge.textContent = '🛑 Blocked (Dangerous Locks)';
+      verdictBadge.textContent = 'Найдены риски';
     }
 
     // Metric tiles
     document.getElementById('res-max-lock').textContent = result.highestLockLevel;
-    document.getElementById('res-lock-sub').textContent = result.lockImpact ? result.lockImpact.impact : 'Safe for production';
+    document.getElementById('res-lock-sub').textContent = window.LockGuardLabels?.impact[result.highestLockLevel] || result.lockImpact?.impact || 'Нет оценки блокировки';
     document.getElementById('res-violations-count').textContent = result.violationsCount;
-    document.getElementById('res-violations-sub').textContent = `${result.criticalCount} Critical, ${result.highCount} High`;
+    document.getElementById('res-violations-sub').textContent = `${result.criticalCount} критических, ${result.highCount} высоких`;
     document.getElementById('res-tables-count').textContent = result.affectedTables.length;
-    document.getElementById('res-tables-list').textContent = result.affectedTables.join(', ') || 'None';
+    document.getElementById('res-tables-list').textContent = result.affectedTables.join(', ') || 'Нет';
 
     // Violations List
     const violationsList = document.getElementById('violations-list');
@@ -362,7 +534,7 @@ class LockGuardApp {
     if (result.violations.length === 0) {
       violationsList.innerHTML = `
         <div style="padding: 1.5rem; text-align: center; color: var(--accent-emerald); background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
-          ✔ <b>No dangerous locks detected!</b> Review schema, transaction boundaries and workload before deployment.
+          ✔ <b>Правила не выявили нарушений.</b> Перед релизом проверьте схему, границы транзакций и нагрузку.
         </div>
       `;
     } else {
@@ -371,11 +543,11 @@ class LockGuardApp {
         item.className = `violation-card ${v.severity.toLowerCase()}`;
         item.innerHTML = `
           <div class="violation-header">
-            <span class="violation-title">${i + 1}. ${v.ruleName}</span>
-            <span class="violation-tag ${v.severity.toLowerCase()}">${v.severity}</span>
+            <span class="violation-title">${i + 1}. ${window.LockGuardLabels?.titles[v.ruleId] || v.ruleName}</span>
+            <span class="violation-tag ${v.severity.toLowerCase()}">${window.LockGuardLabels?.severity[v.severity] || v.severity}</span>
           </div>
           <div class="violation-meta">
-            Rule: <b>${v.ruleId}</b> | Table: <b>${this.escapeHtml(v.table)}</b> | Lock: <b>${v.lockLevel}</b> | Line: <b>L${v.line}</b>
+            Правило: <b>${v.ruleId}</b> | Таблица: <b>${this.escapeHtml(v.table)}</b> | Блокировка: <b>${v.lockLevel}</b> | Строка: <b>L${v.line}</b>
           </div>
           ${v.estimatedDowntimeFormatted ? `
             <div style="font-size:0.75rem; color:var(--accent-red); margin-bottom:0.4rem; font-weight:700;">
@@ -386,8 +558,8 @@ class LockGuardApp {
           ${v.safeFix ? `
             <div class="fix-box">
               <div class="fix-header">
-                <span>💡 Safe Multi-Step Alternative</span>
-                <button class="btn-secondary btn-xs btn-copy-snippet" data-fix="${encodeURIComponent(v.safeFix)}">Copy Fix</button>
+                <span>Рекомендация для ручной проверки</span>
+                <button class="btn-secondary btn-xs btn-copy-snippet" data-fix="${encodeURIComponent(v.safeFix)}">Скопировать SQL</button>
               </div>
               <div class="fix-code">${this.escapeHtml(v.safeFix)}</div>
             </div>
@@ -401,7 +573,7 @@ class LockGuardApp {
         btn.addEventListener('click', (e) => {
           const raw = decodeURIComponent(e.target.dataset.fix);
           navigator.clipboard.writeText(raw);
-          this.showToast('Safe SQL snippet copied to clipboard!');
+          this.showToast('SQL-рекомендация скопирована.');
         });
       });
     }
@@ -412,16 +584,19 @@ class LockGuardApp {
   }
 
   async fetchOrganization() {
+    const identityVersion = this.identityVersion;
     try {
       const res = await apiFetch('/api/v1/organization');
       const data = await res.json();
+      if (identityVersion !== this.identityVersion) return;
       if (data.organization) {
         this.organization = data.organization;
+        document.getElementById('account-organization-name').value = this.organization.name;
         document.getElementById('org-name').textContent = this.organization.name;
         const planPill = document.getElementById('org-plan-badge');
         planPill.className = `plan-pill ${this.organization.plan}`;
         planPill.textContent = this.organization.plan === 'team'
-          ? `PRO${this.organization.accessUntil ? ' до ' + new Date(this.organization.accessUntil).toLocaleDateString('ru-RU') : ''}` : this.organization.plan.toUpperCase();
+          ? `PRO${this.organization.accessUntil ? ' до ' + new Date(this.organization.accessUntil).toLocaleDateString('ru-RU') : ''}` : 'Community';
         this.updatePlanCards(this.organization.plan);
       }
     } catch (err) {
@@ -443,14 +618,14 @@ class LockGuardApp {
           <div>
             <div class="rule-top">
               <span class="rule-id">${r.id}</span>
-              <span class="violation-tag ${r.severity.toLowerCase()}">${r.severity}</span>
+              <span class="violation-tag ${r.severity.toLowerCase()}">${window.LockGuardLabels?.severity[r.severity] || r.severity}</span>
             </div>
-            <div class="rule-name">${r.name}</div>
+            <div class="rule-name">${window.LockGuardLabels?.titles[r.id] || r.name}</div>
             <div class="rule-desc">${r.description}</div>
           </div>
           <div class="rule-footer">
-            <span>Lock Level: <b style="color: var(--accent-red);">${r.lockLevel}</b></span>
-            <span>Target: PostgreSQL</span>
+            <span>Блокировка: <b style="color: var(--accent-red);">${r.lockLevel}</b></span>
+            <span>PostgreSQL</span>
           </div>
         `;
         grid.appendChild(card);
@@ -461,24 +636,28 @@ class LockGuardApp {
   }
 
   async fetchRuns() {
+    const identityVersion = this.identityVersion;
     try {
       const res = await apiFetch('/api/v1/runs');
       const data = await res.json();
+      if (identityVersion !== this.identityVersion) return;
       const tbody = document.getElementById('runs-tbody');
       tbody.innerHTML = '';
 
+      this.runs = data.runs;
+      if (!data.runs.length) tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Здесь появятся ваши проверки. Начните с редактора SQL.</td></tr>';
       data.runs.forEach(run => {
         const tr = document.createElement('tr');
         const isPassed = run.status === 'PASSED';
         tr.innerHTML = `
           <td>
             <span class="verdict-pill ${isPassed ? 'passed' : 'blocked'}">
-              ${isPassed ? '✔ PASSED' : '🛑 BLOCKED'}
+              ${isPassed ? 'Без нарушений' : 'Есть риски'}
             </span>
           </td>
           <td>
-            <b>${this.escapeHtml(run.repo)}</b><br>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">PR #${this.escapeHtml(run.prNumber)} by @${this.escapeHtml(run.author || 'dev')}</span>
+            <b>${this.escapeHtml(run.repo || (run.source === 'dashboard' ? 'SQL-проверка' : 'Проверка API'))}</b><br>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">${run.prNumber ? 'PR #' + this.escapeHtml(run.prNumber) : 'Ручная проверка'}</span>
           </td>
           <td>
             <code>${this.escapeHtml(run.branch)}</code><br>
@@ -491,13 +670,13 @@ class LockGuardApp {
           </td>
           <td>
             <b>${run.violationsCount}</b>
-            <span style="font-size: 0.75rem; color: var(--text-dim);">(${run.criticalCount || 0} crit)</span>
+            <span style="font-size: 0.75rem; color: var(--text-dim);">(${run.criticalCount || 0} крит.)</span>
           </td>
           <td style="color: var(--text-muted); font-size: 0.75rem;">
             ${new Date(run.timestamp).toLocaleTimeString()}
           </td>
           <td>
-            <button class="btn-secondary btn-xs" onclick="app.viewRunDetails('${run.id}')">View Details</button>
+            <button class="btn-secondary btn-xs" onclick="app.viewRunDetails('${run.id}')">Открыть отчёт</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -508,29 +687,32 @@ class LockGuardApp {
   }
 
   async fetchKeys() {
+    const identityVersion = this.identityVersion;
     try {
       const res = await apiFetch('/api/v1/keys');
       const data = await res.json();
+      if (identityVersion !== this.identityVersion) return;
       const tbody = document.getElementById('keys-tbody');
       tbody.innerHTML = '';
 
+      if (!data.keys.length) tbody.innerHTML = '<tr><td colspan="6" class="table-empty">Ключей пока нет. Создайте ключ для подключения серверного API.</td></tr>';
       data.keys.forEach(k => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><b>${this.escapeHtml(k.name)}</b></td>
           <td>
             <code>${k.key.substring(0, 10)}••••••••••••••••</code>
-            <small>Secret shown only when created</small>
+            <small>Секрет доступен только при создании</small>
           </td>
           <td style="font-size: 0.75rem; color: var(--text-muted);">${new Date(k.createdAt).toLocaleDateString()}</td>
-          <td style="font-size: 0.75rem; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : 'Never'}</td>
+          <td style="font-size: 0.75rem; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : 'Ещё нет'}</td>
           <td>
-            <span class="plan-pill ${k.status === 'active' ? 'team' : 'free'}">${k.status.toUpperCase()}</span>
+            <span class="plan-pill ${k.status === 'active' ? 'team' : 'free'}">${k.status === 'active' ? 'Активен' : 'Отозван'}</span>
           </td>
           <td>
             ${k.status === 'active' ? `
-              <button class="btn-secondary btn-xs" style="color: var(--accent-red);" onclick="app.revokeKey('${k.id}')">Revoke</button>
-            ` : '<span style="color: var(--text-dim); font-size: 0.75rem;">Revoked</span>'}
+              <button class="btn-secondary btn-xs" style="color: var(--accent-red);" onclick="app.revokeKey('${k.id}')">Отозвать</button>
+            ` : '<span style="color: var(--text-dim); font-size: 0.75rem;">Отозван</span>'}
           </td>
         `;
         tbody.appendChild(tr);
@@ -553,15 +735,15 @@ class LockGuardApp {
       });
 
       const data = await res.json();
-      this.showToast(`Simulated PR #${prNumber} webhook audit completed! Status: ${data.action.toUpperCase()}`);
+      this.showToast(`Тестовый PR #${prNumber} проверен: ${data.action.toUpperCase()}`);
       await this.fetchRuns();
     } catch (err) {
-      this.showToast('Webhook simulation error: ' + err.message);
+      this.showToast('Ошибка тестового PR: ' + err.message);
     }
   }
 
   async promptCreateKey() {
-    const name = prompt('Enter a name for this API Key (e.g. "GitHub Actions CI"):');
+    const name = prompt('Название ключа API (например, GitHub Actions CI):');
     if (!name) return;
 
     try {
@@ -571,37 +753,46 @@ class LockGuardApp {
         body: JSON.stringify({ name })
       });
       const data = await res.json();
-      this.showToast(`Key "${name}" created!`);
-      window.prompt('Copy this API key now. It will not be shown again:', data.key.key);
+      this.showToast(`Ключ «${name}» создан.`);
+      window.prompt('Сохраните ключ API сейчас. Повторно он не отображается:', data.key.key);
       await this.fetchKeys();
     } catch (err) {
-      this.showToast('Error creating key: ' + err.message);
+      this.showToast('Ошибка создания ключа: ' + err.message);
     }
   }
 
   async revokeKey(id) {
-    if (!confirm('Are you sure you want to revoke this API key? CI/CD pipelines using it will fail.')) return;
+    if (!confirm('Отозвать ключ API? Проверки CI, использующие этот ключ, перестанут работать.')) return;
     try {
       await apiFetch(`/api/v1/keys/${id}`, { method: 'DELETE' });
-      this.showToast('API Key revoked.');
+      this.showToast('Ключ API отозван.');
       await this.fetchKeys();
     } catch (err) {
-      this.showToast('Error revoking key: ' + err.message);
+      this.showToast('Ошибка отзыва ключа: ' + err.message);
     }
   }
 
   copyKey(key) {
     navigator.clipboard.writeText(key);
-    this.showToast('Copied full API Key to clipboard!');
+    this.showToast('Ключ API скопирован.');
   }
 
   viewRunDetails(runId) {
-    this.switchTab('playground');
-    this.showToast(`Inspecting details for ${runId} in Playground.`);
+    const run = this.runs?.find(item => item.id === runId);
+    if (!run) return;
+    const panel = document.getElementById('run-report');
+    panel.hidden = false;
+    document.getElementById('run-report-body').textContent = run.markdownReport || run.summary || 'Подробный отчёт этой старой проверки не сохранён.';
+    panel.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
   }
 
   async selectPlan(plan) {
     if (plan === 'free') { this.showToast('Бесплатный анализ доступен без оплаты.'); return; }
+    if (!adminToken) {
+      if (plan === 'business') window.location.href = 'mailto:minsafinmarsel02@gmail.com?subject=LockGuard%3A%20заказ%20аудита';
+      else this.showToast('Онлайн-оплата подключается. Условия и контакты доступны на странице «Тарифы».');
+      return;
+    }
     if (this.paymentRequestInFlight) return;
     const email = window.prompt('Email покупателя для заказа и чека:');
     if (email === null) return;
@@ -625,14 +816,16 @@ class LockGuardApp {
       document.body.appendChild(form); form.submit(); form.remove();
       await this.fetchPaymentOrders();
     } catch (err) {
-      this.showToast('Billing error: ' + err.message);
+      this.showToast('Ошибка заказа: ' + err.message);
     } finally { this.paymentRequestInFlight = false; }
   }
 
   async fetchPaymentOrders() {
+    const identityVersion = this.identityVersion;
     try {
       const res = await apiFetch('/api/v1/billing/orders');
       const { orders } = await res.json();
+      if (identityVersion !== this.identityVersion) return;
       const list = document.getElementById('billing-orders');
       list.replaceChildren();
       const labels = { pending: 'Ожидает оплаты', paid: 'Оплачен', test_paid: 'Тестовая оплата — рабочий доступ не изменён' };
@@ -654,12 +847,12 @@ class LockGuardApp {
       if (p === 'free') {
         btn.textContent = 'Бесплатный анализ'; btn.disabled = true;
       } else if (p === currentPlan && p !== 'team') {
-        btn.textContent = 'Current Plan (Active)';
+        btn.textContent = 'Текущий план';
         btn.className = 'btn-plan btn-secondary';
         btn.disabled = true;
       } else {
         btn.disabled = false;
-        btn.textContent = p === 'team' ? (currentPlan === 'team' ? 'Продлить на 30 дней — 1 500 ₽' : 'Оплатить 30 дней — 1 500 ₽') : 'Оплатить аудит — 30 000 ₽';
+        btn.textContent = !adminToken ? (p === 'team' ? 'Подключение оплаты' : 'Обсудить аудит') : p === 'team' ? (currentPlan === 'team' ? 'Продлить на 30 дней — 1 500 ₽' : 'Оплатить 30 дней — 1 500 ₽') : 'Оплатить аудит — 30 000 ₽';
         btn.className = p === 'team' ? 'btn-plan btn-primary' : 'btn-plan btn-secondary';
       }
     });
@@ -740,7 +933,7 @@ const PG_LOCK_CONFLICTS = {
   'ROW SHARE': ['EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'ROW EXCLUSIVE': ['SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'SHARE UPDATE EXCLUSIVE': ['SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
-  'SHARE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+  'SHARE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'SHARE ROW EXCLUSIVE': ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'EXCLUSIVE': ['ROW SHARE', 'ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
   'ACCESS EXCLUSIVE': [
@@ -751,40 +944,40 @@ const PG_LOCK_CONFLICTS = {
 
 const PG_LOCK_DETAILS = {
   'ACCESS EXCLUSIVE': {
-    title: '🚨 ACCESS EXCLUSIVE: Fatal Table Lock (Full Outage Risk)',
-    desc: 'Blocks <b>all table operations</b>: reads (<code>SELECT</code>), writes (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), indexes, and schema modifications. If a slow query is running, DDL queues behind it, and subsequent <code>SELECT</code> queries pile up (Head-of-Line Blocking), crashing connection pools and triggering <b>HTTP 504 Gateway Timeouts</b>.',
+    title: '🚨 ACCESS EXCLUSIVE: Фатальная блокировка таблицы (Full Outage)',
+    desc: 'Блокирует <b>абсолютно все операции</b>: чтение (<code>SELECT</code>), запись (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), создание индексов и любые другие DDL/DML. Если в этот момент выполняется долгий аналитический запрос, DDL встает в очередь, а все последующие <code>SELECT</code> выстраиваются за ним (Head-of-Line Blocking), исчерпывая пул соединений и приводя к массовым ошибкам <b>HTTP 504 Gateway Timeout</b>.',
     blocked: ['SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'VACUUM / ANALYZE'],
     safe: []
   },
   'SHARE': {
-    title: '⛔ SHARE: Write Freeze Lock (INSERT/UPDATE Blocked)',
-    desc: 'Allows concurrent reads (<code>SELECT</code>), but <b>completely freezes all write operations</b>: <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>! All active user mutations will block until the index generation finishes.',
-    blocked: ['INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'Any ALTER TABLE (ACCESS EXCLUSIVE)'],
-    safe: ['Parallel SELECT (ACCESS SHARE)', 'SELECT FOR UPDATE (ROW SHARE)']
+    title: '⛔ SHARE: Блокировка пользовательской записи (Write Freeze)',
+    desc: 'Позволяет продолжать чтение (<code>SELECT</code>), но <b>полностью блокирует все операции изменения данных</b>: <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>! Все пользовательские транзакции записи встают колом до тех пор, пока не построится весь индекс.',
+    blocked: ['INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY (SHARE UPDATE EXCLUSIVE)', 'ALTER TABLE (ACCESS EXCLUSIVE)'],
+    safe: ['Параллельные SELECT (ACCESS SHARE)', 'SELECT FOR UPDATE (ROW SHARE)']
   },
   'SHARE UPDATE EXCLUSIVE': {
-    title: '✅ SHARE UPDATE EXCLUSIVE: Safe Non-Blocking Mode (Zero-Downtime)',
-    desc: '<b>The gold standard for zero-downtime PostgreSQL operations!</b> Conflicts ONLY with other concurrent schema modifications or autovacuum, but is <b>100% compatible with user reads (<code>SELECT</code>) and writes (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>)</b>! Production traffic operates at full speed.',
-    blocked: ['Parallel VACUUM / ANALYZE', 'Another CREATE INDEX CONCURRENTLY', 'ALTER TABLE (ACCESS EXCLUSIVE)'],
-    safe: ['User SELECT (ACCESS SHARE)', 'User INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'SELECT FOR UPDATE']
+    title: '✅ SHARE UPDATE EXCLUSIVE: Режим параллельных операций',
+    desc: 'Совместим с обычным чтением и записью на уровне табличных блокировок. Конфликтует с другим SHARE UPDATE EXCLUSIVE и более сильными режимами. Это не гарантирует отсутствие ожиданий, нагрузки или блокировок других объектов.',
+    blocked: ['Параллельный VACUUM / ANALYZE', 'Другой CREATE INDEX CONCURRENTLY', 'ALTER TABLE (ACCESS EXCLUSIVE)'],
+    safe: ['Клиентские SELECT (ACCESS SHARE)', 'Клиентские INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'SELECT FOR UPDATE']
   },
   'ROW EXCLUSIVE': {
-    title: '⚡ ROW EXCLUSIVE: Normal High-Volume Write Traffic',
-    desc: 'Acquired by standard row mutation operations (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>). Compatible with other writes to different rows, but immediately blocked by dangerous DDL.',
+    title: '⚡ ROW EXCLUSIVE: Стандартный рабочий поток записи данных',
+    desc: 'Этот лок берется каждой стандартной операцией изменения данных на уровне строки (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>). Не мешает другим транзакциям читать или писать в другие строки, но мгновенно блокируется опасными DDL-миграциями.',
     blocked: ['CREATE INDEX (SHARE)', 'ALTER TABLE (ACCESS EXCLUSIVE)', 'TRUNCATE'],
-    safe: ['Concurrent SELECT (ACCESS SHARE)', 'Concurrent INSERT/UPDATE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
+    safe: ['Параллельные SELECT (ACCESS SHARE)', 'Параллельные INSERT/UPDATE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
   },
   'ACCESS SHARE': {
-    title: '📖 ACCESS SHARE: Normal High-Volume Read Traffic',
-    desc: 'Acquired by standard <code>SELECT</code> queries. Compatible with everything except the heaviest lock — <code>ACCESS EXCLUSIVE</code>. This is why a monolithic ALTER TABLE freezes an entire web application.',
+    title: '📖 ACCESS SHARE: Стандартный рабочий поток чтения',
+    desc: 'Этот лок берется обычным <code>SELECT</code> запросом. Совместим со всеми остальными режимами, кроме самого тяжелого — <code>ACCESS EXCLUSIVE</code>. Длительное ожидание ACCESS EXCLUSIVE может задерживать последующие запросы.',
     blocked: ['ALTER TABLE (ACCESS EXCLUSIVE)', 'DROP TABLE', 'TRUNCATE'],
-    safe: ['Concurrent SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
+    safe: ['Параллельные SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX CONCURRENTLY']
   },
   'EXCLUSIVE': {
-    title: '🔒 EXCLUSIVE: Exclusive Write and Concurrent Index Lock',
-    desc: 'Blocks all writes and concurrent index operations, while permitting non-blocking <code>SELECT</code> queries.',
-    blocked: ['INSERT / UPDATE / DELETE', 'SELECT FOR UPDATE', 'Parallel CREATE INDEX'],
-    safe: ['Simple SELECT (ACCESS SHARE)']
+    title: '🔒 EXCLUSIVE: Эксклюзивная блокировка записи и чтения с блокировками',
+    desc: 'Блокирует все операции записи и параллельные индексы, но позволяет простое неблокирующее чтение <code>SELECT</code>.',
+    blocked: ['INSERT / UPDATE / DELETE', 'SELECT FOR UPDATE', 'Параллельные CREATE INDEX'],
+    safe: ['Простой SELECT (ACCESS SHARE)']
   }
 };
 
@@ -808,7 +1001,7 @@ function initLockMatrixExplorer() {
       const isConflict = PG_LOCK_CONFLICTS[reqLock] && PG_LOCK_CONFLICTS[reqLock].includes(existLock);
       td.setAttribute('data-col-lock', existLock);
       td.className = isConflict ? 'cell-conflict' : 'cell-safe';
-      td.textContent = isConflict ? '⛔ BLOCK' : '✔ OK';
+      td.textContent = isConflict ? 'ЖДЁТ' : 'OK';
       td.title = `${reqLock} vs ${existLock}: ${isConflict ? 'CONFLICT' : 'COMPATIBLE'}`;
       tr.appendChild(td);
     });
@@ -872,7 +1065,7 @@ function selectLockMode(lockMode) {
   if (tagsEl) {
     let html = '';
     (details.blocked || []).forEach(item => {
-      html += `<span class="explainer-tag tag-blocked">⛔ Blocks: ${item}</span>`;
+      html += `<span class="explainer-tag tag-blocked">Ждёт: ${item}</span>`;
     });
     (details.safe || []).forEach(item => {
       html += `<span class="explainer-tag tag-safe">✔ Compatible: ${item}</span>`;

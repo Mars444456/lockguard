@@ -43,8 +43,8 @@ const LockMatrix = {
   },
   [LockLevel.SHARE_UPDATE_EXCLUSIVE]: {
     description: 'Acquired by CREATE INDEX CONCURRENTLY, VACUUM (without FULL), ANALYZE, ALTER TABLE VALIDATE CONSTRAINT.',
-    blocks: ['SHARE_UPDATE_EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
-    impact: 'Safe for production! Allows concurrent SELECT, INSERT, UPDATE, DELETE.'
+    blocks: ['SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+    impact: 'Compatible with normal SELECT, INSERT, UPDATE and DELETE table locks; other lock waits may still occur.'
   },
   [LockLevel.SHARE]: {
     description: 'Acquired by non-concurrent CREATE INDEX.',
@@ -53,8 +53,8 @@ const LockMatrix = {
   },
   [LockLevel.SHARE_ROW_EXCLUSIVE]: {
     description: 'Acquired by CREATE TRIGGER and some foreign key operations.',
-    blocks: ['ROW SHARE', 'ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
-    impact: 'Blocks all concurrent writes and row-level locks.'
+    blocks: ['ROW EXCLUSIVE', 'SHARE UPDATE EXCLUSIVE', 'SHARE', 'SHARE ROW EXCLUSIVE', 'EXCLUSIVE', 'ACCESS EXCLUSIVE'],
+    impact: 'Conflicts with concurrent writes and schema changes; compatible with ROW SHARE.'
   },
   [LockLevel.EXCLUSIVE]: {
     description: 'Acquired by REFRESH MATERIALIZED VIEW CONCURRENTLY.',

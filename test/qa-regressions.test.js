@@ -27,7 +27,7 @@ test('QA suggested SQL preserves column types and complete unique index definiti
   assert.match(fix, /CREATE UNIQUE INDEX CONCURRENTLY/);
   assert.match(fix, /WHERE email IS NOT NULL/);
 });
-test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+test.after(() => { require('../src/server/db').close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
 for (const sql of [
   "SET lock_timeout = 0; ALTER TABLE users ADD COLUMN x int;",

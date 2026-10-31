@@ -8,10 +8,13 @@ const vm = require('node:vm');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lockguard-stage2-'));
 process.env.LOCKGUARD_DB_FILE = path.join(tmp, 'main.json');
 delete process.env.DEFAULT_API_KEY;
-const { PersistentDatabase } = require('../src/server/db');
+const mainDatabase = require('../src/server/db');
+const { PersistentDatabase } = mainDatabase;
+const connections = [mainDatabase];
+function openDatabase(options) { const db = new PersistentDatabase(options); connections.push(db); return db; }
 const { RuleEngine, AutoSplitter } = require('../src/core');
 const engine = new RuleEngine();
-test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+test.after(() => { for (const db of connections) db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
 test('Unsupported SQL blocks release and cannot generate phases', () => {
   for (const sql of ["DO $$ BEGIN EXECUTE 'DROP TABLE users'; END $$;", 'CREATE TRIGGER x BEFORE INSERT ON users EXECUTE FUNCTION f();', 'SAVEPOINT s;', 'ALTER TABLE users RENAME TO old_users;']) {
@@ -38,15 +41,15 @@ test('Later CREATE TABLE cannot suppress earlier dangerous index', () => {
 });
 test('Secrets are shown once, stored hashed and remain revocable after restart', () => {
   const file = path.join(tmp, 'keys.json');
-  const db = new PersistentDatabase({ dbFilePath: file });
+  const db = openDatabase({ dbFilePath: file });
   assert.equal(db.getApiKeys().length, 0);
   const created = db.createApiKey('CI');
-  assert.ok(!fs.readFileSync(file, 'utf8').includes(created.key));
+  assert.ok(!fs.readFileSync(db.dbFilePath, 'utf8').includes(created.key));
   assert.ok(!JSON.stringify(db.getApiKeys()).includes(created.key));
-  const reloaded = new PersistentDatabase({ dbFilePath: file });
+  const reloaded = openDatabase({ dbFilePath: file });
   assert.ok(reloaded.verifyApiKey(created.key));
   reloaded.revokeApiKey(created.id);
-  assert.equal(new PersistentDatabase({ dbFilePath: file }).verifyApiKey(created.key), false);
+  assert.equal(openDatabase({ dbFilePath: file }).verifyApiKey(created.key), false);
 });
 test('Legacy secrets migrate without losing IDs and demo key is revoked', () => {
   const file = path.join(tmp, 'legacy.json');
@@ -54,18 +57,21 @@ test('Legacy secrets migrate without losing IDs and demo key is revoked', () => 
     { id: 'a', key: 'old-real-secret', status: 'active' },
     { id: 'b', key: 'lg_live_demo998877665544332211', status: 'active' }
   ] }));
-  const db = new PersistentDatabase({ dbFilePath: file });
+  const db = openDatabase({ dbFilePath: file });
   assert.ok(db.verifyApiKey('old-real-secret'));
   assert.equal(db.verifyApiKey('lg_live_demo998877665544332211'), false);
-  assert.ok(!fs.readFileSync(file, 'utf8').includes('old-real-secret'));
+  assert.ok(!fs.readFileSync(db.dbFilePath, 'utf8').includes('old-real-secret'));
+  assert.ok(fs.readFileSync(file, 'utf8').includes('old-real-secret'), 'Original recovery source is preserved');
+  assert.ok(fs.readdirSync(tmp).some(name => name.startsWith('legacy.json.pre-sqlite-')));
 });
-test('Corruption and concurrent writes report errors instead of losing data', () => {
+test('Concurrent SQLite writers preserve independent updates and corrupt legacy input is retained', () => {
   const file = path.join(tmp, 'concurrent.json');
-  const first = new PersistentDatabase({ dbFilePath: file });
-  const second = new PersistentDatabase({ dbFilePath: file });
+  const first = openDatabase({ dbFilePath: file });
+  const second = openDatabase({ dbFilePath: file });
   second.updateOrganization({ name: 'Saved by second' });
-  assert.throws(() => first.updateOrganization({ name: 'Stale overwrite' }), /Unable to save/);
-  assert.equal(JSON.parse(fs.readFileSync(file)).organization.name, 'Saved by second');
+  first.updateOrganization({ monthlyChecksQuota: 321 });
+  assert.equal(first.getOrganization().name, 'Saved by second');
+  assert.equal(second.getOrganization().monthlyChecksQuota, 321);
   const broken = path.join(tmp, 'broken.json');
   fs.writeFileSync(broken, '{broken');
   assert.throws(() => new PersistentDatabase({ dbFilePath: broken }), /Unable to load/);

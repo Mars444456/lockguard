@@ -2,9 +2,9 @@ meta:
   environment: node
   toolchain:
     name: npm
-    version: 20
+    version: 24
 build:
   commands:
-    - npm install
+    - npm ci --omit=dev --ignore-scripts
 run:
   scriptName: bin/bot.js

@@ -89,10 +89,9 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer(async (req, res) => {
-  // CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -233,6 +232,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
+  const stopBackups = require('./backup-scheduler')(require('./db'));
+  server.on('close', stopBackups);
   server.listen(PORT, () => {
     console.log(`\n========================================================`);
     console.log(`  🛡️  LockGuard Server Running at: http://localhost:${PORT}`);

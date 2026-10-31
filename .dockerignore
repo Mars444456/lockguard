@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+data
+private
+reports
+tools
+test
+*.log
+*.sqlite3
+*.sqlite3-*
+*.db.json
+*.bak
+coverage
