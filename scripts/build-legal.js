@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
+require('./check-privacy').assertPublishable(root);
 const seller = JSON.parse(fs.readFileSync(path.join(root, 'config/seller.json'), 'utf8'));
 function validInn(value) {
   if (!/^\d{12}$/.test(value || '')) return false;
@@ -85,3 +86,4 @@ for (const directory of ['docs', 'src/ui']) {
   fs.writeFileSync(indexPath, content);
 }
 console.log(ready ? 'Seller documents built; INN checksum passed.' : 'Draft documents built; publication blocked until INN is confirmed.');
+require('./check-privacy').assertPublishable(root);

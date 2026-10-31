@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');
 const { createHash } = require('node:crypto');
+require('./check-privacy').assertPublishable();
 require('./build-site-links').buildSiteLinks();
 esbuild.buildSync({ entryPoints: [path.join(__dirname, '../src/browser-entry.js')],
   outfile: path.join(__dirname, '../docs/lockguard-engine.js'), bundle: true, platform: 'browser',
@@ -21,3 +22,4 @@ const html = fs.readFileSync(indexPath, 'utf8').replace(/(src|href)="(app\.js|la
   return `${attribute}="${asset}?v=${revision}"`;
 });
 fs.writeFileSync(indexPath, html);
+require('./check-privacy').assertPublishable();

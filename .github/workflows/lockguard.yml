@@ -53,6 +53,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Block conversation links and private files
+        run: npm run check:privacy
       - name: Install pinned dependencies and run tests
         run: |
           npm ci --ignore-scripts

@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
+require('./check-privacy').assertPublishable(root);
 const comparison = `<div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr></tbody></table></div>`;
 const file = path.join(root, 'docs/index.html');
 let html = fs.readFileSync(file, 'utf8');
@@ -53,3 +54,4 @@ local = local.replace(/(<section id="tab-billing"[\s\S]*?)(<div class="pricing-g
 fs.writeFileSync(localFile, local);
 console.log('Public pricing aligned with seller documents.');
 require('./build-site-links').buildSiteLinks();
+require('./check-privacy').assertPublishable(root);
