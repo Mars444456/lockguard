@@ -43,14 +43,14 @@ class TerminalFormatter {
 
       lines.push(`File: ${colors.bold}${res.filename}${colors.reset}  ${badge}`);
       lines.push(`Statements: ${res.astStatementsCount} | Violations: ${res.violationsCount} (Critical: ${res.criticalCount}, High: ${res.highCount})`);
-      lines.push(`Max Lock Acquired: ${colors.bold}${colors.yellow}${res.highestLockLevel}${colors.reset}`);
+      lines.push(`Inferred Table Lock: ${colors.bold}${colors.yellow}${res.highestLockLevel}${colors.reset}`);
       if (res.affectedTables.length > 0) {
         lines.push(`Affected Tables: ${res.affectedTables.map(t => colors.cyan + t + colors.reset).join(', ')}`);
       }
       lines.push('');
 
       if (res.violations.length === 0) {
-        lines.push(`  ${colors.green}✔ No dangerous table locks detected. Safe for zero-downtime deployment.${colors.reset}`);
+        lines.push(`  ${colors.green}✔ No rule violations detected. Table locks may still be required; verify the migration on a test database.${colors.reset}`);
         lines.push('');
         continue;
       }
@@ -82,7 +82,7 @@ class TerminalFormatter {
       lines.push(`${colors.red}${colors.bold}✖ CI/CD RELEASE BLOCKED: Dangerous locks detected that could freeze production database!${colors.reset}`);
       lines.push(`${colors.yellow}Fix the anti-patterns above or use safe concurrent alternatives.${colors.reset}`);
     } else {
-      lines.push(`${colors.green}${colors.bold}✔ ALL CHECKS PASSED: Migration conforms to PostgreSQL zero-downtime standards.${colors.reset}`);
+      lines.push(`${colors.green}${colors.bold}✔ CHECK THRESHOLD PASSED. This is not a guarantee of a deployment without downtime.${colors.reset}`);
     }
     lines.push('');
 
