@@ -5,9 +5,13 @@ services:
     runtime: node
     plan: free
     buildCommand: node scripts/check-privacy.js && npm ci --omit=dev --ignore-scripts
-    startCommand: node scripts/cloud-demo-server.js
+    startCommand: node --max-old-space-size=128 --max-semi-space-size=4 scripts/cloud-demo-server.js
     healthCheckPath: /api/v1/rules
     autoDeployTrigger: 'off'
     envVars:
       - key: NODE_VERSION
         value: 24.12.0
+      - key: UV_THREADPOOL_SIZE
+        value: '1'
+      - key: MALLOC_ARENA_MAX
+        value: '2'

@@ -6,7 +6,8 @@ const { previewSettings } = require('./preview-server');
 function cloudSettings(inherited, runtime) {
   if (!inherited.RENDER_EXTERNAL_URL) throw new Error('RENDER_EXTERNAL_URL is required for the isolated cloud demo.');
   const port = Number(inherited.PORT || '10000');
-  return { ...previewSettings(inherited.RENDER_EXTERNAL_URL, runtime, port, inherited), LOCKGUARD_EPHEMERAL_DEMO: 'true' };
+  return { ...previewSettings(inherited.RENDER_EXTERNAL_URL, runtime, port, inherited),
+    LOCKGUARD_EPHEMERAL_DEMO: 'true', UV_THREADPOOL_SIZE: '1', MALLOC_ARENA_MAX: '2' };
 }
 
 function start() {
@@ -18,6 +19,14 @@ function start() {
   Object.assign(process.env, settings);
   process.chdir(runtime);
   const server = require('../src/server/server');
+  // Numeric operational diagnostics only; no URLs, account identifiers or secrets.
+  server.on('request', (req, res) => {
+    if (req.url?.startsWith('/api/v1/auth/')) res.once('finish', () => {
+      const memory = process.memoryUsage();
+      console.log('Cloud demo memory MiB: ' + JSON.stringify({ rss: Math.ceil(memory.rss / 1048576),
+        heap: Math.ceil(memory.heapUsed / 1048576), external: Math.ceil(memory.external / 1048576) }));
+    });
+  });
   const db = require('../src/server/db');
   const stopBackups = require('../src/server/backup-scheduler')(db);
   let stopping = false;

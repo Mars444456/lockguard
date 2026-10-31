@@ -10,6 +10,8 @@ test('Cloud demo isolates credentials, production storage and proxy trust while 
   assert.equal(settings.APP_URL, 'https://demo.example.invalid');
   assert.equal(settings.NODE_ENV, 'production');
   assert.equal(settings.LOCKGUARD_EPHEMERAL_DEMO, 'true');
+  assert.equal(settings.UV_THREADPOOL_SIZE, '1');
+  assert.equal(settings.MALLOC_ARENA_MAX, '2');
   assert.equal(settings.LOCKGUARD_DB_FILE, path.join('/runtime', 'test.sqlite3'));
   assert.equal(settings.PATH, 'test-path');
   for (const key of ['LOCKGUARD_ADMIN_TOKEN', 'ROBOKASSA_PASSWORD_1', 'DEFAULT_API_KEY', 'NODE_OPTIONS']) assert.equal(settings[key], undefined);
