@@ -49,7 +49,7 @@ test('Invalid SQL clears old results and exports await the current input', async
   app.sqlInput.value = 'ALTER TABLE';
   assert.equal(await app.runAnalysis(), null);
   assert.equal(app.lastAnalysis, null);
-  assert.equal(document.getElementById('verdict-badge').textContent, 'ANALYSIS ERROR');
+  assert.equal(document.getElementById('verdict-badge').textContent, 'Ошибка анализа');
   assert.equal(document.getElementById('analysis-details').classList.contains('hidden'), true);
   app.sqlInput.value = 'CREATE INDEX new_idx ON new_table(id);';
   await app.runSplitter();
@@ -82,4 +82,38 @@ test('Incomplete analysis never produces runnable migration drafts', async () =>
   assert.equal(app.lastAnalysis.analysisComplete, false);
   assert.ok(app.splitterPhases.textContent.includes('анализ неполный'));
   assert.equal(app.splitterPhases.querySelector('pre'), null);
+});
+
+test('The initial demo waits for an explicit check and keeps simulated metrics separate', async () => {
+  const { app, document } = page();
+  assert.equal(app.lastAnalysis, null);
+  assert.equal(document.getElementById('analysis-details').classList.contains('hidden'), true);
+  assert.equal(document.querySelectorAll('.primary-metrics .metric-tile').length, 2);
+  assert.equal(document.getElementById('simulation-estimates').hasAttribute('open'), false);
+  await app.runAnalysis();
+  assert.ok(document.getElementById('res-affected-tables').textContent.includes('accounts'));
+  assert.equal(document.getElementById('btn-analyze').disabled, false);
+});
+
+test('DML displays its actual inferred table lock and does not promise zero downtime', async () => {
+  const { app, document, report } = page();
+  app.sqlInput.value = 'UPDATE orders SET id=1;';
+  await app.runAnalysis();
+  assert.equal(document.getElementById('res-max-lock').textContent, 'ROW EXCLUSIVE');
+  assert.equal(document.getElementById('simulation-estimates').hidden, true);
+  assert.equal(document.getElementById('res-downtime').textContent, '—');
+  await app.exportPdfReport();
+  const printed = parseHTML(report()).document;
+  assert.ok(printed.body.textContent.includes('ROW EXCLUSIVE'));
+  assert.ok(printed.body.textContent.includes('Не оценено'));
+  assert.ok(!printed.body.textContent.includes('Расчетный простой базы: 0.0'));
+});
+
+test('Summary conflict badges cover SHARE ROW EXCLUSIVE and EXCLUSIVE table locks', () => {
+  const { app, document } = page();
+  for (const level of ['SHARE ROW EXCLUSIVE', 'EXCLUSIVE']) {
+    app.renderLockMatrix(level);
+    assert.equal(document.getElementById('matrix-select').classList.contains('allowed'), true);
+    assert.equal(document.getElementById('matrix-insert').classList.contains('blocked'), true);
+  }
 });
