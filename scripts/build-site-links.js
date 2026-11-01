@@ -4,17 +4,17 @@ const path = require('node:path');
 function siteConfig(value) {
   const donation = new URL(value.donationUrl);
   if (donation.protocol !== 'https:' || donation.username || donation.password) throw new Error('Donation URL must use HTTPS without credentials.');
-  let applicationUrl = '';
-  if (value.applicationUrl) {
-    const application = new URL(value.applicationUrl);
+  const accountUrl = address => {
+    if (!address) return '';
+    const application = new URL(address);
     if (application.protocol !== 'https:' || application.username || application.password ||
         application.search || application.hash || application.pathname !== '/' ||
         application.hostname === 'localhost' || application.hostname.endsWith('.github.io')) {
       throw new Error('Application URL must be the root HTTPS address of the deployed LockGuard server, not GitHub Pages.');
     }
-    applicationUrl = application.origin + '/#account';
-  }
-  return { donationUrl: donation.href, applicationUrl };
+    return application.origin + '/#account';
+  };
+  return { donationUrl: donation.href, applicationUrl: accountUrl(value.applicationUrl), demoUrl: accountUrl(value.demoUrl) };
 }
 
 function escapeHtml(value) { return value.replace(/[&"<>']/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;', "'": '&#39;' })[c]); }
@@ -40,6 +40,8 @@ function buildSiteLinks(root = path.resolve(__dirname, '..')) {
     html = replaceSection(html, 'support-project', support);
     html = replaceSection(html, 'team-pilot', pilot);
     if (directory === 'docs') {
+      const demo = config.demoUrl ? `<div class="access-local-option" data-demo-account><h3>Онлайн-кабинет для тестирования</h3><p>Аккаунты, история и схемы могут сброситься при перезапуске. Используйте только учебные данные. После простоя первый запуск может занять около минуты.</p><a class="btn-primary" href="${escapeHtml(config.demoUrl)}" target="_blank" rel="noopener noreferrer">Открыть тестовый кабинет ↗</a></div>` : '';
+      html = replaceSection(html, 'demo-account', demo);
       const login = config.applicationUrl
         ? `<a id="public-account-link" class="btn-primary" href="${escapeHtml(config.applicationUrl)}">Войти</a>`
         : '<a id="public-account-link" class="btn-primary" href="#account-access" aria-haspopup="dialog" aria-controls="account-access-dialog">Войти</a>';

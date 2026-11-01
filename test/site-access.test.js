@@ -10,12 +10,14 @@ const root = path.resolve(__dirname, '..');
 test('A public account destination must be an HTTPS application server, not Pages or an injected credential URL', () => {
   const donationUrl = 'https://www.donationalerts.com/r/marswwu';
   assert.equal(siteConfig({ donationUrl, applicationUrl: 'https://app.example.com' }).applicationUrl, 'https://app.example.com/#account');
+  assert.equal(siteConfig({ donationUrl, demoUrl: 'https://demo.example.com' }).demoUrl, 'https://demo.example.com/#account');
   for (const applicationUrl of ['http://localhost:3000', 'https://mars444456.github.io/lockguard/', 'https://user:password@app.example.com', 'javascript:alert(1)', 'https://app.example.com/?redirect=elsewhere']) {
     assert.throws(() => siteConfig({ donationUrl, applicationUrl }));
+    assert.throws(() => siteConfig({ donationUrl, demoUrl: applicationUrl }));
   }
 });
 
-test('The public sign-in entry explains unavailable accounts without accepting credentials or calling an API', () => {
+test('The public sign-in chooser opens and continues local analysis without accepting credentials or calling an API', () => {
   // Exercise unconfigured mode even after a real public server is configured.
   const html = fs.readFileSync(path.join(root, 'docs/index.html'), 'utf8').replace(
     /<!-- public-account:start -->[\s\S]*?<!-- public-account:end -->/,
@@ -30,12 +32,29 @@ test('The public sign-in entry explains unavailable accounts without accepting c
   vm.runInNewContext(fs.readFileSync(path.join(root, 'src/ui/site-access.js'), 'utf8'), { document });
   entry.dispatchEvent(new Event('click', { cancelable: true }));
   assert.equal(dialog.open, true);
-  assert.ok(dialog.textContent.includes('Кабинет ещё не опубликован'));
+  assert.ok(dialog.textContent.includes('Постоянный кабинет для рабочих данных ещё не размещён'));
   assert.equal(dialog.querySelector('input, form'), null);
-  assert.equal(dialog.querySelector('a.btn-primary').getAttribute('href'), 'http://localhost:3000/#account');
+  assert.equal(dialog.querySelector('a[href^="http://localhost"]').getAttribute('href'), 'http://localhost:3000/#account');
   dialog.querySelector('[data-continue-analysis]').click();
   assert.equal(dialog.open, false);
   assert.equal(focused, true);
+});
+
+test('The configured test cabinet link has a reset warning and stays behind the account chooser', () => {
+  const config = siteConfig(JSON.parse(fs.readFileSync(path.join(root, 'config/site.json'), 'utf8')));
+  const { document } = parseHTML(fs.readFileSync(path.join(root, 'docs/index.html'), 'utf8'));
+  const dialog = document.getElementById('account-access-dialog');
+  const demo = dialog.querySelector('[data-demo-account]');
+  if (!config.demoUrl) { assert.equal(demo, null); return; }
+  assert.ok(demo, 'The configured test cabinet must have an entry in the chooser.');
+  assert.match(demo.textContent, /могут сброситься при перезапуске/);
+  assert.match(demo.textContent, /только учебные данные/);
+  const link = demo.querySelector('a');
+  assert.equal(link.getAttribute('href'), config.demoUrl);
+  assert.equal(link.getAttribute('target'), '_blank');
+  assert.match(link.getAttribute('rel'), /noopener/);
+  assert.equal(dialog.querySelector('input, form'), null);
+  if (!config.applicationUrl) assert.equal(document.getElementById('public-account-link').getAttribute('href'), '#account-access');
 });
 
 test('Public and server pages link to the same voluntary donation and keep it separate from Pro', () => {
