@@ -67,8 +67,9 @@ test('QA invoice escapes untrusted HTML', () => {
   assert.ok(!html.includes('<script>'));
   assert.ok(!html.includes('<img'));
   assert.ok(html.includes('&lt;script&gt;'));
-  assert.ok(html.includes('LockGuard'));
-  assert.ok(html.includes('000000000000'));
+  const seller = require('../config/seller.json');
+  assert.ok(html.includes(seller.name));
+  assert.ok(html.includes(seller.inn));
   assert.ok(!html.includes('40802810500001234567'));
   assert.ok(!html.includes('7710140679'));
   assert.ok(!html.includes('УСН'));

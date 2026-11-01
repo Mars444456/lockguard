@@ -77,7 +77,7 @@ const css = `:root{color-scheme:dark;font-family:system-ui,-apple-system,"Segoe 
 for (const directory of ['docs', 'src/ui']) {
   for (const [file, content] of Object.entries({ ...pages, 'legal.css': css })) fs.writeFileSync(path.join(root, directory, file), content);
 }
-const footer = `<footer class="seller-footer" style="max-width:1200px;margin:2rem auto;padding:2rem 1.5rem;border-top:1px solid #334155;color:#cbd5e1;line-height:1.8"><h2 style="font-size:1.1rem;color:#fff">Контакты и реквизиты исполнителя</h2><p>${name} · Самозанятый (НПД) · ИНН ${inn}</p><p><a href="mailto:${email}">${email}</a> · <a href="${escape(seller.telegram)}">Telegram @marswwu</a></p><p><a href="contacts.html">Услуги, цены и реквизиты</a> · <a href="offer.html">Публичная оферта, предоставление услуг и возврат</a> · <a href="privacy.html">Политика конфиденциальности</a></p><p>Pro — 1 500 ₽ за 30 дней без автосписаний. Аудит — 30 000 ₽ разово, объём и сроки согласуются до оплаты. Услуги предоставляются электронно.</p></footer>`;
+const footer = `<footer class="seller-footer" style="max-width:1200px;margin:2rem auto;padding:2rem 1.5rem;border-top:1px solid #334155;color:#cbd5e1;line-height:1.8"><p><a href="contacts.html">Контакты и реквизиты</a> · <a href="offer.html">Оферта и возвраты</a> · <a href="privacy.html">Конфиденциальность</a></p></footer>`;
 for (const directory of ['docs', 'src/ui']) {
   const indexPath = path.join(root, directory, 'index.html');
   let content = fs.readFileSync(indexPath, 'utf8');

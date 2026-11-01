@@ -420,7 +420,7 @@ async function handleUpdate(update) {
     const contactMsg = [
       `💬 <b>Связь с автором LockGuard:</b>`,
       ``,
-      `Разработчик проекта: <b>LockGuard (@marswwu)</b>`,
+      `Проект: <b>LockGuard</b>`,
       ``,
       `• Telegram: <a href="https://t.me/marswwu">@marswwu</a>`,
       `• GitHub: <a href="https://github.com/Mars444456/lockguard">github.com/Mars444456/lockguard</a>`,

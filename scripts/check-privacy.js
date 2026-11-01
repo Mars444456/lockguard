@@ -6,10 +6,14 @@ const root = path.resolve(__dirname, '..');
 const chatLink = /https?:\/\/(?:(?:www\.)?chatgpt\.com\/(?:s|share|c)\/|chat\.openai\.com\/share\/)[^\s<>"')\]]+/i;
 const privateKey = /-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/;
 const binaryAsset = /\.(?:wasm|png|jpe?g|gif|webp|ico|woff2?|ttf|pdf|zip|gz)$/i;
+const legalLocation = /^(?:config\/seller\.json|(?:docs|src\/ui)\/(?:contacts|offer|privacy)\.html)$/;
+const localFileLink = /file:\/\/\/[a-z]:[\\/]/i;
+const personalHome = /[a-z]:[\\/]Users[\\/](?!Public[\\/]|Default[\\/])[^\\/\s]+[\\/]/i;
 
 function privatePath(file) {
   const name = path.posix.basename(file);
-  return /^(?:private|data|backups)\//i.test(file) ||
+  return /^(?:private|data|backups|reports)\//i.test(file) ||
+    /^(?:IDEA\.md|docs\/habr[^/]*|src\/ui\/habr\.html)$/i.test(file) ||
     (/^\.env(?:\.|$)/i.test(name) && name !== '.env.example') ||
     /\.(?:sqlite3?|db)(?:-(?:wal|shm)|\.(?:bak|backup|json))?$/i.test(name) ||
     /^id_(?:rsa|dsa|ecdsa|ed25519)$/i.test(name);
@@ -25,6 +29,12 @@ function git(cwd, args, input) {
 }
 
 function scanRepository(cwd = root) {
+  const sellerFile = path.join(cwd, 'config/seller.json');
+  let sellerValues = [];
+  if (fs.existsSync(sellerFile)) {
+    const seller = JSON.parse(fs.readFileSync(sellerFile, 'utf8'));
+    sellerValues = [seller.name, seller.inn, seller.email].filter(value => typeof value === 'string' && value.length > 3);
+  }
   const entries = git(cwd, ['ls-files', '--cached', '--stage', '-z']).toString('utf8')
     .split('\0').filter(Boolean).map(record => {
       const match = /^(\d+) ([a-f0-9]+) (\d)\t([\s\S]+)$/.exec(record);
@@ -40,6 +50,8 @@ function scanRepository(cwd = root) {
       const normalized = line.replaceAll('\\/', '/');
       if (chatLink.test(normalized)) add(file, 'conversation-link', index + 1);
       if (privateKey.test(line)) add(file, 'private-key', index + 1);
+      if (localFileLink.test(normalized) || personalHome.test(normalized)) add(file, 'local-personal-path', index + 1);
+      if (!legalLocation.test(file) && sellerValues.some(value => normalized.includes(value))) add(file, 'seller-details-outside-documents', index + 1);
     });
   };
   const textEntries = [];

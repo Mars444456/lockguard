@@ -11,6 +11,11 @@ coverage/
 *.tar.gz
 tmp*/
 private/
+reports/
+IDEA.md
+docs/habr*
+src/ui/habr.html
+*.bundle
 tools/
 data/
 *.db.json

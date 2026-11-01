@@ -63,3 +63,24 @@ test('Privacy check stops when no Git index can be inspected', t => {
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   assert.throws(() => assertPublishable(cwd), /could not read the Git index/);
 });
+
+test('Privacy check blocks internal archives and personal workstation links', t => {
+  const cwd = repository(t);
+  for (const file of ['reports/internal.md', 'IDEA.md', 'docs/habr_draft.txt']) stage(cwd, file, 'Internal draft');
+  stage(cwd, 'README.md', 'file:' + '///D:/workspace/document.md\n' + 'C:' + '/Users/synthetic/Documents/file.md');
+  const findings = scanRepository(cwd).findings;
+  assert.equal(findings.filter(f => f.rule === 'private-file').length, 3);
+  assert.equal(findings.filter(f => f.rule === 'local-personal-path').length, 2);
+});
+
+test('Seller details stay in business documents and cannot return to the README or landing page', t => {
+  const cwd = repository(t);
+  const seller = { name: 'Synthetic Seller', inn: '000000000000', email: 'seller@example.invalid' };
+  stage(cwd, 'config/seller.json', JSON.stringify(seller));
+  stage(cwd, 'docs/contacts.html', seller.name + ' ' + seller.inn + ' ' + seller.email);
+  stage(cwd, 'README.md', seller.email);
+  stage(cwd, 'docs/index.html', seller.inn);
+  const findings = scanRepository(cwd).findings;
+  assert.deepEqual(findings.map(f => f.file).sort(), ['README.md', 'docs/index.html']);
+  assert.ok(findings.every(f => f.rule === 'seller-details-outside-documents'));
+});

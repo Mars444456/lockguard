@@ -823,7 +823,7 @@ class LockGuardApp {
   async selectPlan(plan) {
     if (plan === 'free') { this.showToast('Бесплатный анализ доступен без оплаты.'); return; }
     if (!adminToken) {
-      if (plan === 'business') window.location.href = 'mailto:contact@example.invalid?subject=LockGuard%3A%20заказ%20аудита';
+      if (plan === 'business') window.location.href = 'contacts.html';
       else this.showToast('Онлайн-оплата подключается. Условия и контакты доступны на странице «Тарифы».');
       return;
     }
