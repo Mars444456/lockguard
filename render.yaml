@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: node scripts/check-privacy.js && npm ci --omit=dev --ignore-scripts
     # libpg-query uses WebAssembly; avoid background optimizing compilation in the 512 MiB demo.
-    startCommand: node --max-old-space-size=128 --max-semi-space-size=4 --liftoff --no-wasm-tier-up --wasm-num-compilation-tasks=1 scripts/cloud-demo-server.js
+    startCommand: node --max-old-space-size=128 --max-semi-space-size=4 --liftoff-only --wasm-num-compilation-tasks=1 scripts/cloud-demo-server.js
     healthCheckPath: /api/v1/rules
     autoDeployTrigger: 'off'
     envVars:
