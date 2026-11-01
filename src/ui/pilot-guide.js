@@ -18,7 +18,7 @@
     document.getElementById('finding-count').textContent = `${count} ${count === 1 ? 'замечание' : count >= 2 && count <= 4 ? 'замечания' : 'замечаний'}`;
     document.getElementById('example-sql').textContent = sql;
     document.getElementById('copy-status').textContent = '';
-    document.getElementById('open-example').href = 'index.html#sql=' + encodeURIComponent(sql);
+    document.getElementById('open-example').href = 'index.html?lang=' + (window.LockGuardI18n?.language || 'ru') + '#sql=' + encodeURIComponent(sql);
     const list = document.getElementById('example-findings');
     list.replaceChildren();
     for (const finding of result.findings) {

@@ -1,9 +1,10 @@
 require('./helpers/initialize');
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const {parseHTML}=require('linkedom');
+const {parseHTML,DOMParser}=require('linkedom');
 const {RuleEngine}=require('../src/core');
-async function page() {
-  const {document,Event}=parseHTML(fs.readFileSync(path.join(__dirname,'../src/ui/index.html'),'utf8'));
+async function page(language) {
+  const dom=parseHTML(fs.readFileSync(path.join(__dirname,'../src/ui/index.html'),'utf8'));
+  const {document,Event}=dom;
   for(const form of document.querySelectorAll('form'))form.reset=function(){for(const input of this.querySelectorAll('input,textarea'))input.value='';};
   for(const select of document.querySelectorAll('select'))Object.defineProperty(select,'value',{configurable:true,get(){return this.querySelector('option[selected]')?.getAttribute('value') || this.querySelector('option')?.getAttribute('value') || '';},set(value){for(const option of this.querySelectorAll('option'))option.toggleAttribute('selected',option.getAttribute('value')===value);}});
   const engine=new RuleEngine(),calls=[],profile={id:'schema-a',name:'<img src=x onerror=alert(1)>',revision:'a'.repeat(64),summary:{tables:2,indexes:1,pgVersion:17}};
@@ -26,10 +27,17 @@ async function page() {
     throw new Error('Unexpected '+url);
   };
   const scope={window,document,Event,console,fetch,Headers,URLSearchParams,URL,Blob,navigator:{clipboard:{writeText:async()=>{}}},setTimeout:(fn,ms)=>ms===3500?0:setTimeout(fn,ms),clearTimeout};
+  if(language){
+    window.location=new URL('https://example.invalid/?lang='+language);window.history={replaceState(){}};
+    Object.assign(scope,{CustomEvent:dom.CustomEvent,MutationObserver:dom.MutationObserver,DOMParser,localStorage:{getItem(){return null;},setItem(){}}});
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ui/i18n-catalog.js'),'utf8'),scope);
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ui/i18n.js'),'utf8'),scope);
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ui/labels.js'),'utf8'),scope);
+  }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ui/pro.js'),'utf8'),scope);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ui/app.js'),'utf8'),scope);
   await window.app.ready;
-  return {app:window.app,document,Event,calls,profile,response,license:value=>licensed=value,delay:value=>delayedSchemas=value};
+  return {app:window.app,window,document,Event,calls,profile,organization,response,license:value=>licensed=value,delay:value=>delayedSchemas=value};
 }
 test('Pro controls stay locked for guests and use server features after login',async()=>{
   const {app,document,license,profile}=await page();
@@ -68,4 +76,26 @@ test('Logout clears schema source and delayed profile responses cannot restore p
   assert.equal(document.getElementById('schema-source').value,'');
   assert.equal(app.pro.profiles.length,0);assert.equal(app.pro.pro,false);
   assert.equal(document.getElementById('schema-fields').disabled,true);
+});
+
+test('Changing language preserves Pro schema selection, comparison context and user names without API requests',async()=>{
+  const {app,window,document,calls,profile,organization,license}=await page('ru');
+  profile.name='Правила';organization.name='Войти';app.account={id:'u1'};license(true);
+  await app.fetchOrganization();await app.pro.refresh();
+  document.getElementById('analysis-schema-select').value=profile.id;
+  document.getElementById('schema-source').value='CREATE TABLE "Тарифы" (id int);';
+  app.pro.renderContext({schemaProfile:profile});
+  app.pro.lastComparison={resolved:[{ruleId:'LG-002',ruleName:'index',table:'Тарифы',line:1}],introduced:[],persisting:[],contextChanged:false};
+  app.pro.renderComparison(app.pro.lastComparison);
+  const beforeCalls=calls.length;
+  window.LockGuardI18n.setLanguage('en');await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls.length,beforeCalls);
+  assert.equal(document.getElementById('org-name').textContent,'Войти');
+  assert.equal(document.querySelector('.schema-profile-card h3').textContent,'Правила');
+  assert.equal(document.getElementById('analysis-schema-select').value,profile.id);
+  assert.ok(document.getElementById('schema-analysis-notice').textContent.startsWith('Schema: Правила'));
+  assert.ok(document.getElementById('comparison-result').textContent.includes('Index built without CONCURRENTLY · Тарифы · line 1'));
+  assert.equal(document.getElementById('schema-source').value,'CREATE TABLE "Тарифы" (id int);');
+  window.LockGuardI18n.setLanguage('ru');await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(document.getElementById('comparison-result').textContent.includes('Индекс создаётся без CONCURRENTLY · Тарифы · строка 1'));
 });

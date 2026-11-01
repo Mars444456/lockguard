@@ -14,10 +14,10 @@ if (process.argv.includes('--check-publish') && !ready) throw new Error('Publica
 const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const name = escape(seller.name), inn = ready ? escape(seller.inn) : 'УТОЧНЯЕТСЯ — ЧЕРНОВИК';
 const email = escape(seller.email);
-const details = `<dl class="details"><div><dt>Исполнитель</dt><dd>${name}</dd></div><div><dt>Статус</dt><dd>${escape(seller.status)}</dd></div><div><dt>ИНН</dt><dd>${inn}</dd></div><div><dt>Email и обращения по заказам</dt><dd><a href="mailto:${email}">${email}</a></dd></div><div><dt>Telegram</dt><dd><a href="${escape(seller.telegram)}" rel="noopener noreferrer">@marswwu</a></dd></div></dl>`;
+const details = `<dl class="details"><div><dt>Исполнитель</dt><dd data-i18n-ignore>${name}</dd></div><div><dt>Статус</dt><dd>${escape(seller.status)}</dd></div><div><dt>ИНН</dt><dd data-i18n-ignore>${inn}</dd></div><div><dt>Email и обращения по заказам</dt><dd><a href="mailto:${email}">${email}</a></dd></div><div><dt>Telegram</dt><dd><a href="${escape(seller.telegram)}" rel="noopener noreferrer">@marswwu</a></dd></div></dl>`;
 const nav = '<nav aria-label="Документы"><a href="index.html">← LockGuard</a><a href="contacts.html">Контакты и реквизиты</a><a href="offer.html">Оферта и возврат</a><a href="privacy.html">Конфиденциальность</a></nav>';
 function document(title, body) {
-  return `<!doctype html><html lang="ru" translate="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} — LockGuard</title><link rel="stylesheet" href="legal.css">${ready ? '' : '<meta name="robots" content="noindex,nofollow">'}</head><body><main class="legal-page">${nav}${ready ? '' : '<p class="notice">Черновик: ИНН исполнителя ожидает уточнения. Документ ещё не опубликован.</p>'}<p class="eyebrow">LOCKGUARD · ДОКУМЕНТЫ</p><h1>${title}</h1>${body}<footer>Редакция от ${escape(seller.updatedAt)}. ${name}, ИНН ${inn}.<br><a href="mailto:${email}">${email}</a></footer></main></body></html>\n`;
+  return `<!doctype html><html lang="ru" translate="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} — LockGuard</title><link rel="stylesheet" href="legal.css">${ready ? '' : '<meta name="robots" content="noindex,nofollow">'}</head><body><main class="legal-page">${nav}${ready ? '' : '<p class="notice">Черновик: ИНН исполнителя ожидает уточнения. Документ ещё не опубликован.</p>'}<p class="eyebrow">LOCKGUARD · ДОКУМЕНТЫ</p><h1>${title}</h1>${body}<footer><span>Редакция от</span> ${escape(seller.updatedAt)}. <span data-i18n-ignore>${name}</span>, <span>ИНН</span> <span data-i18n-ignore>${inn}</span>.<br><a href="mailto:${email}">${email}</a></footer></main></body></html>\n`;
 }
 const pages = {
   'contacts.html': document('Контакты и реквизиты', `
@@ -86,4 +86,5 @@ for (const directory of ['docs', 'src/ui']) {
   fs.writeFileSync(indexPath, content);
 }
 console.log(ready ? 'Seller documents built; INN checksum passed.' : 'Draft documents built; publication blocked until INN is confirmed.');
+require('./build-i18n').buildI18n();
 require('./check-privacy').assertPublishable(root);

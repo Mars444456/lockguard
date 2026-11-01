@@ -1,4 +1,5 @@
 const escapeHtml = value => String(value ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const uiText = value => window.LockGuardI18n?.t(value) ?? value;
 /**
  * LockGuard GitHub Pages Client Application
  * Powered 100% in-browser by LockGuard AST Engine
@@ -200,6 +201,9 @@ class LockGuardWebPlayground {
 
     this.currentOrm = 'sql';
     this.lastAnalysis = null;
+    document.addEventListener('lockguard:language', () => {
+      if (this.lastAnalysis) this.renderAffectedTables(this.lastAnalysis);
+    });
 
     this.initEventListeners();
 
@@ -480,8 +484,7 @@ class LockGuardWebPlayground {
   }
 
   renderMetrics(analysis, simulation, rows) {
-    document.getElementById('res-affected-tables').textContent = analysis.affectedTables?.length
-      ? 'Таблицы: ' + analysis.affectedTables.join(', ') : 'Затронутые таблицы не определены.';
+    this.renderAffectedTables(analysis);
     document.getElementById('simulation-estimates').hidden = analysis.isDmlOnly;
     if (analysis.isDmlOnly) {
       if (this.dmlNotice) {
@@ -560,7 +563,7 @@ class LockGuardWebPlayground {
       const totalLossRub = Math.round(directLoss + dropoffCost);
 
       if (totalLossRub > 0) {
-        this.resFinancialLoss.textContent = `~${totalLossRub.toLocaleString('ru-RU')} ₽`;
+        this.resFinancialLoss.textContent = `~${totalLossRub.toLocaleString(window.LockGuardI18n?.locale || 'ru-RU')} ₽`;
         this.resFinancialLoss.className = totalLossRub > 30000 ? 'metric-value text-red' : 'metric-value text-amber';
         this.resFinancialSub.textContent = 'Условная модель по заданному обороту';
       } else {
@@ -578,6 +581,11 @@ class LockGuardWebPlayground {
         ? 'Высокий риск коллизии'
         : (prob > 35 ? 'Средняя плотность очереди' : 'Низкая вероятность коллизии');
     }
+  }
+
+  renderAffectedTables(analysis) {
+    document.getElementById('res-affected-tables').textContent = analysis.affectedTables?.length
+      ? uiText('Таблицы:') + ' ' + analysis.affectedTables.join(', ') : uiText('Затронутые таблицы не определены.');
   }
 
   renderLockMatrix(highestLock) {
@@ -697,7 +705,7 @@ class LockGuardWebPlayground {
     }
     const plan = window.LockGuard.generatePlan(this.lastAnalysis, this.currentOrm);
     if (!plan.phases || plan.phases.length === 0) {
-      alert('Правила не выявили нарушений. Разбиение не требуется.');
+      alert(uiText('Правила не выявили нарушений. Разбиение не требуется.'));
       return;
     }
 
@@ -762,7 +770,7 @@ class LockGuardWebPlayground {
       : (rows / 1000).toFixed(0) + 'K строк';
 
     const isSafe = analysis.passed;
-    const dateStr = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const dateStr = new Date().toLocaleDateString(window.LockGuardI18n?.locale || 'ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const estDowntimeSec = (simulation.totalLockWaitContentionMs / 1000).toFixed(1);
 
     const violationsHtml = (analysis.violations || []).map((v, idx) => `
@@ -780,7 +788,7 @@ class LockGuardWebPlayground {
         ${v.safeFix ? `
           <div style="background:#0F172A; color:#E2E8F0; padding:10px 14px; border-radius:6px; font-family:Consolas, monospace; font-size:12px; line-height:1.5; white-space:pre-wrap;">
 <span style="color:#38BDF8; font-weight:bold;">-- Безопасный альтернативный Zero-Downtime код:</span>
-${escapeHtml(v.safeFix)}
+<code data-i18n-ignore style="white-space:pre-wrap">${escapeHtml(v.safeFix)}</code>
           </div>
         ` : ''}
       </div>
@@ -887,7 +895,7 @@ ${escapeHtml(v.safeFix)}
     </div>
     <div class="stat-box">
       <div class="stat-label">Условные потери</div>
-      <div class="stat-val ${totalLossRub > 0 ? 'red' : ''}">${analysis.isDmlOnly ? 'Не оценено' : '~' + totalLossRub.toLocaleString('ru-RU') + ' ₽'}</div>
+      <div class="stat-val ${totalLossRub > 0 ? 'red' : ''}">${analysis.isDmlOnly ? 'Не оценено' : '~' + totalLossRub.toLocaleString(window.LockGuardI18n?.locale || 'ru-RU') + ' ₽'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Нарушений в коде</div>
@@ -900,7 +908,7 @@ ${escapeHtml(v.safeFix)}
 
   ${splitPlan.phases && splitPlan.phases.length > 0 ? `
     <h2 style="page-break-before:always;">2. Черновой план изменений для ручной проверки</h2>
-    <p style="font-size:12px; color:#475569; margin-bottom:12px;">Для предотвращения простоя опасная миграция автоматически разделена на изолированные неблокирующие шаги:</p>
+    <p style="font-size:12px; color:#475569; margin-bottom:12px;">Черновые этапы требуют ручной проверки полноты, порядка и применимости на тестовой базе:</p>
     ${phasesHtml}
   ` : ''}
 
@@ -912,7 +920,7 @@ ${escapeHtml(v.safeFix)}
   </ol>
 
   <div class="footer">
-    <div>Официальный аудит LockGuard Engine • Конфиденциально для руководства команды</div>
+    <div>Автоматический отчёт LockGuard • Для команды проверки</div>
     <div>Заказать аудит всей инфраструктуры баз данных: <b>@marswwu</b></div>
   </div>
 
@@ -930,10 +938,10 @@ ${escapeHtml(v.safeFix)}
     const printWin = window.open('', '_blank');
     if (printWin) {
       printWin.document.open();
-      printWin.document.write(reportHtml);
+      printWin.document.write(window.LockGuardI18n?.translateHtml(reportHtml) ?? reportHtml);
       printWin.document.close();
     } else {
-      alert('Пожалуйста, разрешите открытие всплывающего окна в браузере, чтобы сформировать PDF-отчет.');
+      alert(uiText('Пожалуйста, разрешите открытие всплывающего окна в браузере, чтобы сформировать PDF-отчет.'));
     }
   }
 }

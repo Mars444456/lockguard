@@ -38,6 +38,7 @@ async function buildPilot(root = path.resolve(__dirname, '..')) {
     fs.writeFileSync(path.join(root, directory, 'start.html'), html);
     for (const [name, contents] of Object.entries(assets)) fs.writeFileSync(path.join(root, directory, name), contents);
   }
+  require('./build-i18n').buildI18n(root);
   require('./check-privacy').assertPublishable(root);
 }
 

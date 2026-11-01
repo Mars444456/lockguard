@@ -1,4 +1,5 @@
 /* Organization-scoped Pro workflow. The server remains the authority for access. */
+const proText = value => window.LockGuardI18n?.t(value) ?? value;
 window.LockGuardPro = class {
   constructor(app) {
     this.app=app; this.profiles=[]; this.pro=false; this.epoch=0;
@@ -16,11 +17,16 @@ window.LockGuardPro = class {
       $('schema-analysis-notice').hidden=true;
       this.app.invalidateAnalysis();
     });
+    document.addEventListener('lockguard:language', () => {
+      this.render(); this.setRuns(this.app.runs || []);
+      if (this.lastContext) this.renderContext(this.lastContext);
+      if (this.lastComparison) this.renderComparison(this.lastComparison);
+    });
     this.reset();
   }
   message(text) {document.getElementById('schema-message').textContent=text;}
   reset() {
-    this.epoch++;this.pro=false;this.profiles=[];
+    this.epoch++;this.pro=false;this.profiles=[];this.lastComparison=null;this.lastContext=null;
     document.getElementById('schema-form').reset();
     document.getElementById('schema-list').replaceChildren();
     document.getElementById('comparison-result').replaceChildren();
@@ -41,7 +47,7 @@ window.LockGuardPro = class {
     select.replaceChildren();
     const empty=document.createElement('option');empty.value='';empty.textContent='Без сохранённой схемы';select.appendChild(empty);
     for(const profile of this.profiles) {
-      const option=document.createElement('option');option.value=profile.id;option.textContent=profile.name+' · '+profile.summary.tables+' табл.';select.appendChild(option);
+      const option=document.createElement('option');option.value=profile.id;option.setAttribute('data-i18n-ignore','');option.textContent=profile.name+' · '+profile.summary.tables+' '+proText('табл.');select.appendChild(option);
     }
     select.disabled=!this.pro;select.value=this.pro && this.profiles.some(p=>p.id===selected) ? selected : '';
     $('schema-workspace-status').textContent=this.pro ? 'PRO · до 10 схем организации' : 'PRO · сохранённые схемы';
@@ -50,7 +56,7 @@ window.LockGuardPro = class {
     for(const profile of this.profiles) {
       const card=document.createElement('article');card.className='schema-profile-card';
       const title=document.createElement('h3');title.textContent=profile.name;card.appendChild(title);
-      const details=document.createElement('p');details.textContent=`PostgreSQL ${profile.summary.pgVersion} · таблиц: ${profile.summary.tables} · индексов: ${profile.summary.indexes} · ${profile.revision.slice(0,10)}`;card.appendChild(details);
+      const details=document.createElement('p');details.setAttribute('data-i18n-ignore','');details.textContent=`PostgreSQL ${profile.summary.pgVersion} · ${proText('таблиц:')} ${profile.summary.tables} · ${proText('индексов:')} ${profile.summary.indexes} · ${profile.revision.slice(0,10)}`;card.appendChild(details);
       const actions=document.createElement('div');actions.className='schema-profile-actions';
       const exportButton=document.createElement('button');exportButton.className='btn-secondary btn-sm';exportButton.textContent='Экспорт JSON';exportButton.addEventListener('click',()=>this.export(profile.id));actions.appendChild(exportButton);
       const deleteButton=document.createElement('button');deleteButton.className='btn-secondary btn-sm';deleteButton.textContent='Удалить';deleteButton.addEventListener('click',()=>this.remove(profile.id));actions.appendChild(deleteButton);
@@ -92,20 +98,22 @@ window.LockGuardPro = class {
     } catch(error){if(epoch===this.epoch)this.message(error.message);}
   }
   async remove(id) {
-    if(!window.confirm('Удалить сохранённую схему? Результаты прежних проверок останутся в истории.'))return;
+    if(!window.confirm(proText('Удалить сохранённую схему? Результаты прежних проверок останутся в истории.')))return;
     const epoch=this.epoch;
     try {await apiFetch('/api/v1/schemas/'+encodeURIComponent(id),{method:'DELETE'});if(epoch===this.epoch)await this.refresh();}
     catch(error){if(epoch===this.epoch)this.message(error.message);}
   }
   renderContext(result) {
+    this.lastContext=result;
     const notice=document.getElementById('schema-analysis-notice');notice.hidden=!result.schemaProfile;
-    notice.textContent=result.schemaProfile ? `Схема: ${result.schemaProfile.name} · ${result.schemaProfile.revision.slice(0,10)}. Анализ учитывает импортированную структуру. Снимок не сверяется с работающей базой и не измеряет длительность блокировок.` : '';
+    notice.setAttribute('data-i18n-ignore','');
+    notice.textContent=result.schemaProfile ? `${proText('Схема:')} ${result.schemaProfile.name} · ${result.schemaProfile.revision.slice(0,10)}. ${proText('Анализ учитывает импортированную структуру. Снимок не сверяется с работающей базой и не измеряет длительность блокировок.')}` : '';
   }
   setRuns(runs) {
     const eligible=runs.filter(run=>run.findingsVersion===1 && run.analysisComplete!==false);
     for(const id of ['compare-before','compare-after']) {
       const select=document.getElementById(id),previous=select.value;select.replaceChildren();
-      for(const run of eligible) {const option=document.createElement('option');option.value=run.id;option.textContent=`${new Date(run.timestamp).toLocaleString('ru-RU')} · ${run.filename||'SQL'} · ${run.violationsCount} замеч.`;select.appendChild(option);}
+      for(const run of eligible) {const option=document.createElement('option');option.value=run.id;option.setAttribute('data-i18n-ignore','');option.textContent=`${new Date(run.timestamp).toLocaleString(window.LockGuardI18n?.locale || 'ru-RU')} · ${run.filename||'SQL'} · ${run.violationsCount} ${proText('замеч.')}`;select.appendChild(option);}
       select.value=eligible.some(run=>run.id===previous)?previous:eligible[id==='compare-before'?1:0]?.id||'';
     }
     document.getElementById('btn-compare-runs').disabled=!this.pro || eligible.length<2;
@@ -115,15 +123,20 @@ window.LockGuardPro = class {
     try {
       const response=await apiFetch('/api/v1/runs/compare?before='+encodeURIComponent($('compare-before').value)+'&after='+encodeURIComponent($('compare-after').value));
       const {comparison}=await response.json();if(epoch!==this.epoch)return;
+      this.lastComparison=comparison;
+      this.renderComparison(comparison);
+    } catch(error){if(epoch===this.epoch)$('compare-message').textContent=error.message;}
+    finally{button.disabled=!this.pro;}
+  }
+  renderComparison(comparison) {
+      const $=id=>document.getElementById(id);
       const target=$('comparison-result');target.replaceChildren();
       for(const [key,title] of [['resolved','Устранены'],['introduced','Новые'],['persisting','Остались']]) {
         const card=document.createElement('section');card.className='comparison-column '+key;
         const h=document.createElement('h3');h.textContent=title+' · '+comparison[key].length;card.appendChild(h);
-        for(const finding of comparison[key]){const p=document.createElement('p');p.textContent=`${finding.ruleId} · ${window.LockGuardLabels?.titles[finding.ruleId]||finding.ruleName} · ${finding.table} · строка ${finding.line}`;card.appendChild(p);}
+        for(const finding of comparison[key]){const p=document.createElement('p');p.setAttribute('data-i18n-ignore','');p.textContent=`${finding.ruleId} · ${proText(window.LockGuardLabels?.titles[finding.ruleId]||finding.ruleName)} · ${finding.table} · ${proText('строка')} ${finding.line}`;card.appendChild(p);}
         target.appendChild(card);
       }
-      $('compare-message').textContent=(comparison.contextChanged?'Снимки схем различаются. Это могло изменить результат. ':'')+(comparison.differentFiles?'Выбраны разные файлы. ':'')+'Сопоставление учитывает правило, объект и уровень риска. Отсутствие замечаний не гарантирует безопасный релиз.';
-    } catch(error){if(epoch===this.epoch)$('compare-message').textContent=error.message;}
-    finally{button.disabled=!this.pro;}
+      $('compare-message').textContent=(comparison.contextChanged?proText('Снимки схем различаются. Это могло изменить результат.')+' ':'')+(comparison.differentFiles?proText('Выбраны разные файлы.')+' ':'')+proText('Сопоставление учитывает правило, объект и уровень риска. Отсутствие замечаний не гарантирует безопасный релиз.');
   }
 };

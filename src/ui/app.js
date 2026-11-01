@@ -2,9 +2,10 @@
  * LockGuard Web Dashboard Application Client
  */
 
+const uiText = value => window.LockGuardI18n?.t(value) ?? value;
 let adminToken = '';
 function setAdminToken() {
-  const value = window.prompt('Токен администратора (оставьте пустым для выхода):');
+  const value = window.prompt(uiText('Токен администратора (оставьте пустым для выхода):'));
   if (value === null) return;
   adminToken = value.trim();
   app.resetPrivateData();
@@ -345,6 +346,7 @@ class LockGuardApp {
     document.getElementById('empty-state').classList.remove('hidden');
     document.getElementById('verdict-badge').textContent = 'Ожидает проверки';
     document.getElementById('verdict-badge').className = 'verdict-pill pending';
+    document.getElementById('org-name').removeAttribute('data-i18n-ignore');
     document.getElementById('org-name').textContent = adminToken ? 'Администратор' : 'Гость';
     document.getElementById('org-plan-badge').textContent = 'Community';
     document.getElementById('org-plan-badge').className = 'plan-pill free';
@@ -580,7 +582,7 @@ class LockGuardApp {
             <span class="violation-tag ${v.severity.toLowerCase()}">${window.LockGuardLabels?.severity[v.severity] || v.severity}</span>
           </div>
           <div class="violation-meta">
-            Правило: <b>${v.ruleId}</b> | Таблица: <b>${this.escapeHtml(v.table)}</b> | Блокировка: <b>${v.lockLevel}</b> | Строка: <b>L${v.line}</b>
+            Правило: <b>${v.ruleId}</b> | Таблица: <b data-i18n-ignore>${this.escapeHtml(v.table)}</b> | Блокировка: <b>${v.lockLevel}</b> | Строка: <b>L${v.line}</b>
           </div>
           ${v.estimatedDowntimeFormatted ? `
             <div style="font-size:0.75rem; color:var(--accent-red); margin-bottom:0.4rem; font-weight:700;">
@@ -625,11 +627,12 @@ class LockGuardApp {
       if (data.organization) {
         this.organization = data.organization;
         document.getElementById('account-organization-name').value = this.organization.name;
+        document.getElementById('org-name').setAttribute('data-i18n-ignore', '');
         document.getElementById('org-name').textContent = this.organization.name;
         const planPill = document.getElementById('org-plan-badge');
         planPill.className = `plan-pill ${this.organization.plan}`;
         planPill.textContent = this.organization.plan === 'team'
-          ? `PRO${this.organization.accessUntil ? ' до ' + new Date(this.organization.accessUntil).toLocaleDateString('ru-RU') : ''}` : 'Community';
+          ? `PRO${this.organization.accessUntil ? ' до ' + new Date(this.organization.accessUntil).toLocaleDateString(window.LockGuardI18n?.locale || 'ru-RU') : ''}` : 'Community';
         this.updatePlanCards(this.organization.plan);
       }
     } catch (err) {
@@ -690,12 +693,12 @@ class LockGuardApp {
             </span>
           </td>
           <td>
-            <b>${this.escapeHtml(run.repo || (run.source === 'dashboard' ? 'SQL-проверка' : 'Проверка API'))}</b><br>
+            <b ${run.repo ? 'data-i18n-ignore' : ''}>${this.escapeHtml(run.repo || (run.source === 'dashboard' ? 'SQL-проверка' : 'Проверка API'))}</b><br>
             <span style="font-size: 0.75rem; color: var(--text-muted);">${run.prNumber ? 'PR #' + this.escapeHtml(run.prNumber) : 'Ручная проверка'}</span>
           </td>
           <td>
             <code>${this.escapeHtml(run.branch)}</code><br>
-            <span style="font-size: 0.72rem; color: var(--text-dim);">${this.escapeHtml(run.commit)}</span>
+            <span data-i18n-ignore style="font-size: 0.72rem; color: var(--text-dim);">${this.escapeHtml(run.commit)}</span>
           </td>
           <td>
             <span style="font-family: var(--font-mono); font-size: 0.8rem; color: ${run.highestLockLevel === 'ACCESS EXCLUSIVE' ? 'var(--accent-red)' : 'var(--text-main)'}">
@@ -733,7 +736,7 @@ class LockGuardApp {
       data.keys.forEach(k => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><b>${this.escapeHtml(k.name)}</b></td>
+          <td><b data-i18n-ignore>${this.escapeHtml(k.name)}</b></td>
           <td>
             <code>${k.key.substring(0, 10)}••••••••••••••••</code>
             <small>Секрет доступен только при создании</small>
@@ -777,7 +780,7 @@ class LockGuardApp {
   }
 
   async promptCreateKey() {
-    const name = prompt('Название ключа API (например, GitHub Actions CI):');
+    const name = prompt(uiText('Название ключа API (например, GitHub Actions CI):'));
     if (!name) return;
 
     try {
@@ -787,8 +790,8 @@ class LockGuardApp {
         body: JSON.stringify({ name })
       });
       const data = await res.json();
-      this.showToast(`Ключ «${name}» создан.`);
-      window.prompt('Сохраните ключ API сейчас. Повторно он не отображается:', data.key.key);
+      this.showToast(uiText('Ключ создан.') + ' ' + name);
+      window.prompt(uiText('Сохраните ключ API сейчас. Повторно он не отображается:'), data.key.key);
       await this.fetchKeys();
     } catch (err) {
       this.showToast('Ошибка создания ключа: ' + err.message);
@@ -796,7 +799,7 @@ class LockGuardApp {
   }
 
   async revokeKey(id) {
-    if (!confirm('Отозвать ключ API? Проверки CI, использующие этот ключ, перестанут работать.')) return;
+    if (!confirm(uiText('Отозвать ключ API? Проверки CI, использующие этот ключ, перестанут работать.'))) return;
     try {
       await apiFetch(`/api/v1/keys/${id}`, { method: 'DELETE' });
       this.showToast('Ключ API отозван.');
@@ -828,7 +831,7 @@ class LockGuardApp {
       return;
     }
     if (this.paymentRequestInFlight) return;
-    const email = window.prompt('Email покупателя для заказа и чека:');
+    const email = window.prompt(uiText('Email покупателя для заказа и чека:'));
     if (email === null) return;
     this.paymentRequestInFlight = true;
     try {
