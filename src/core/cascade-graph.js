@@ -1,3 +1,5 @@
+const foreignKeyIndexes = require('./foreign-key-indexes');
+
 /**
  * LockGuard Cascade Lock & Foreign Key Dependency Graph (DAG)
  * Detects hidden cascading locks across related tables due to unindexed foreign keys.
@@ -12,26 +14,22 @@ class CascadeGraph {
   /**
    * Builds DAG from AST statements and known relationships.
    * @param {Array<object>} astStatements
+   * @param {object} context Optional schemaCatalog and precomputed FK index coverage
    */
-  buildFromAst(astStatements) {
-    for (const stmt of astStatements) {
-      if (stmt.type === 'ALTER_TABLE' && stmt.subcommands) {
-        for (const sub of stmt.subcommands) {
-          if (sub.subtype === 'ADD_FOREIGN_KEY') {
-            this.addRelationship({
-              fromTable: sub.table,
-              toTable: sub.foreignTable,
-              fkName: sub.constraintName,
-              columns: sub.columns
-            });
-          }
-        }
-      }
+  buildFromAst(astStatements, context = {}) {
+    for (const { foreignKey: sub, indexedAtEnd } of context.fkIndexCoverage || foreignKeyIndexes(astStatements, context)) {
+      this.addRelationship({
+        fromTable: sub.table,
+        toTable: sub.foreignTable,
+        fkName: sub.constraintName,
+        columns: sub.columns,
+        isIndexed: indexedAtEnd
+      });
     }
     return this;
   }
 
-  addRelationship({ fromTable, toTable, fkName, columns }) {
+  addRelationship({ fromTable, toTable, fkName, columns, isIndexed = false }) {
     if (!this.nodes.has(fromTable)) this.nodes.set(fromTable, new Set());
     if (!this.nodes.has(toTable)) this.nodes.set(toTable, new Set());
 
@@ -43,7 +41,7 @@ class CascadeGraph {
       toTable,
       fkName: fkName || `fk_${fromTable}_${toTable}`,
       columns: columns || ['parent_id'],
-      isIndexed: false // assume unindexed unless explicit index is found in AST
+      isIndexed
     });
   }
 

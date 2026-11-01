@@ -1,6 +1,7 @@
 const PgParser = require('./pg-parser');
 const CascadeGraph = require('./cascade-graph');
 const SchemaCatalog = require('./schema-catalog');
+const foreignKeyIndexes = require('./foreign-key-indexes');
 const statementLock = require('./statement-lock');
 const { LockLevel, Severity, LockMatrix } = require('./types');
 
@@ -96,7 +97,6 @@ class RuleEngine {
     }
 
     const cascadeGraph = new CascadeGraph();
-    cascadeGraph.buildFromAst(astStatements);
 
     const context = {
       filename,
@@ -111,6 +111,8 @@ class RuleEngine {
     };
 
     context.schemaCatalog = options.schema ? SchemaCatalog.from(options.schema) : null;
+    context.fkIndexCoverage = foreignKeyIndexes(astStatements, context);
+    cascadeGraph.buildFromAst(astStatements, context);
     // 3. Run Rules
     const unsupported = astStatements.filter(stmt =>
       ['DO_BLOCK', 'CREATE_ROUTINE', 'REINDEX'].includes(stmt.type) ||
