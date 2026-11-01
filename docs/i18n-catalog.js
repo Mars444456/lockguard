@@ -1,6 +1,10 @@
 /* Russian source text and reviewed English UI translations. No remote translation service. */
 window.LockGuardTranslations = [
   [
+    "Тестовый стенд: аккаунты, история и схемы могут сброситься при перезапуске. Используйте только учебные данные.",
+    "Test environment: accounts, history and schemas may reset on restart. Use sample data only."
+  ],
+  [
     "LockGuard — проверка миграций PostgreSQL",
     "LockGuard — PostgreSQL migration review"
   ],

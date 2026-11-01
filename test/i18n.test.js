@@ -156,3 +156,15 @@ test('Initial language selection also translates labels synchronously rebuilt by
   } });
   assert.equal(document.getElementById('verdict-badge').textContent, 'PRO · saved schemas');
 });
+
+test('The actual ephemeral server notice follows the workspace language', () => {
+  const banner = read('src/server/server.js').match(/const banner = '([^']+)';/)[1];
+  const { document, i18n } = page('src/ui/index.html', { query: '?lang=en', beforeInit(document) {
+    const wrapper = document.createElement('div'); wrapper.innerHTML = banner;
+    document.body.prepend(wrapper);
+  } });
+  assert.equal(document.querySelector('aside[role="note"]').textContent,
+    'Test environment: accounts, history and schemas may reset on restart. Use sample data only.');
+  i18n.setLanguage('ru');
+  assert.ok(document.querySelector('aside[role="note"]').textContent.startsWith('Тестовый стенд:'));
+});
