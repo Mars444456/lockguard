@@ -20,7 +20,7 @@ async function restore(sourcePath, targetPath) {
     const restored = new DatabaseSync(targetFile);
     try {
       restored.exec('PRAGMA foreign_keys=ON; BEGIN IMMEDIATE; DELETE FROM sessions; DELETE FROM auth_limits;');
-      for(const table of ['workspace_invites','recovery_tokens'])if(restored.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))restored.exec('DELETE FROM '+table);
+      for(const table of ['workspace_invites','recovery_tokens','email_verification_tokens'])if(restored.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))restored.exec('DELETE FROM '+table);
       restored.exec('COMMIT');
     }
     finally { restored.close(); }

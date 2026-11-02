@@ -1,6 +1,6 @@
 # Product status / Состояние продукта
 
-## 1.4.1: evidence and execution correctness
+## 1.5.0: verified email and browser journeys
 
 LockGuard provides static PostgreSQL migration checks, CI reports, reviewable draft plans, and a server workspace with organization-scoped history, API keys, schema snapshots and team reviews. The public browser analyzer processes SQL locally. The Telegram bot processes submitted SQL on its host and does not activate licenses or confirm payments.
 
@@ -13,6 +13,10 @@ Drafts preserve supported index, foreign-key and UNIQUE options. They do not gen
 Index inspection requires actual diagnostic input (`lockguard watchdog diagnostic-rows.json`) or `DATABASE_URL` with `psql` available (`lockguard watchdog`). `/api/v1/watchdog` returns the diagnostic query; POST accepts `{ "rows": [...] }`. An empty supplied report does not prove overall database health. Invalid indexes do not establish the cause of failure; DROP INDEX is not proposed automatically.
 
 GitHub webhooks require a valid signature and configured repository allowlist. Only SQL blobs from the actual PR are analyzed. The former synthetic PR-history endpoint has been removed. An incomplete audit publishes an error status when status publishing is enabled. A PR without SQL files is identified as such.
+
+Email ownership is now recorded server-side. Creating or accepting invitations requires a verified inviter/invitee; old unverified sessions cannot retain access to another organization. Verification links are account-bound, expire after 30 minutes, are stored hashed and require explicit confirmation in the matching signed-in account. GET does not consume them. Password changes revoke pending links. Email recovery also verifies ownership; offline recovery does not. Missing mail configuration is reported explicitly and does not disable ordinary SQL analysis.
+
+Automated Chromium tests exercise registration, verification, schema-aware analysis, invitations, independent team review and email recovery. Their separate loopback mail receiver and Pro setup control use disposable test accounts and are not product API endpoints. No live mail is sent by tests.
 
 ## Public hosting and commercial readiness
 

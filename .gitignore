@@ -26,3 +26,5 @@ data/
 *.pre-sqlite-*.bak
 .idea/
 .vscode/
+playwright-report/
+test-results/

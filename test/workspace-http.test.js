@@ -12,6 +12,7 @@ test.after(async()=>{await new Promise(resolve=>server.close(resolve));db.close(
 test('HTTP team roles prevent writes and require the expected active workspace',async()=>{
   owner=await request('/api/v1/auth/register',{email:'owner-http@example.invalid',password,organizationName:'Owner HTTP'});
   reviewer=await request('/api/v1/auth/register',{email:'review-http@example.invalid',password,organizationName:'Reviewer HTTP'});
+  for(const account of [owner,reviewer])db.emailVerification.consume(account.body.user.id,db.emailVerification.issue(account.body.user.id).token);
   db.forOrganization(owner.body.user.organizationId).updatePlan('team');
   const invite=await request('/api/v1/team/invites',{email:reviewer.body.user.email,role:'reviewer'},owner.cookie);assert.equal(invite.status,201);
   const accept=await request('/api/v1/team/accept',{token:invite.body.invite.token},reviewer.cookie);assert.equal(accept.status,200);assert.equal(accept.body.user.role,'reviewer');

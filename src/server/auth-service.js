@@ -69,7 +69,7 @@ class AuthService {
     }
     if (!this.db.allowAuthAttempt('ip:' + ip, 30, 15 * 60000) || !this.db.allowAuthAttempt('account:' + email, 10, 15 * 60000)) fail('Слишком много попыток. Повторите через 15 минут.', 429);
   }
-  response(user) { return { success: true, user, organization: this.db.forOrganization(user.organizationId).getOrganization(), recoveryEmailEnabled:this.db.recovery.configured(this.env), registrationEnabled: this.env.LOCKGUARD_ALLOW_REGISTRATION !== 'false' }; }
+  response(user) { return { success: true, user, organization: this.db.forOrganization(user.organizationId).getOrganization(), recoveryEmailEnabled:this.db.recovery.configured(this.env), emailVerificationEnabled:this.db.emailVerification.configured(this.env), registrationEnabled: this.env.LOCKGUARD_ALLOW_REGISTRATION !== 'false' }; }
   signIn(req, res, user, expectedPasswordHash) {
     this.db.deleteSession(this.token(req));
     const token = this.db.createSession(user.id, expectedPasswordHash);
@@ -77,6 +77,16 @@ class AuthService {
     return this.response(this.db.getSession(token));
   }
   registerRoutes(router) {
+    router.post('/api/v1/auth/email-verification/request',async(req,res)=>{
+      this.validateMutation(req);const user=this.authenticate(req);if(!user)fail('Войдите в аккаунт.',401);
+      this.limit(req,'verify:'+user.email);
+      return res.json({success:true,...await this.db.emailVerification.send(user.id,this.env)});
+    });
+    router.post('/api/v1/auth/email-verification/confirm',async(req,res)=>{
+      this.validateMutation(req);const user=this.authenticate(req);if(!user)fail('Войдите в аккаунт.',401);
+      this.limit(req,'verify:'+user.email);this.db.emailVerification.consume(user.id,req.body.token);
+      return res.json(this.response(this.authenticate(req)));
+    });
     router.post('/api/v1/auth/recovery-code',async(req,res)=>{
       this.validateMutation(req);const user=this.authenticate(req);if(!user)fail('Войдите в аккаунт.',401);
       this.limit(req,user.email);

@@ -9,6 +9,26 @@ permissions:
   contents: read
 
 jobs:
+  browser-tests:
+    name: Customer journeys (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm run check:privacy
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-failures-synthetic-data-only
+          path: test-results/
+          retention-days: 7
   postgres-locks:
     name: Real lock tests (PostgreSQL ${{ matrix.postgres }})
     runs-on: ubuntu-latest

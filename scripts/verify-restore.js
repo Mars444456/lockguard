@@ -9,14 +9,14 @@ async function verifyRestore(db,directory) {
     const restored=await restore(file,path.join(temp,'restored.sqlite3'));
     readable=await require('../src/server/backup-crypto').plaintext(file);
     source=new DatabaseSync(readable.file,{readOnly:true});target=new DatabaseSync(restored,{readOnly:true});
-    const excluded=['metadata','sessions','session_workspaces','auth_limits','workspace_invites','recovery_tokens'];
+    const excluded=['metadata','sessions','session_workspaces','auth_limits','workspace_invites','recovery_tokens','email_verification_tokens'];
     const tables=source.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(r=>r.name).filter(name=>!excluded.includes(name));
     for(const name of tables) {
       if(!/^[a-z_]+$/.test(name))throw new Error('Unexpected backup table');
       const checksum=connection=>crypto.createHash('sha256').update(JSON.stringify(connection.prepare('SELECT * FROM '+name).all().map(row=>JSON.stringify(row)).sort())).digest('hex');
       if(checksum(source)!==checksum(target))throw new Error('Restored records differ from the verified backup');
     }
-    for(const name of ['sessions','recovery_tokens','workspace_invites']) {
+    for(const name of ['sessions','recovery_tokens','workspace_invites','email_verification_tokens']) {
       if(target.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)&&target.prepare('SELECT count(*) AS n FROM '+name).get().n!==0)throw new Error('Restore retained temporary credentials');
     }
     const at=new Date().toISOString();db.setMeta('last_restore_verified_at',at);

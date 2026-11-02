@@ -24,6 +24,7 @@ class WorkspaceService {
   select(user,token,id) {
     if(typeof id!=='string'||id.length>100)fail('Неверный идентификатор организации.');
     if(!this.sql.prepare('SELECT 1 FROM memberships WHERE user_id=? AND organization_id=?').get(user.id,id))fail('Организация не найдена.',404);
+    if(id!==this.sql.prepare('SELECT organization_id FROM users WHERE id=?').get(user.id)?.organization_id)this.db.emailVerification.requireVerified(user.id);
     this.sql.prepare('INSERT INTO session_workspaces(token_hash,organization_id) VALUES(?,?) ON CONFLICT(token_hash) DO UPDATE SET organization_id=excluded.organization_id').run(digest(token),id);
   }
   members(user) {this.member(user);return this.sql.prepare('SELECT u.id,u.email,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.organization_id=? ORDER BY u.created_at').all(user.organizationId);}
@@ -31,6 +32,7 @@ class WorkspaceService {
   revokeInvitation(user,id) {this.owner(user);return !!this.sql.prepare('DELETE FROM workspace_invites WHERE id=? AND organization_id=?').run(id,user.organizationId).changes;}
   invite(user,body) {
     this.owner(user);requirePro(this.db.forOrganization(user.organizationId));
+    this.db.emailVerification.requireVerified(user.id);
     const email=clean(body.email,254,'Укажите email участника.').toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!['editor','reviewer'].includes(body.role))fail('Неверный email или роль.');
     return this.db.transaction(()=>{
@@ -47,6 +49,7 @@ class WorkspaceService {
     return this.db.transaction(()=>{
       const invite=this.sql.prepare('SELECT * FROM workspace_invites WHERE token_hash=? AND expires_at>?').get(digest(token),Date.now());
       if(!invite||invite.email!==user.email.toLowerCase())fail('Приглашение недействительно для этого аккаунта.',404);
+      this.db.emailVerification.requireVerified(user.id);
       requirePro(this.db.forOrganization(invite.organization_id));
       if(this.sql.prepare('SELECT count(*) AS n FROM memberships WHERE organization_id=?').get(invite.organization_id).n>=20)fail('Лимит участников достигнут.',409);
       this.sql.prepare('INSERT INTO memberships VALUES(?,?,?) ON CONFLICT(user_id,organization_id) DO NOTHING').run(user.id,invite.organization_id,invite.role);

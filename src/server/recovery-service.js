@@ -1,4 +1,5 @@
 const crypto=require('node:crypto');
+const mail=require('./mail-service');
 const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 const invalid=()=>{throw Object.assign(new Error('Код восстановления недействителен или истёк.'),{statusCode:401});};
 class RecoveryService {
@@ -14,17 +15,18 @@ class RecoveryService {
   }
   verify(email,token) {
     if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))invalid();
-    const row=this.db.sql.prepare('SELECT u.id,u.password_hash AS passwordHash FROM recovery_tokens r JOIN users u ON u.id=r.user_id WHERE r.token_hash=? AND r.expires_at>? AND u.email=? COLLATE NOCASE').get(digest(token),Date.now(),email);
+    const row=this.db.sql.prepare('SELECT u.id,u.password_hash AS passwordHash,r.kind FROM recovery_tokens r JOIN users u ON u.id=r.user_id WHERE r.token_hash=? AND r.expires_at>? AND u.email=? COLLATE NOCASE').get(digest(token),Date.now(),email);
     if(!row)invalid();return row;
   }
   consume(email,token,passwordHash,expectedHash) {
     this.db.transaction(()=>{
       const user=this.verify(email,token);if(user.passwordHash!==expectedHash)invalid();
       this.db.changePassword(user.id,passwordHash,expectedHash);
+      if(user.kind==='email')this.db.emailVerification.markVerified(user.id,email);
       this.db.sql.prepare('DELETE FROM recovery_tokens WHERE user_id=?').run(user.id);
     });
   }
-  configured(env) {return !!(env.LOCKGUARD_MAIL_API_KEY&&env.LOCKGUARD_MAIL_FROM&&env.APP_URL?.startsWith('https://'));}
+  configured(env) {return mail.configured(env);}
   async send(email,env,request=fetch) {
     if(!this.configured(env))throw Object.assign(new Error('Почтовое восстановление пока не настроено. Используйте сохранённый резервный код.'),{statusCode:503});
     const user=this.db.getUserByEmail(email);

@@ -23,10 +23,16 @@ window.LockGuardWorkspace = class {
   }
   async switchTo(id) {
     const data=await this.api('/api/v1/workspaces/select','POST',{organizationId:id});
-    this.app.resetPrivateData();this.app.account=data.user;this.app.showAccountState();await this.app.refreshPrivateData();
+    this.app.resetPrivateData();this.app.account=data.user;this.app.emailVerificationEnabled=!!data.emailVerificationEnabled;this.app.showAccountState();await this.app.refreshPrivateData();
     this.app.accountChannel?.postMessage('changed');
   }
   async open(id) {const epoch=this.epoch,data=await this.api('/api/v1/reviews/'+encodeURIComponent(id));if(epoch!==this.epoch)return;this.current=data.review;this.render();}
+  setRuns() {
+    const select=this.host.querySelector('[data-review-run]');if(!select)return;const previous=select.value;
+    const runs=(this.app.runs||[]).filter(r=>r.findingsVersion===1&&r.analysisComplete!==false&&r.coverageComplete===true);
+    select.replaceChildren();for(const run of runs){const option=this.el('option',(run.filename||'SQL')+' · '+new Date(run.timestamp).toLocaleString(),select);option.value=run.id;}
+    if(runs.some(r=>r.id===previous))select.value=previous;
+  }
   async event(kind,extra={}) {const epoch=this.epoch,id=this.current.id,data=await this.api('/api/v1/reviews/'+encodeURIComponent(id)+'/events','POST',{kind,expectedRevision:this.current.revision,...extra});if(epoch!==this.epoch)return;this.current=data.review;await this.refresh();}
   render() {
     const h=this.host;h.replaceChildren();
@@ -41,7 +47,8 @@ window.LockGuardWorkspace = class {
     const team=this.el('details','',h);this.el('summary',this.t('Участники и приглашения','Members and invitations'),team);
     for(const member of this.members) {const row=this.el('p',member.email+' · '+this.label(member.role),team);if(role==='owner'&&member.role!=='owner')this.button(row,this.t('Удалить участника','Remove member'),async()=>{if(window.confirm(this.t('Удалить участника из организации?','Remove this organization member?'))){await this.api('/api/v1/team/'+encodeURIComponent(member.id),'DELETE');await this.refresh();}});}
     for(const invite of this.invites||[]){const row=this.el('p',invite.email+' · '+this.label(invite.role)+' · '+new Date(invite.expiresAt).toLocaleString(),team);this.button(row,this.t('Отозвать приглашение','Revoke invitation'),async()=>{await this.api('/api/v1/team/invites/'+encodeURIComponent(invite.id),'DELETE');await this.refresh();});}
-    if(role==='owner'&&pro) {
+    if(!this.app.account.emailVerified)this.el('p',this.t('Подтвердите email в личном кабинете для создания и принятия приглашений.','Verify your email in account settings before creating or accepting invitations.'),team);
+    if(role==='owner'&&pro&&this.app.account.emailVerified) {
       const form=this.el('form','',team),email=this.input(form,this.t('Email приглашённого','Invitee email'),'email');email.required=true;email.maxLength=254;
       const r=this.options(form,this.t('Роль','Role'),[{value:'reviewer',label:this.t('Рецензент: чтение и согласование','Reviewer: read and approve')},{value:'editor',label:this.t('Редактор: схемы и изменения','Editor: schemas and changes')}]);
       this.button(form,this.t('Создать приглашение','Create invitation'),async()=>{
@@ -50,11 +57,12 @@ window.LockGuardWorkspace = class {
       });
     }
     const accept=this.el('form','',team),token=this.input(accept,this.t('Код приглашения в другую организацию','Invitation code for another organization'));token.maxLength=64;token.autocomplete='off';
-    this.button(accept,this.t('Принять приглашение','Accept invitation'),async()=>{const data=await this.api('/api/v1/team/accept','POST',{token:token.value.trim()});this.app.resetPrivateData();this.app.account=data.user;this.app.showAccountState();await this.app.refreshPrivateData();this.app.accountChannel?.postMessage('changed');});
+    this.button(accept,this.t('Принять приглашение','Accept invitation'),async()=>{const data=await this.api('/api/v1/team/accept','POST',{token:token.value.trim()});this.app.resetPrivateData();this.app.account=data.user;this.app.emailVerificationEnabled=!!data.emailVerificationEnabled;this.app.showAccountState();await this.app.refreshPrivateData();this.app.accountChannel?.postMessage('changed');}).disabled=!this.app.account.emailVerified;
     if(!pro)this.el('p',this.t('Создание и изменение ревью доступны в Pro. Существующие карточки можно читать и экспортировать.','Create and update reviews with Pro. Existing cards remain readable and exportable.'),h);
     if(pro&&editor) {
       const f=this.el('form','',h),title=this.input(f,this.t('Название изменения','Change title'));title.maxLength=120;title.required=true;
       const run=this.options(f,this.t('Сохранённая проверка','Saved check'),(this.app.runs||[]).filter(r=>r.findingsVersion===1&&r.analysisComplete!==false&&r.coverageComplete===true).map(r=>({value:r.id,label:(r.filename||'SQL')+' · '+new Date(r.timestamp).toLocaleString()})));
+      run.setAttribute('data-review-run','');
       const source=this.input(f,this.t('Сохранить SQL из текущего редактора в закрытой карточке','Save SQL from the current editor in this private card'),'checkbox');
       this.button(f,this.t('Создать карточку ревью','Create review card'),async()=>{if(!f.reportValidity())return;const epoch=this.epoch,data=await this.api('/api/v1/reviews','POST',{title:title.value,runId:run.value,...(source.checked?{sql:document.getElementById('sql-input').value}:{})});if(epoch!==this.epoch)return;this.current=data.review;await this.refresh();});
     }

@@ -20,7 +20,7 @@ const ruleEngine = new RuleEngine();
 
 function registerRoutes(router) {
   const auth = new AuthService(db);
-  const authPaths = new Set(['/api/v1/auth/session', '/api/v1/auth/register', '/api/v1/auth/login', '/api/v1/auth/logout', '/api/v1/auth/password', '/api/v1/auth/recovery-code', '/api/v1/auth/forgot', '/api/v1/auth/recover']);
+  const authPaths = new Set(['/api/v1/auth/session', '/api/v1/auth/register', '/api/v1/auth/login', '/api/v1/auth/logout', '/api/v1/auth/password', '/api/v1/auth/recovery-code', '/api/v1/auth/forgot', '/api/v1/auth/recover', '/api/v1/auth/email-verification/request', '/api/v1/auth/email-verification/confirm']);
   const publicPaths = new Set(['/api/v1/analyze', '/api/v1/rules', '/api/v1/verify-key', '/api/v1/split', '/api/v1/simulate', '/api/v1/watchdog']);
   const targetRouter = router;
   router = Object.fromEntries(['get', 'post', 'delete'].map(method => [method, (path, handler) => {
@@ -53,7 +53,7 @@ function registerRoutes(router) {
         return await handler(req, res);
       }
       catch (error) {
-        if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+        if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, ...(error.code ? {code:error.code} : {}) });
         if (error instanceof SyntaxError) return res.status(422).json({ error: error.message });
         throw error;
       }

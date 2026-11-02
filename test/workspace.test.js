@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lockguard-workspace-'));
 process.env.LOCKGUARD_DB_FILE=path.join(directory,'workspace.sqlite3');
 const db=require('../src/server/db'),{digest}=require('../src/server/workspace-service');
-const create=(name)=>{const u=db.createAccount({email:name+'@example.invalid',passwordHash:'test',organizationName:name});const token=db.createSession(u.id);return {...db.getSession(token),token};};
+const create=(name)=>{const u=db.createAccount({email:name+'@example.invalid',passwordHash:'test',organizationName:name});db.emailVerification.consume(u.id,db.emailVerification.issue(u.id).token);const token=db.createSession(u.id);return {...db.getSession(token),token};};
 const owner=create('owner'),reviewer=create('reviewer'),stranger=create('stranger');
 const service=db.workspaces,store=db.forOrganization(owner.organizationId);
 store.updatePlan('team');

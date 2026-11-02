@@ -157,12 +157,14 @@ class LockGuardApp {
     this.latestMarkdownReport = '';
     this.organization = null;
     this.account = null;
+    this.emailVerificationEnabled=false;
     this.identityVersion = 0;
     this.accountMode = 'login';
     this.registrationEnabled = true;
     this.analysisRequestId = 0;
     this.pro = window.LockGuardPro ? new window.LockGuardPro(this) : null;
     this.workspace = window.LockGuardWorkspace ? new window.LockGuardWorkspace(this) : null;
+    this.emailVerification=window.LockGuardEmailVerification ? new window.LockGuardEmailVerification(this) : null;
     this.ready = this.init();
   }
 
@@ -260,8 +262,9 @@ class LockGuardApp {
   bindAccountEvents() {
     if (typeof BroadcastChannel !== 'undefined') {
       this.accountChannel = new BroadcastChannel('lockguard-account');
-      this.accountChannel.onmessage = async () => {
+      this.accountChannel.onmessage = async event => {
         if (adminToken) return;
+        if(event.data==='email-verified'){await this.emailVerification?.refresh();return;}
         this.resetPrivateData();
         await this.restoreAccount();
         await this.refreshPrivateData();
@@ -330,12 +333,15 @@ class LockGuardApp {
     document.getElementById('btn-account').textContent = this.account ? 'Личный кабинет' : adminToken ? 'Администратор' : 'Войти';
     document.getElementById('btn-account-register').hidden = !this.registrationEnabled || !!this.account || !!adminToken;
     document.getElementById('account-profile-email').textContent = this.account?.email || '';
+    this.emailVerification?.render();
   }
   resetPrivateData() {
     window.LockGuardActiveWorkspace='';
     window.LockGuardRecoveryReset?.();
     this.pro?.reset();
     this.workspace?.reset();
+    this.emailVerification?.reset();
+    this.emailVerificationEnabled=false;
     this.identityVersion++;
     this.runs = [];
     const report = document.getElementById('run-report');
@@ -366,6 +372,7 @@ class LockGuardApp {
       const data = await response.json();
       if (identityVersion !== this.identityVersion) return;
       this.account = adminToken ? null : data.user;
+      this.emailVerificationEnabled=!!data.emailVerificationEnabled;
       this.registrationEnabled = data.registrationEnabled !== false;
       document.getElementById('account-mode-register').hidden = !this.registrationEnabled;
     } catch (error) { this.accountMessage('Не удалось подключиться к серверу: ' + error.message); }
@@ -390,6 +397,7 @@ class LockGuardApp {
       adminToken = '';
       this.resetPrivateData();
       this.account = data.user;
+      this.emailVerificationEnabled=!!data.emailVerificationEnabled;
       this.accountChannel?.postMessage('changed');
       document.getElementById('account-auth-form').reset();
       this.showAccountState();
@@ -695,6 +703,7 @@ class LockGuardApp {
 
       this.runs = data.runs;
       this.pro?.setRuns(data.runs);
+      this.workspace?.setRuns();
       if (!data.runs.length) tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Здесь появятся ваши проверки. Начните с редактора SQL.</td></tr>';
       data.runs.forEach(run => {
         const tr = document.createElement('tr');

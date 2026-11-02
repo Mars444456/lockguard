@@ -246,3 +246,7 @@
     font-size: 18px;
   }
 }
+.email-verification {margin:1.25rem 0;padding:1rem;border:1px solid var(--border);border-radius:10px;}
+.email-verification h3 {margin:0 0 .6rem;font-size:1rem;}
+.email-verification p {color:var(--text-muted);line-height:1.6;overflow-wrap:anywhere;}
+.email-verification button {margin:.3rem .5rem .3rem 0;min-height:42px;white-space:normal;}

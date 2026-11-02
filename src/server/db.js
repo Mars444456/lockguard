@@ -181,6 +181,7 @@ class PersistentDatabase {
       if (!schema) this.initialize();
       this.primaryOrganizationId = this.getMeta('primary_organization');
       if (!this.readOrganization(this.primaryOrganizationId)) throw new Error('Primary organization is missing');
+      this.emailVerification = new (require('./email-verification-service'))(this);
       this.workspaces = new (require('./workspace-service').WorkspaceService)(this);
       this.recovery = new (require('./recovery-service').RecoveryService)(this);
       if (!this.memoryOnly) fs.chmodSync(this.dbFilePath, 0o600);
@@ -293,8 +294,8 @@ class PersistentDatabase {
   }
   getSession(token) {
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
-    const user = this.sql.prepare('SELECT u.id,u.email,COALESCE(w.organization_id,u.organization_id) AS organizationId,u.created_at AS createdAt,m.role FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN session_workspaces w ON w.token_hash=s.token_hash JOIN memberships m ON m.user_id=u.id AND m.organization_id=COALESCE(w.organization_id,u.organization_id) WHERE s.token_hash=? AND s.expires_at>?').get(hash(token), Date.now());
-    return user || null;
+    const user = this.sql.prepare('SELECT u.id,u.email,CASE WHEN v.user_id IS NOT NULL THEN COALESCE(w.organization_id,u.organization_id) ELSE u.organization_id END AS organizationId,u.created_at AS createdAt,m.role,v.verified_at AS emailVerifiedAt FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN email_verification_state v ON v.user_id=u.id AND v.email=u.email COLLATE NOCASE LEFT JOIN session_workspaces w ON w.token_hash=s.token_hash JOIN memberships m ON m.user_id=u.id AND m.organization_id=CASE WHEN v.user_id IS NOT NULL THEN COALESCE(w.organization_id,u.organization_id) ELSE u.organization_id END WHERE s.token_hash=? AND s.expires_at>?').get(hash(token), Date.now());
+    return user ? {...user,emailVerified:!!user.emailVerifiedAt} : null;
   }
   deleteSession(token) { if (typeof token === 'string') this.sql.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(token)); }
   changePassword(userId, passwordHash, expectedPasswordHash) {
@@ -305,13 +306,16 @@ class PersistentDatabase {
       this.sql.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash, userId);
       this.sql.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
       this.sql.prepare('DELETE FROM recovery_tokens WHERE user_id=?').run(userId);
+      this.sql.prepare('DELETE FROM email_verification_tokens WHERE user_id=?').run(userId);
     });
   }
   allowAuthAttempt(key, limit, windowMs) {
     return this.transaction(() => {
       const now = Date.now(), token = hash(key);
-      this.sql.prepare('DELETE FROM auth_limits WHERE started_at<?').run(now - windowMs);
-      const row = this.sql.prepare('SELECT attempts FROM auth_limits WHERE key=?').get(token);
+      // Short login windows must not erase longer email-delivery limits.
+      this.sql.prepare('DELETE FROM auth_limits WHERE started_at<?').run(now - Math.max(windowMs,86400000));
+      let row = this.sql.prepare('SELECT started_at,attempts FROM auth_limits WHERE key=?').get(token);
+      if(row&&now-row.started_at>=windowMs){this.sql.prepare('DELETE FROM auth_limits WHERE key=?').run(token);row=null;}
       if (row?.attempts >= limit) return false;
       if (!row && this.sql.prepare('SELECT count(*) AS n FROM auth_limits').get().n >= 10000) return false;
       this.sql.prepare('INSERT INTO auth_limits(key,started_at,attempts) VALUES(?,?,1) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1').run(token, now);

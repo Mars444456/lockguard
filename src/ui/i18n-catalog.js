@@ -1,5 +1,12 @@
 /* Russian source text and reviewed English UI translations. No remote translation service. */
 window.LockGuardTranslations = [
+  ["Подтвердите email в личном кабинете перед работой с приглашениями.","Verify your email in account settings before using invitations."],
+  ["Ссылка подтверждения недействительна или истекла.","The verification link is invalid or expired."],
+  ["Подтверждение почты пока недоступно: отправка писем не настроена. SQL-анализ доступен, приглашения временно закрыты.","Email verification is unavailable because email delivery is not configured. SQL analysis is available; invitations are temporarily unavailable."],
+  ["Повторное письмо можно запросить через минуту.","You can request another email after one minute."],
+  ["Лимит писем подтверждения достигнут. Повторите запрос завтра.","The verification email limit was reached. Try again tomorrow."],
+  ["Отправка писем не настроена.","Email delivery is not configured."],
+  ["Письмо не удалось передать почтовому сервису. Повторите попытку позже.","The email could not be submitted to the mail service. Try again later."],
   ["Есть замечания","Findings to review"],
   ["Покрытие проверок: все настроенные правила включены.","Check coverage: all configured rules enabled."],
   ["Покрытие проверок: есть исключённые проверки — требуется ручной разбор.","Check coverage: some checks were excluded — manual review required."],
