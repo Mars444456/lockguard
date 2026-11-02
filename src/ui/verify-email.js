@@ -1,7 +1,7 @@
 (()=>{
   let token=new URLSearchParams(location.hash.slice(1)).get('token')||'';
   history.replaceState(null,'',location.pathname+location.search);
-  let language=new URLSearchParams(location.search).get('lang')==='en'?'en':'ru',user=null,pending=false,done=false,message='';
+  let language=new URLSearchParams(location.search).get('lang')==='en'?'en':'ru',user=null,pending=false,done=false,message='',linkVersion=0;
   const $=id=>document.getElementById(id),t=(ru,en)=>language==='en'?en:ru;
   const valid=()=>/^[a-f0-9]{64}$/.test(token);
   function render(){
@@ -17,21 +17,23 @@
     $('verify-new-link').textContent=t('Если ссылка устарела, запросите новую в личном кабинете.','If the link expired, request a new one from your account.');
   }
   async function session(){
-    pending=true;render();try{const response=await fetch('/api/v1/auth/session',{credentials:'same-origin',cache:'no-store'});if(!response.ok)throw new Error();const data=await response.json();user=data.user;done=!!user?.emailVerified;}
-    catch{message='session_error';}finally{pending=false;render();}
+    const version=linkVersion;pending=true;render();try{const response=await fetch('/api/v1/auth/session',{credentials:'same-origin',cache:'no-store'});if(!response.ok)throw new Error();const data=await response.json();if(version!==linkVersion)return;user=data.user;done=!!user?.emailVerified;}
+    catch{if(version===linkVersion)message='session_error';}finally{if(version===linkVersion){pending=false;render();}}
   }
+  window.addEventListener('hashchange',()=>{token=new URLSearchParams(location.hash.slice(1)).get('token')||'';history.replaceState(null,'',location.pathname+location.search);linkVersion++;message='';done=false;session();});
   $('verify-language').addEventListener('click',()=>{language=language==='ru'?'en':'ru';render();});
   $('verify-check-session').addEventListener('click',session);
   $('verify-confirm').addEventListener('click',async()=>{
-    if(pending||!user||!valid()||done)return;pending=true;message='';render();
+    if(pending||!user||!valid()||done)return;const version=linkVersion;pending=true;message='';render();
     try{
       const response=await fetch('/api/v1/auth/email-verification/confirm',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
       const data=await response.json();
+      if(version!==linkVersion)return;
       if(!response.ok){message=response.status===401?'sign_in':'invalid';if(response.status===401)user=null;return;}
       done=!!data.user?.emailVerified;if(!done)throw new Error();token='';
       if(typeof BroadcastChannel!=='undefined'){const channel=new BroadcastChannel('lockguard-account');channel.postMessage('email-verified');channel.close();}
-    }catch{message='request_error';}
-    finally{pending=false;render();}
+    }catch{if(version===linkVersion)message='request_error';}
+    finally{if(version===linkVersion){pending=false;render();}}
   });
   render();session();
 })();

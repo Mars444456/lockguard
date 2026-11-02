@@ -5,10 +5,24 @@ const source=name=>fs.readFileSync(path.join(__dirname,'../src/ui',name),'utf8')
 function verificationPage(user,confirmStatus=200){
   const {document,Event}=parseHTML(source('verify-email.html')),calls=[];
   const location=new URL('https://account.example.invalid/verify-email.html?lang=ru#token='+'a'.repeat(64));
-  const scope={document,Event,location,history:{replaceState(state,title,url){location.href=new URL(url,location).href;}},URLSearchParams,
+  const listeners={};const scope={document,Event,location,window:{addEventListener(name,handler){listeners[name]=handler;}},history:{replaceState(state,title,url){location.href=new URL(url,location).href;}},URLSearchParams,
     fetch:async(url,options)=>{calls.push({url,options});return{ok:url.includes('/confirm')?confirmStatus===200:true,status:confirmStatus,json:async()=>({user:url.includes('/confirm')?{...user,emailVerified:true}:user})};}};
-  vm.runInNewContext(source('verify-email.js'),scope);return {document,Event,calls,location};
+  vm.runInNewContext(source('verify-email.js'),scope);return {document,Event,calls,location,listeners};
 }
+test('A new verification link opened in the same tab replaces the old token without consuming either on GET',async()=>{
+  const p=verificationPage({email:'proof@example.invalid',emailVerified:false});await flush();
+  p.location.hash='token='+'b'.repeat(64);p.listeners.hashchange();await flush();
+  assert.equal(p.location.hash,'');assert.equal(p.calls.filter(c=>c.options?.method==='POST').length,0);
+  p.document.getElementById('verify-confirm').dispatchEvent(new p.Event('click'));await flush();
+  assert.equal(JSON.parse(p.calls.at(-1).options.body).token,'b'.repeat(64));
+});
+test('Recovery links opened in the existing reset tab replace the code and remove it from the URL',()=>{
+  const {document}=parseHTML(source('reset.html')),listeners={},location=new URL('https://account.example.invalid/reset.html');
+  const scope={document,location,URLSearchParams,window:{addEventListener(name,handler){listeners[name]=handler;}},history:{replaceState(state,title,url){location.href=new URL(url,location).href;}}};
+  vm.runInNewContext(source('reset.js'),scope);document.getElementById('reset-password').value='previous draft';
+  location.hash='token='+'c'.repeat(64);listeners.hashchange();
+  assert.equal(location.hash,'');assert.equal(document.getElementById('reset-code').value,'c'.repeat(64));assert.equal(document.getElementById('reset-password').value,'');
+});
 test('Verification page strips fragments, performs no mutation on open and requires matching sign-in',async()=>{
   const p=verificationPage(null);await flush();
   assert.equal(p.location.hash,'');assert.equal(p.calls.length,1);assert.equal(p.calls[0].url,'/api/v1/auth/session');

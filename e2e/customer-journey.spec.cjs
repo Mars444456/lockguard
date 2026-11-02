@@ -72,7 +72,7 @@ test('A verification link is inert on GET and cannot confirm a different signed-
     await expect(pb).not.toHaveURL(/token=/);await pb.getByRole('button',{name:'Подтвердить email',exact:true}).click();
     await expect(pb.getByRole('status')).toContainText('другому аккаунту');
     expect((await (await pa.request.get('/api/v1/auth/session')).json()).user.emailVerified).toBe(false);
-    await pa.goto(link);await expect(pa.getByRole('button',{name:'Подтвердить email',exact:true})).toBeEnabled();
+    await pa.goto('/verify-email.html');await pa.goto(link);await expect(pa).not.toHaveURL(/token=/);await expect(pa.getByRole('button',{name:'Подтвердить email',exact:true})).toBeEnabled();
     expect((await (await pa.request.get('/api/v1/auth/session')).json()).user.emailVerified).toBe(false);
     await pa.getByRole('button',{name:'Подтвердить email',exact:true}).click();await expect(pa.getByRole('status')).toContainText('Email подтверждён');
   }finally{await a.close();await b.close();}
