@@ -283,25 +283,15 @@ test('CLI E2E - lockguard split generates multi-phase migration and exits 0', ()
   assert.ok(res.stdout.includes('PHASE'));
 });
 
-test('CLI E2E - lockguard watchdog inspects production index health and exits 0 when healthy', () => {
-  const res = runCli(['watchdog']);
-  assert.equal(res.status, 0);
-  assert.ok(res.stdout.includes('LockGuard Post-Deploy Watchdog starting'));
-  assert.ok(res.stdout.includes('healthy'));
+test('CLI E2E - watchdog cannot pass without a database or diagnostic input',()=>{
+  const res=runCli(['watchdog']);
+  assert.notEqual(res.status,0);assert.match(res.stdout+res.stderr,/not performed|not completed/);
 });
 
-test('CLI E2E - lockguard simulate measures lock contention and returns proper exit code', () => {
-  const safeFile = path.resolve(__dirname, '../fixtures/10_safe_migration.sql');
-  const safeRes = runCli(['simulate', safeFile]);
-  assert.equal(safeRes.status, 0, 'Safe migration simulation should exit with 0');
-  assert.ok(safeRes.stdout.includes('LockGuard Shadow Replay Simulation'));
-  assert.ok(safeRes.stdout.includes('Scenario impact: NONE'));
-  assert.match(safeRes.stdout,/actual downtime and lock waits are unknown/);
-
-  const badFile = path.resolve(__dirname, '../fixtures/09_catastrophic_combined.sql');
-  const badRes = runCli(['simulate', badFile]);
-  assert.equal(badRes.status, 1, 'Catastrophic migration simulation should exit with 1');
-  assert.ok(badRes.stdout.includes('Scenario impact: CATASTROPHIC'));
+test('CLI E2E - removed simulation does not emit a fabricated benchmark',()=>{
+  const res=runCli(['simulate',path.resolve(__dirname,'../fixtures/10_safe_migration.sql')]);
+  assert.equal(res.status,1);assert.match(res.stderr,/Uncalibrated simulation has been removed/);
+  assert.doesNotMatch(res.stdout,/Scenario impact|seconds|blocked requests/);
 });
 
 test('CLI E2E - lockguard init creates .lockguardrc.json in target directory', () => {
@@ -438,8 +428,8 @@ test('CLI E2E - --schema-stats enriches analysis with real table metadata', () =
   assert.equal(res.status, 1);
   const parsed = JSON.parse(res.stdout);
   const v = parsed.violations[0];
-  assert.ok(v.contextualMessage.includes('25.0M rows'));
-  assert.ok(v.contextualMessage.includes('11.7 GB'));
+  assert.deepEqual(v.tableStats,{rowCount:25000000,sizeMb:12000});
+  assert.equal(v.estimatedLockDurationSec,null);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

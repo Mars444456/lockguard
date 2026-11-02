@@ -10,18 +10,15 @@ module.exports = {
 
   check(astStatements, context = {}) {
     const violations = [];
-    const hasTransaction = context.hasTransactionBlock || astStatements.some(s => s.type === 'TRANSACTION_START');
-
-    if (!hasTransaction) {
-      return violations;
-    }
-
+    let inTransaction = !!context.transactionWrapped;
     for (const stmt of astStatements) {
+      if (stmt.type === 'TRANSACTION_START') inTransaction = true;
+      if (stmt.type === 'TRANSACTION_COMMIT') inTransaction = !!stmt.pgAst?.chain;
       const isConcurrent = (stmt.type === 'CREATE_INDEX' && stmt.isConcurrent) ||
                            (stmt.type === 'DROP_INDEX' && stmt.isConcurrent) ||
                            (stmt.type === 'REINDEX' && stmt.isConcurrent);
 
-      if (isConcurrent) {
+      if (isConcurrent && inTransaction) {
         violations.push({
           ruleId: this.id,
           ruleCode: this.code,
@@ -30,6 +27,7 @@ module.exports = {
           lockLevel: this.lockLevel,
           table: stmt.table || 'global',
           line: stmt.line,
+          sourceStart: stmt.sourceStart,
           raw: stmt.raw,
           message: `PostgreSQL prohibits CONCURRENTLY operations inside a transaction block (BEGIN...COMMIT)! Running this will immediately fail with: ERROR: 25001: CREATE INDEX CONCURRENTLY cannot run inside a transaction block.`
         });

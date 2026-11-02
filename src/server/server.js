@@ -4,22 +4,7 @@ const path = require('path');
 const url = require('url');
 
 // Load environment variables from .env if present
-const envPath = path.resolve(process.cwd(), '.env');
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  for (const line of envContent.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx !== -1) {
-      const key = trimmed.substring(0, eqIdx).trim();
-      const val = trimmed.substring(eqIdx + 1).trim();
-      if (!process.env[key]) {
-        process.env[key] = val;
-      }
-    }
-  }
-}
+try { process.loadEnvFile(); } catch(error) { if(error.code!=='ENOENT')throw error; }
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const registerRoutes = require('./routes');

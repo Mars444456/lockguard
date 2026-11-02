@@ -54,7 +54,7 @@ window.LockGuardWorkspace = class {
     if(!pro)this.el('p',this.t('Создание и изменение ревью доступны в Pro. Существующие карточки можно читать и экспортировать.','Create and update reviews with Pro. Existing cards remain readable and exportable.'),h);
     if(pro&&editor) {
       const f=this.el('form','',h),title=this.input(f,this.t('Название изменения','Change title'));title.maxLength=120;title.required=true;
-      const run=this.options(f,this.t('Сохранённая проверка','Saved check'),(this.app.runs||[]).filter(r=>r.findingsVersion===1&&r.analysisComplete!==false).map(r=>({value:r.id,label:(r.filename||'SQL')+' · '+new Date(r.timestamp).toLocaleString()})));
+      const run=this.options(f,this.t('Сохранённая проверка','Saved check'),(this.app.runs||[]).filter(r=>r.findingsVersion===1&&r.analysisComplete!==false&&r.coverageComplete===true).map(r=>({value:r.id,label:(r.filename||'SQL')+' · '+new Date(r.timestamp).toLocaleString()})));
       const source=this.input(f,this.t('Сохранить SQL из текущего редактора в закрытой карточке','Save SQL from the current editor in this private card'),'checkbox');
       this.button(f,this.t('Создать карточку ревью','Create review card'),async()=>{if(!f.reportValidity())return;const epoch=this.epoch,data=await this.api('/api/v1/reviews','POST',{title:title.value,runId:run.value,...(source.checked?{sql:document.getElementById('sql-input').value}:{})});if(epoch!==this.epoch)return;this.current=data.review;await this.refresh();});
     }

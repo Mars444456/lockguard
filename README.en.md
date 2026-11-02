@@ -26,7 +26,7 @@ For a team pilot, [discuss reviewing 1–3 sanitized migrations](https://mars444
 - GitHub webhook signature verification and PR SQL analysis; commit-status publishing is configured separately.
 - Robokassa integration with test mode, verified ResultURL notifications and duplicate-payment protection.
 
-**Static analysis does not guarantee zero downtime.** Rules cover a subset of PostgreSQL operations. Duration and load estimates are models, not measurements on your database. Review the actual schema, transaction boundaries and load, and test changes before deployment.
+**Static analysis does not guarantee zero downtime.** Rules cover a subset of PostgreSQL operations. Uncalibrated duration, load and financial-loss forecasts have been removed. See [product status and commercial readiness](PRODUCT-STATUS.md). Review the actual schema, transaction boundaries and load, and test changes before deployment.
 
 ## Quick start
 

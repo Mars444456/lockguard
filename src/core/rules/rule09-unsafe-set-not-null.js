@@ -85,6 +85,7 @@ module.exports = {
               table: sub.table,
               column: sub.column,
               line: sub.line || stmt.line,
+              sourceStart: stmt.sourceStart,
               raw: sub.raw,
               message: `Setting NOT NULL on column '${sub.column}' of table '${sub.table}' scans the entire table under ACCESS EXCLUSIVE lock! It will freeze all reads and writes.`
             });

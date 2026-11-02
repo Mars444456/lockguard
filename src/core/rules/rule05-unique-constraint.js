@@ -1,4 +1,5 @@
 const { LockLevel, Severity } = require('../types');
+const {unique}=require('../sql-rewrite');
 
 module.exports = {
   id: 'LG-005',
@@ -29,9 +30,12 @@ module.exports = {
               table: sub.table,
               constraintName: sub.constraintName,
               columns: sub.columns,
+              nullsNotDistinct:sub.nullsNotDistinct,deferrable:sub.deferrable,initiallyDeferred:sub.initiallyDeferred,
+              including:sub.including,tablespace:sub.tablespace,uniqueOptionsUnsupported:sub.uniqueOptionsUnsupported,
               line: stmt.line,
+              sourceStart: stmt.sourceStart,
               raw: sub.raw,
-              message: `UNIQUE constraint '${sub.constraintName}' on '${sub.table}' is added directly. Use CREATE UNIQUE INDEX CONCURRENTLY + ADD CONSTRAINT USING INDEX instead.`
+              message: `UNIQUE constraint '${sub.constraintName || '(database-assigned name)'}' on '${sub.table}' is added directly. Review CREATE UNIQUE INDEX CONCURRENTLY + ADD CONSTRAINT USING INDEX instead.`
             });
           }
         }
@@ -42,17 +46,14 @@ module.exports = {
   },
 
   generateSafeFix(violation) {
-    const table = violation.table || 'your_table';
-    const constraint = violation.constraintName || 'uq_' + table;
-    const indexName = constraint + '_idx';
-    const cols = (violation.columns && violation.columns.length > 0) ? violation.columns.join(', ') : 'column_name';
+    const sql=unique(violation);if(!sql)return '-- Review the original UNIQUE options; no equivalent replacement was established.';
 
     return [
       `-- Step 1: Create unique index concurrently without blocking writes`,
-      `CREATE UNIQUE INDEX CONCURRENTLY ${indexName} ON ${table} (${cols});`,
+      sql.create,
       ``,
-      `-- Step 2: Attach constraint using existing index (instant catalog operation)`,
-      `ALTER TABLE ${table} ADD CONSTRAINT ${constraint} UNIQUE USING INDEX ${indexName};`
+      `-- Step 2: Attach the index, preserving deferrability; lock acquisition can still wait.`,
+      sql.attach
     ].join('\n');
   }
 };

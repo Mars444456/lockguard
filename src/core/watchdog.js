@@ -1,120 +1,58 @@
-/**
- * LockGuard Post-Deploy Watchdog
- * Inspects database for broken / invalid indexes (indisvalid = false)
- * caused by interrupted or failed CREATE INDEX CONCURRENTLY migrations.
- */
+const {execFileSync}=require('node:child_process');
 
-const { execFileSync } = require('child_process');
+function invalid(message){throw Object.assign(new TypeError(message),{statusCode:400});}
+function boolean(value){
+  if([true,'t','true'].includes(value))return true;
+  if([false,'f','false'].includes(value))return false;
+  invalid('Each diagnostic row must include a PostgreSQL boolean is_valid.');
+}
+function name(value){if(typeof value!=='string'||!value||value.includes('\0')||Buffer.byteLength(value)>256)invalid('Each diagnostic row must include an index_name and table_name.');return value;}
+const quote=value=>'"'+value.replaceAll('"','""')+'"';
 
 class PostDeployWatchdog {
-  /**
-   * Generates watchdog diagnostic queries and evaluations.
-   */
-  static getDiagnosticQuery() {
-    return `
-      SELECT 
-        idx.indexrelid::regclass AS index_name,
-        tbl.relname AS table_name,
-        idx.indisvalid AS is_valid,
-        pg_size_pretty(pg_relation_size(idx.indexrelid)) AS index_size
-      FROM pg_index idx
-      JOIN pg_class tbl ON tbl.oid = idx.indrelid
-      WHERE NOT idx.indisvalid;
-    `.trim();
+  static getDiagnosticQuery(){
+    return `SELECT ns.nspname AS schema_name, ic.relname AS index_name, tbl.relname AS table_name,
+      idx.indisvalid AS is_valid, idx.indisready AS is_ready, idx.indislive AS is_live,
+      ic.relkind AS index_kind, pg_size_pretty(pg_relation_size(idx.indexrelid)) AS index_size
+      FROM pg_index idx JOIN pg_class ic ON ic.oid=idx.indexrelid
+      JOIN pg_namespace ns ON ns.oid=ic.relnamespace JOIN pg_class tbl ON tbl.oid=idx.indrelid
+      WHERE NOT idx.indisvalid`;
   }
-
-  /**
-   * Evaluates watchdog results from database query or mock telemetry.
-   * @param {Array<object>} queryRows [{ index_name, table_name, is_valid, index_size }]
-   */
-  static evaluate(queryRows = []) {
-    const invalidIndexes = [];
-    const rows = Array.isArray(queryRows) ? queryRows : [];
-
-    for (const row of rows) {
-      if (row.is_valid === false || row.indisvalid === false) {
-        const indexName = row.index_name || row.indexrelid || 'broken_idx';
-        const tableName = row.table_name || 'orders';
-        const size = row.index_size || 'Unknown size';
-
-        invalidIndexes.push({
-          indexName,
-          tableName,
-          size,
-          hazard: 'INVALID_INDEX_DEGRADATION',
-          impact: `Index '${indexName}' on table '${tableName}' remains in INVALID status after failed CONCURRENTLY! It does not speed up reads, but slows down every INSERT/UPDATE and consumes disk space (${size}).`,
-          safeFix: [
-            `-- Option 1: Rebuild index safely without blocking reads or writes`,
-            `REINDEX INDEX CONCURRENTLY ${indexName};`,
-            ``,
-            `-- Option 2: Safely drop invalid index`,
-            `DROP INDEX CONCURRENTLY IF EXISTS ${indexName};`
-          ].join('\n')
-        });
-      }
+  static evaluate(queryRows, {source='provided_telemetry'}={}){
+    if(!Array.isArray(queryRows)||queryRows.length>10000)invalid('Expected up to 10000 actual diagnostic rows, not an omitted or invalid report.');
+    const invalidIndexes=[];
+    for(const row of queryRows){
+      if(!row||typeof row!=='object'||Array.isArray(row))invalid('Invalid diagnostic row.');
+      const indexName=name(row.index_name),tableName=name(row.table_name),valid=boolean(row.is_valid??row.indisvalid);
+      const schema=row.schema_name===undefined?null:name(row.schema_name);
+      if(row.is_ready!==undefined)boolean(row.is_ready);
+      if(row.is_live!==undefined)boolean(row.is_live);
+      if(valid)continue;
+      const qualified=schema ? quote(schema)+'.'+quote(indexName) : null;
+      const canSuggestReindex=qualified && row.index_kind==='i' && boolean(row.is_live??true);
+      invalidIndexes.push({indexName,tableName,schemaName:schema,size:typeof row.index_size==='string'?row.index_size:null,
+        hazard:'INVALID_INDEX',impact:'The catalog marks this index invalid. Its cause and effect on writes require inspection; this report does not prove a failed concurrent build.',
+        safeFix:canSuggestReindex ? `-- Review PostgreSQL version, privileges, active builds, dependencies and available disk space first.\n-- Run as a separate statement outside a transaction block (PostgreSQL 12+).\nREINDEX INDEX CONCURRENTLY ${qualified};`
+          : '-- Inspect the qualified index, active builds and dependencies in the target database before choosing a repair. No DROP is generated.'});
     }
-
-    return {
-      healthy: invalidIndexes.length === 0,
-      totalInvalidCount: invalidIndexes.length,
-      invalidIndexes,
-      checkedAt: new Date().toISOString()
-    };
+    return {healthy:invalidIndexes.length===0,totalInvalidCount:invalidIndexes.length,invalidIndexes,source,
+      scope:'invalid_indexes_in_supplied_diagnostic_result',measured:source==='database_query',checkedAt:new Date().toISOString()};
   }
-
-  /**
-   * Inspects production index health and formats a user-friendly report for CLI.
-   * If process.env.DATABASE_URL is set and queryRows is empty/not provided,
-   * queries live database via psql.
-   * @param {Array<object>} queryRows Optional database query rows
-   */
-  static inspectProduction(queryRows = []) {
-    let rows = queryRows;
-
-    if ((!rows || rows.length === 0) && process.env.DATABASE_URL) {
-      try {
-        const sql = this.getDiagnosticQuery().replace(/\r?\n/g, ' ');
-        const raw = execFileSync('psql', ['-X', '-w', '-d', process.env.DATABASE_URL, '-t', '-A', '-F', ',', '-c', sql], {
-          encoding: 'utf8',
-          timeout: 15000,
-          stdio: ['ignore', 'pipe', 'ignore']
-        });
-        rows = raw
-          .split(/\r?\n/)
-          .filter(line => line.trim().length > 0)
-          .map(line => {
-            const [index_name, table_name, is_valid, index_size] = line.split(',');
-            return {
-              index_name: index_name ? index_name.trim() : '',
-              table_name: table_name ? table_name.trim() : '',
-              is_valid: is_valid ? (is_valid.trim() === 't' || is_valid.trim() === 'true') : false,
-              index_size: index_size ? index_size.trim() : '0 bytes'
-            };
-          });
-      } catch {
-        throw new Error('Unable to inspect database index health: psql query failed.');
-      }
+  static inspectProduction(queryRows){
+    let source='provided_telemetry';
+    if(queryRows===undefined){
+      if(!process.env.DATABASE_URL)throw new Error('Index inspection was not performed. Set DATABASE_URL with psql installed, or supply diagnostic JSON rows.');
+      try{
+        const sql=`SELECT COALESCE(json_agg(lg_rows),'[]'::json) FROM (${this.getDiagnosticQuery()}) AS lg_rows`;
+        const raw=execFileSync('psql',['-X','-w','--set=ON_ERROR_STOP=1','-d',process.env.DATABASE_URL,'-t','-A','-c',sql],
+          {encoding:'utf8',timeout:15000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','ignore']});
+        queryRows=JSON.parse(raw);source='database_query';
+      }catch{throw new Error('Index inspection was not completed: psql connection, query or JSON decoding failed.');}
     }
-
-    const evalResult = this.evaluate(rows || []);
-    const hasBrokenIndexes = !evalResult.healthy;
-
-    let message = '';
-    if (hasBrokenIndexes) {
-      message = `❌ Detected ${evalResult.totalInvalidCount} INVALID/BROKEN index(es) on production!\n` +
-        evalResult.invalidIndexes.map(idx => 
-          `  • [BROKEN] ${idx.indexName} on ${idx.tableName} (${idx.size})\n    ${idx.impact}\n    Safe Fix:\n${idx.safeFix}`
-        ).join('\n\n');
-    } else {
-      message = '✔ Production index health: 100% healthy. No broken or invalid indexes found.';
-    }
-
-    return {
-      ...evalResult,
-      hasBrokenIndexes,
-      message
-    };
+    const result=this.evaluate(queryRows,{source});
+    return {...result,hasBrokenIndexes:result.totalInvalidCount>0,message:result.totalInvalidCount
+      ? `Detected ${result.totalInvalidCount} INVALID index(es) in the diagnostic result.\n`+result.invalidIndexes.map(i=>`${i.schemaName?i.schemaName+'.':''}${i.indexName} on ${i.tableName}\n${i.impact}\n${i.safeFix}`).join('\n\n')
+      : 'No invalid indexes were reported in this diagnostic result. This does not establish overall database health.'};
   }
 }
-
-module.exports = PostDeployWatchdog;
+module.exports=PostDeployWatchdog;

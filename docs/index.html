@@ -9,7 +9,7 @@
 
 
 <meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=660c26ce8895"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16">
-<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=799d262acef9"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
+<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=049ae6873450"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
 </head>
 <body>
   <!-- Top Announcement Banner -->
@@ -18,7 +18,7 @@
   <!-- Top Navigation Bar -->
   <header class="navbar public-navbar">
     <div class="nav-container">
-      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.3</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
+      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.4</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
 
       <div class="nav-actions">
         <!-- public-account:start -->
@@ -83,60 +83,10 @@
           </select>
         </div>
         <div style="display:flex; flex-direction:column; gap:4px;">
-          <label for="version-select">Версия / Форк PostgreSQL:</label>
-          <select id="version-select" class="select-input">
-            <option value="17" selected>PostgreSQL 17</option>
-            <option value="16">PostgreSQL 14–16</option>
-            <option value="11">PostgreSQL 11–13</option>
-            <option value="pgpro">Postgres Pro · модель</option>
-            <option value="citus">Citus · модель</option>
-            <option value="10">PostgreSQL 10 и старше</option>
-          </select>
+          <label for="version-select">Версия PostgreSQL:</label>
+          <select id="version-select" class="select-input"><option value="18">PostgreSQL 18</option><option value="17" selected>PostgreSQL 17</option><option value="16">PostgreSQL 16</option><option value="15">PostgreSQL 15</option><option value="14">PostgreSQL 14</option><option value="13">PostgreSQL 13</option><option value="12">PostgreSQL 12</option><option value="11">PostgreSQL 11</option><option value="10">PostgreSQL 10</option></select>
         </div>
       </div></section>
-
-    <!-- Simulation Parameters Bar -->
-    <details class="simulation-options"><summary>Параметры оценки нагрузки <span>Не измерения: модель по заданным условиям</span></summary><div class="sim-controls-bar">
-      <div class="slider-group">
-        <div class="slider-header">
-          <span class="slider-label">📊 Размер боевой таблицы в базе:</span>
-          <span class="slider-value" id="val-rows">14.2M строк (~8.4 GB)</span>
-        </div>
-        <input type="range" id="slider-rows" min="10000" max="50000000" step="100000" value="14200000">
-      </div>
-
-      <div class="slider-group">
-        <div class="slider-header">
-          <span class="slider-label">⚡ Фоновый клиентский трафик (RPS):</span>
-          <span class="slider-value" id="val-rps">250 RPS</span>
-        </div>
-        <input type="range" id="slider-rps" min="10" max="1000" step="10" value="250">
-      </div>
-
-      <div class="slider-group" style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
-        <div class="slider-header">
-          <span class="slider-label">🛡️ Пул соединений PgBouncer (лимит одновременных коннектов):</span>
-          <span class="slider-value" id="val-pool">100 коннектов</span>
-        </div>
-        <input type="range" id="slider-pool" min="20" max="500" step="10" value="100">
-      </div>
-
-      <div class="slider-group" style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
-        <div class="slider-header">
-          <span class="slider-label">💰 Дневной оборот проекта (GMV / выручка):</span>
-          <span class="slider-value" id="val-gmv">1 000 000 ₽ / день</span>
-        </div>
-        <input type="range" id="slider-gmv" min="100000" max="20000000" step="100000" value="1000000">
-      </div>
-
-      <div class="slider-group" style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem;">
-        <div class="slider-header">
-          <span class="slider-label">🖥️ Конфигурация сервера БД (vCPU Cores):</span>
-          <span class="slider-value" id="val-cores">8 vCPU</span>
-        </div>
-        <input type="range" id="slider-cores" min="2" max="64" step="2" value="8">
-      </div>
-    </div></details>
 
     <!-- Playground Workspace -->
     <div class="playground-grid">
@@ -208,37 +158,7 @@
 
             </div>
             <p id="res-affected-tables" class="affected-tables-note"></p>
-            <details class="simulation-estimates" id="simulation-estimates">
-              <summary>Оценочная модель нагрузки</summary>
-              <p>Это условный сценарий по заданным параметрам. Числа не измерены на вашей базе и не являются прогнозом простоя или финансовых потерь.</p>
-              <div class="metric-tiles">
-                <div class="metric-tile">
-                  <div class="metric-label">Оценка времени по модели</div>
-                  <div class="metric-value text-red" id="res-downtime">—</div>
-                  <div class="metric-sub" id="res-downtime-sub">По заданному размеру таблицы</div>
-                </div>
-                <div class="metric-tile">
-                  <div class="metric-label">Ожидания запросов по модели</div>
-                  <div class="metric-value text-cyan" id="res-blocked-queries">—</div>
-                  <div class="metric-sub">Условная нагрузка, не измерение</div>
-                </div>
-                <div class="metric-tile">
-                  <div class="metric-label">Насыщение пула по модели</div>
-                  <div class="metric-value text-amber" id="res-pool-time">—</div>
-                  <div class="metric-sub" id="res-pool-sub">По заданному лимиту пула</div>
-                </div>
-                <div class="metric-tile">
-                  <div class="metric-label">Условная оценка потерь</div>
-                  <div class="metric-value text-red" id="res-financial-loss">—</div>
-                  <div class="metric-sub" id="res-financial-sub">По заданному обороту</div>
-                </div>
-                <div class="metric-tile">
-                  <div class="metric-label">Вероятность ожидания по модели</div>
-                  <div class="metric-value text-purple" id="res-collision-prob">—</div>
-                  <div class="metric-sub" id="res-collision-sub">M/M/c модель очередей</div>
-                </div>
-              </div>
-            </details>
+            <p class="metric-sub">SQL не исполняется. Время ожидания, длительность операций и потери требуют измерения на вашей базе.</p>
 
             <!-- Lock Conflict Matrix Grid -->
             <div class="lock-matrix-card">
@@ -419,7 +339,7 @@
 <!-- seller-footer:end -->
 <!-- Scripts -->
   <script src="site-access.js?v=6c7531bb874d"></script>
-  <script src="lockguard-engine.js?v=13a5563883d6"></script>
-  <script src="review-ui.js?v=f346561868c9"></script><script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=9e17dee4832a"></script>
+  <script src="lockguard-engine.js?v=746808fb5d05"></script>
+  <script src="review-ui.js?v=f346561868c9"></script><script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=c8b9a96420dd"></script>
 </body>
 </html>

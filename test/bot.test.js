@@ -1,15 +1,9 @@
 require('./helpers/initialize');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatAuditMessage, generateLicenseKey } = require('../bin/bot.js');
+const { formatAuditMessage } = require('../bin/bot.js');
 const { RuleEngine } = require('../src/core');
 
-test('Telegram Bot - generateLicenseKey formats valid Pro token', () => {
-  const key = generateLicenseKey();
-  assert.ok(key.startsWith('LG-PRO-2026-'));
-  const parts = key.split('-');
-  assert.equal(parts.length, 6);
-});
 
 test('Telegram Bot - no rule findings does not promise zero downtime', () => {
   const engine = new RuleEngine();

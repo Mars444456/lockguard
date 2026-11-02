@@ -21,6 +21,7 @@ module.exports = {
           lockLevel: this.lockLevel,
           table: stmt.tables.join(', '),
           line: stmt.line,
+          sourceStart: stmt.sourceStart,
           raw: stmt.raw,
           message: `DROP TABLE '${stmt.tables.join(', ')}' in single step. Ensure tables are completely removed from ORM and all services before dropping.`
         });
@@ -38,6 +39,7 @@ module.exports = {
               table: sub.table,
               column: sub.column,
               line: stmt.line,
+              sourceStart: stmt.sourceStart,
               raw: sub.raw,
               message: `DROP COLUMN '${sub.column}' on '${sub.table}' executed directly. Ensure column is ignored in ORM (Prisma/Drizzle/Alembic) prior to dropping.`
             });
@@ -50,15 +52,12 @@ module.exports = {
   },
 
   generateSafeFix(violation) {
-    const table = violation.table || 'your_table';
-    const column = violation.column || 'old_column';
-
     return [
-      `-- Safe 3-Phase Deprecation Workflow:`,
-      `-- Phase 1: Deploy code ignoring the column in your ORM (e.g. Prisma @ignore or schema exclude)`,
-      `-- Phase 2: Verify zero active queries access the column`,
-      `-- Phase 3: Drop column safely:`,
-      `ALTER TABLE ${table} DROP COLUMN IF EXISTS ${column};`
+      '-- Manual deprecation review required before executing the original DROP.',
+      '-- Remove application dependencies across all deployed versions and background jobs.',
+      '-- Inventory dependent constraints, views, triggers and CASCADE effects.',
+      '-- Verify a restorable backup, recovery plan and an appropriate lock timeout.',
+      '-- No replacement destructive SQL is generated.'
     ].join('\n');
   }
 };

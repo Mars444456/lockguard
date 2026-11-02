@@ -21,7 +21,7 @@ module.exports = {
             // are safe fast metadata-only updates.
             // Only truly volatile expressions (random, gen_random_uuid, clock_timestamp)
             // or legacy PG < 11 force physical table rewrite on disk.
-            if (!sub.isTrulyVolatile && !isLegacyPostgres) {
+            if (!sub.isTrulyVolatile && sub.defaultVolatility !== 'unknown' && !isLegacyPostgres) {
               continue;
             }
 
@@ -37,19 +37,21 @@ module.exports = {
               table: sub.table,
               column: sub.column,
               dataType: sub.dataType,
+              collation: sub.collation,
               isNotNull: sub.isNotNull,
               defaultValue: sub.defaultValue,
-              isPhysicalTableRewrite: isVolatileRewrite || isLegacyPostgres,
+              isPhysicalTableRewrite: sub.defaultVolatility === 'unknown' && !isLegacyPostgres ? null : isVolatileRewrite || isLegacyPostgres,
               rewriteReason: isLegacyPostgres 
                 ? 'LEGACY_POSTGRES_ALL_DEFAULTS_REWRITE' 
-                : (isVolatileRewrite ? 'VOLATILE_FULL_REWRITE' : 'FAST_DEFAULT_METADATA_ONLY'),
+                : (isVolatileRewrite ? 'VOLATILE_FULL_REWRITE' : 'DEFAULT_VOLATILITY_UNKNOWN'),
               line: sub.line || stmt.line,
+              sourceStart: stmt.sourceStart,
               raw: sub.raw,
               message: isVolatileRewrite
                 ? `Column '${sub.column}' on table '${sub.table}' has a volatile DEFAULT '${sub.defaultValue}'. This forces a full table rewrite on disk holding ACCESS EXCLUSIVE lock!`
                 : (isLegacyPostgres 
                     ? `PostgreSQL < 11 does not support fast default evaluation! Adding DEFAULT '${sub.defaultValue}' rewrites the entire table on disk under ACCESS EXCLUSIVE lock!`
-                    : `Column '${sub.column}' on table '${sub.table}' has DEFAULT '${sub.defaultValue}'. In Postgres 11+ metadata is fast, but statement still takes ACCESS EXCLUSIVE lock, risking Head-of-Line queue blocking!`)
+                    : `The volatility and rewrite behavior of DEFAULT '${sub.defaultValue}' cannot be established from SQL alone. Check functions, casts and column type in the target database before release.`)
             });
           }
         }
@@ -60,13 +62,14 @@ module.exports = {
   },
 
   generateSafeFix(violation) {
+    if(violation.rewriteReason==='DEFAULT_VOLATILITY_UNKNOWN')return '-- Inspect function and cast volatility and column-type constraints in the target database. A physical rewrite has not been established; no automatic replacement is generated.';
     const table = violation.table || 'your_table';
     const column = violation.column || 'new_column';
     const defVal = violation.defaultValue || "'default_value'";
 
     return [
       `-- Step 1: Add column without default (instant metadata update, no full table rewrite)`,
-      `ALTER TABLE ${table} ADD COLUMN ${column} ${violation.dataType || 'TEXT'};`,
+      `ALTER TABLE ${table} ADD COLUMN ${column} ${violation.dataType || 'TEXT'}${violation.collation ? ' COLLATE '+violation.collation : ''};`,
       ``,
       `-- Step 2: Set default for future rows`,
       `ALTER TABLE ${table} ALTER COLUMN ${column} SET DEFAULT ${defVal};`,

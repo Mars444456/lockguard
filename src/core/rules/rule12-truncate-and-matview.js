@@ -30,8 +30,9 @@ module.exports = {
             table: tbl,
             operationType: 'TRUNCATE',
             line: stmt.line,
+            sourceStart: stmt.sourceStart,
             raw: stmt.raw,
-            message: `TRUNCATE TABLE '${tbl}' acquires an ACCESS EXCLUSIVE lock and blocks all concurrent transactions. Use batched DELETE or partition rotation instead.`
+            message: `TRUNCATE TABLE '${tbl}' acquires ACCESS EXCLUSIVE and blocks access to this relation. Review dependencies, triggers, identity handling and maintenance strategy; DELETE is not an equivalent replacement.`
           });
         }
       }
@@ -46,7 +47,9 @@ module.exports = {
           lockLevel: this.lockLevel,
           table: stmt.view || stmt.table,
           operationType: 'REFRESH_MATVIEW',
+          withNoData:stmt.withNoData,
           line: stmt.line,
+          sourceStart: stmt.sourceStart,
           raw: stmt.raw,
           message: `REFRESH MATERIALIZED VIEW '${stmt.view}' without CONCURRENTLY acquires an ACCESS EXCLUSIVE lock, completely blocking all SELECT queries against the view until refresh completes!`
         });
@@ -58,29 +61,21 @@ module.exports = {
 
   generateSafeFix(violation) {
     if (violation.operationType === 'REFRESH_MATVIEW') {
+      if(violation.withNoData)return '-- WITH NO DATA intentionally leaves the view unpopulated. It cannot be combined with CONCURRENTLY; review the original operation and dependencies.';
       const view = violation.table || 'your_matview';
       return [
         `-- Safe alternative: Refresh concurrently without blocking reads`,
-        `-- (Note: Requires a unique index on the materialized view)`,
+        `-- Requires an already populated view and a valid UNIQUE index covering all rows using plain columns.`,
+        `-- Check eligibility and application behavior in the target database before execution.`,
         `REFRESH MATERIALIZED VIEW CONCURRENTLY ${view};`
       ].join('\n');
     }
 
-    const table = violation.table || 'your_table';
     return [
-      `-- Safe alternative to TRUNCATE on live table:`,
-      `-- Option 1: Batched DELETE loop to prevent table locking`,
-      `DO $$`,
-      `DECLARE`,
-      `  deleted_count INT;`,
-      `BEGIN`,
-      `  LOOP`,
-      `    DELETE FROM ${table} WHERE id IN (SELECT id FROM ${table} LIMIT 5000);`,
-      `    GET DIAGNOSTICS deleted_count = ROW_COUNT;`,
-      `    EXIT WHEN deleted_count = 0;`,
-      `    COMMIT;`,
-      `  END LOOP;`,
-      `END $$;`
+      '-- Manual data-removal strategy required. No destructive replacement is generated.',
+      '-- DELETE differs from TRUNCATE in trigger, foreign-key, identity, MVCC and space-reclamation behavior.',
+      '-- Review CASCADE / RESTART IDENTITY, all affected relations and recovery requirements.',
+      '-- Test a maintenance window, partition strategy or explicitly approved bounded DELETE separately.'
     ].join('\n');
   }
 };

@@ -5,10 +5,16 @@ const { createHash } = require('node:crypto');
 require('./check-privacy').assertPublishable();
 require('./build-site-links').buildSiteLinks();
 require('node:child_process').execFileSync(process.execPath, [path.join(__dirname, 'build-pilot.js')], { stdio: 'inherit' });
-esbuild.buildSync({ entryPoints: [path.join(__dirname, '../src/browser-entry.js')],
-  outfile: path.join(__dirname, '../docs/lockguard-engine.js'), bundle: true, platform: 'browser',
+const enginePath=path.join(__dirname,'../docs/lockguard-engine.js');
+const engineBuild=esbuild.buildSync({ entryPoints: [path.join(__dirname, '../src/browser-entry.js')],
+  outfile: enginePath, write:false, bundle: true, platform: 'browser',
   format: 'iife', external: ['fs', 'path', 'child_process', 'node:fs', 'node:path', 'node:crypto'],
   minify: true, legalComments: 'eof' });
+// Replace the artifact atomically; Windows may map the previous bundle while a
+// preview or antivirus reads it. Do not truncate the active file during a build.
+const engineTemp=enginePath+'.tmp';
+try{fs.writeFileSync(engineTemp,engineBuild.outputFiles[0].contents);fs.renameSync(engineTemp,enginePath);}
+finally{if(fs.existsSync(engineTemp))fs.unlinkSync(engineTemp);}
 fs.copyFileSync(require.resolve('libpg-query/wasm/libpg-query.wasm'), path.join(__dirname, '../docs/libpg-query.wasm'));
 // The npm artifact is executable on Unix; published static assets must have a stable mode.
 fs.chmodSync(path.join(__dirname, '../docs/libpg-query.wasm'), 0o644);

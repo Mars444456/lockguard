@@ -45,7 +45,8 @@ class GitHubService {
     if (!/^[a-f0-9]{40}$/.test(sha || '') || sha !== payload.pull_request.head?.sha) fail('Stale pull request event', 409);
     const publish = process.env.GITHUB_PUBLISH_STATUS === 'true';
     if (publish) await this.api(`/repos/${repo}/statuses/${sha}`, { state: 'pending', context: 'lockguard', description: 'Auditing PostgreSQL migrations' });
-    if (!Number.isInteger(current.changed_files) || current.changed_files > 300) fail('Pull request exceeds 300-file audit limit', 413);
+    try {
+    if (!Number.isInteger(current.changed_files) || current.changed_files < 0 || current.changed_files > 300) fail('Pull request exceeds 300-file audit limit', 413);
     const files = [];
     for (let page = 1; files.length < current.changed_files; page++) {
       const batch = await this.api(`${base}/files?per_page=100&page=${page}`);
@@ -65,16 +66,16 @@ class GitHubService {
       const bytes = Buffer.from(blob.content, 'base64');
       totalBytes += bytes.length;
       if (bytes.length !== blob.size || totalBytes > 2 * 1024 * 1024) fail('SQL audit payload exceeds limit or is incomplete', 413);
-      try { results.push(engine.analyze(new TextDecoder('utf-8', { fatal: true }).decode(bytes), { filename: file.filename })); }
-      catch (error) {
-        if (publish) await this.api(`/repos/${repo}/statuses/${sha}`, { state: 'error', context: 'lockguard', description: 'SQL analysis failed; inspect migration syntax' });
-        throw error;
-      }
+      results.push(engine.analyze(new TextDecoder('utf-8',{fatal:true}).decode(bytes),{filename:file.filename}));
     }
     if ((await this.api(base)).head?.sha !== sha) fail('Pull request changed during analysis', 409);
-    if (publish) await this.api(`/repos/${repo}/statuses/${sha}`, { state: results.every(r => r.passed) ? 'success' : 'failure', context: 'lockguard', description: `${results.length} SQL migration(s) audited` });
+    if (publish) await this.api(`/repos/${repo}/statuses/${sha}`, { state: results.every(r => r.passed && r.coverageComplete!==false) ? 'success' : 'failure', context: 'lockguard', description: results.length ? `${results.length} SQL migration(s) audited` : 'No SQL migrations changed; no SQL was checked' });
     return { success: true, repo, prNumber: number, headSha: sha, checkedFiles: results.length, statusPublished: publish,
       passed: results.every(r => r.passed), results, markdownComment: GitHubPrFormatter.format(results) };
+    } catch(error) {
+      if(publish)try {await this.api(`/repos/${repo}/statuses/${sha}`,{state:'error',context:'lockguard',description:'Audit incomplete; inspect LockGuard server logs'});}catch{}
+      throw error;
+    }
   }
 }
 module.exports = GitHubService;

@@ -1,5 +1,6 @@
 const pg = require('libpg-query');
 const columnTypes = require('./column-types');
+const rewrite = require('./sql-rewrite');
 let ready = false;
 const initialization = pg.loadModule().then(() => { ready = true; });
 const strings = values => (values || []).map(v => v.String.sval);
@@ -22,16 +23,20 @@ function typeName(type) {
   const mods = (type.typmods || []).map(m => m.A_Const?.ival?.ival ?? m.A_Const?.sval?.sval);
   return base + (mods.length ? `(${mods.join(', ')})` : '') + (type.arrayBounds?.length ? '[]'.repeat(type.arrayBounds.length) : '');
 }
-function volatileExpression(expr) {
-  let volatile = false;
+function expressionVolatility(expr) {
+  let volatility = 'nonvolatile';
   walk(expr, node => {
     if (node.FuncCall) {
       const name = strings(node.FuncCall.funcname).join('.');
-      if (!['now', 'pg_catalog.now', 'statement_timestamp', 'transaction_timestamp'].includes(name)) volatile = true;
+      const bare = name.replace(/^pg_catalog\./, '');
+      if (['random','gen_random_uuid','clock_timestamp','nextval','setval'].includes(bare)) volatility = 'volatile';
+      else if (!['now','statement_timestamp','transaction_timestamp'].includes(bare) && volatility !== 'volatile') volatility = 'unknown';
     }
-    if (node.SubLink || node.NextValueExpr) volatile = true;
+    if (node.SubLink && volatility !== 'volatile') volatility = 'unknown';
+    if (node.NextValueExpr) volatility = 'volatile';
+    if ((node.TypeCast || node.A_Expr || node.CollateClause) && volatility !== 'volatile') volatility = 'unknown';
   });
-  return volatile;
+  return volatility;
 }
 
 module.exports = {
@@ -44,7 +49,7 @@ module.exports = {
     const bytes = new TextEncoder().encode(sql);
     const decode = (start, end) => new TextDecoder().decode(bytes.slice(start, end));
     let previousEnd = 0;
-    return parsed.stmts.map(entry => {
+    return parsed.stmts.map((entry,statementIndex) => {
       const nativeStart = entry.stmt_location || 0;
       const start = previousEnd;
       const end = entry.stmt_len ? nativeStart + entry.stmt_len : bytes.length;
@@ -61,33 +66,45 @@ module.exports = {
       const stmt = legacy.parseStatement(raw, line, rawFull, comments.map(c => c.text), directives);
       const [kind, node] = Object.entries(entry.stmt)[0];
       Object.assign(stmt, { pgKind: kind, pgAst: node, parserVersion: parsed.version,
-        sourceStart: start + (first?.start || 0), sourceEnd: end });
+        statementIndex,sourceStart: start + (first?.start || 0), sourceEnd: end });
       if (['SelectStmt', 'InsertStmt', 'UpdateStmt', 'DeleteStmt', 'MergeStmt'].includes(kind)) {
         walk(node, n => { if (n.FuncCall) stmt.requiresManualAnalysis = true; });
       }
       if (node.relation) stmt.table = relation(node.relation);
-      if (kind === 'CreateStmt') {
+      if (kind === 'TransactionStmt') {
+        stmt.type = ['TRANS_STMT_BEGIN','TRANS_STMT_START'].includes(node.kind) ? 'TRANSACTION_START'
+          : ['TRANS_STMT_COMMIT','TRANS_STMT_ROLLBACK'].includes(node.kind) ? 'TRANSACTION_COMMIT' : stmt.type;
+      } else if (kind === 'CreateStmt') {
         stmt.type = 'CREATE_TABLE'; stmt.ifNotExists = !!node.if_not_exists;
         walk(node, n => { if (n.Constraint?.contype === 'CONSTR_FOREIGN') stmt.requiresManualAnalysis = true; });
       } else if (kind === 'IndexStmt') {
+        if(node.nulls_not_distinct)stmt.requiredPgVersion=15;
         Object.assign(stmt, { type: 'CREATE_INDEX', indexName: node.idxname ? ident(node.idxname) : stmt.indexName,
           isUnique: !!node.unique, isConcurrent: !!node.concurrent, isPartial: !!node.whereClause,
           accessMethod: node.accessMethod, columns: (node.indexParams || []).map(p => p.IndexElem.name ? ident(p.IndexElem.name) : '(expression)') });
       } else if (kind === 'AlterTableStmt') {
+        if(node.relation?.inh===false)stmt.requiresManualAnalysis=true;
         const previous = stmt.subcommands || [];
+        const actions=rewrite.alterActions(raw,node.relation.location,stmt.sourceStart);
         stmt.type = 'ALTER_TABLE';
         stmt.subcommands = node.cmds.map((wrapped, i) => {
           const cmd = wrapped.AlterTableCmd;
-          const sub = { ...previous[i], table: stmt.table, line, raw: previous[i]?.raw || raw };
+          const sub = { ...previous[i], table: stmt.table, line, raw:actions.length===node.cmds.length?actions[i]:previous[i]?.raw||raw };
           const mapping = { AT_ColumnDefault: 'ALTER_COLUMN_DEFAULT', AT_SetNotNull: 'SET_NOT_NULL', AT_DropNotNull: 'DROP_NOT_NULL', AT_AlterColumnType: 'ALTER_COLUMN_TYPE', AT_DropColumn: 'DROP_COLUMN', AT_DropConstraint: 'DROP_CONSTRAINT', AT_ValidateConstraint: 'VALIDATE_CONSTRAINT', AT_SetRelOptions: 'SET_STORAGE_PARAM' };
           sub.subtype = mapping[cmd.subtype] || 'UNSUPPORTED';
           if (cmd.name) sub.column = ident(cmd.name);
           if (cmd.subtype === 'AT_AddColumn') {
+            if(cmd.missing_ok)stmt.requiresManualAnalysis=true;
             const col = cmd.def.ColumnDef;
             const constraints = (col.constraints || []).map(c => c.Constraint);
             const def = constraints.find(c => c.contype === 'CONSTR_DEFAULT');
             Object.assign(sub, { subtype: 'ADD_COLUMN', column: ident(col.colname), dataType: typeName(col.typeName), hasDefault: !!def,
-              isNotNull: constraints.some(c => c.contype === 'CONSTR_NOTNULL'), isTrulyVolatile: def ? volatileExpression(def.raw_expr) : false });
+              defaultVolatility: def ? expressionVolatility(def.raw_expr) : 'nonvolatile',
+              collation: col.collClause ? strings(col.collClause.collname).map(ident).join('.') : null,
+              isNotNull: constraints.some(c => c.contype === 'CONSTR_NOTNULL'), isTrulyVolatile: def ? expressionVolatility(def.raw_expr) === 'volatile' : false });
+            const typeParts=strings(col.typeName.names);
+            if(typeParts[0]!=='pg_catalog' && !(typeParts.length===1&&['text','uuid','json','jsonb','bytea','date','time','timetz','interval','inet','cidr','macaddr','xml','timestamptz','timestamp','varchar','bpchar','bool','int2','int4','int8','float4','float8','numeric'].includes(typeParts[0])))stmt.requiresManualAnalysis=true;
+            if(def && typeParts[0]!=='pg_catalog' && !(typeParts.length===1&&['text','uuid','json','jsonb','bytea','date','time','timetz','interval','inet','cidr','macaddr','xml','timestamptz','timestamp','varchar','bpchar','bool','int2','int4','int8','float4','float8','numeric'].includes(typeParts[0])) && sub.defaultVolatility!=='volatile')sub.defaultVolatility='unknown';
             sub.isVolatileDefault = !!def && (sub.isTrulyVolatile || !!sub.isVolatileDefault);
             sub.isPhysicalTableRewrite = sub.isTrulyVolatile;
             if (def) {
@@ -107,10 +124,13 @@ module.exports = {
           } else if (cmd.subtype === 'AT_AddConstraint') {
             const c = cmd.def.Constraint;
             sub.subtype = ({ CONSTR_FOREIGN: 'ADD_FOREIGN_KEY', CONSTR_UNIQUE: 'ADD_UNIQUE_CONSTRAINT', CONSTR_CHECK: 'ADD_CHECK_CONSTRAINT' })[c.contype] || 'UNSUPPORTED';
-            Object.assign(sub, { constraintName: c.conname ? ident(c.conname) : sub.constraintName,
+            Object.assign(sub, { constraintName: c.conname ? ident(c.conname) : null,
               columns: strings(c.fk_attrs || c.keys).map(ident), foreignTable: c.pktable ? relation(c.pktable) : undefined,
               foreignColumns: strings(c.pk_attrs).map(ident), isNotValid: !!c.skip_validation,
               usingIndex: c.indexname ? ident(c.indexname) : null, isUsingIndex: !!c.indexname });
+            Object.assign(sub,{nullsNotDistinct:!!c.nulls_not_distinct,deferrable:!!c.deferrable,initiallyDeferred:!!c.initdeferred,
+              including:strings(c.including).map(ident),tablespace:c.indexspace,uniqueOptionsUnsupported:!!c.options?.length});
+            if(c.nulls_not_distinct)stmt.requiredPgVersion=15;
             const check = c.raw_expr?.NullTest;
             if (c.contype === 'CONSTR_CHECK' && !c.skip_validation) stmt.requiresManualAnalysis = true;
             sub.validatedColumn = check?.nulltesttype === 'IS_NOT_NULL' && check.arg?.ColumnRef?.fields?.length === 1
@@ -126,6 +146,18 @@ module.exports = {
           return sub;
         });
         stmt.actions = stmt.subcommands;
+      } else if(kind==='DropStmt') {
+        const names=(node.objects||[]).map(object=>strings(object.List?.items).map(ident).join('.'));
+        if(node.removeType==='OBJECT_TABLE')Object.assign(stmt,{type:'DROP_TABLE',tables:names});
+        else if(node.removeType==='OBJECT_INDEX')Object.assign(stmt,{type:'DROP_INDEX',indexes:names,isConcurrent:!!node.concurrent});
+        else stmt.requiresManualAnalysis=true;
+      } else if(kind==='TruncateStmt') {
+        Object.assign(stmt,{type:'TRUNCATE_TABLE',tables:(node.relations||[]).map(r=>relation(r.RangeVar)),restartIdentity:!!node.restart_seqs,cascade:node.behavior==='DROP_CASCADE'});
+      } else if(kind==='RefreshMatViewStmt') {
+        Object.assign(stmt,{type:'REFRESH_MATVIEW',view:relation(node.relation),isConcurrent:!!node.concurrent,withNoData:!!node.skipData});
+        if(node.concurrent&&node.skipData)stmt.requiresManualAnalysis=true;
+      } else if(kind==='VacuumStmt') {
+        stmt.type='VACUUM';stmt.isFull=(node.options||[]).some(o=>o.DefElem?.defname==='full');
       } else if (kind === 'VariableSetStmt') {
         const arg = node.args?.[0]?.A_Const;
         Object.assign(stmt, { type: ['VAR_RESET', 'VAR_RESET_ALL'].includes(node.kind) ? 'RESET_VARIABLE' : 'SET_VARIABLE',

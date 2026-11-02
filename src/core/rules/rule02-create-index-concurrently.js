@@ -1,4 +1,5 @@
 const { LockLevel, Severity } = require('../types');
+const {concurrentIndex}=require('../sql-rewrite');
 
 module.exports = {
   id: 'LG-002',
@@ -29,6 +30,7 @@ module.exports = {
           indexName: stmt.indexName,
           columns: stmt.columns,
           line: stmt.line,
+          sourceStart: stmt.sourceStart,
           raw: stmt.raw,
           message: `Index '${stmt.indexName}' on table '${stmt.table}' is created without CONCURRENTLY. This takes a SHARE lock and BLOCKS ALL WRITES on production!`
         });
@@ -47,7 +49,7 @@ module.exports = {
       `-- Safe alternative: Build index concurrently without blocking writes`,
       `-- NOTE: Must run outside of a multi-statement BEGIN...COMMIT block`,
       violation.raw
-        ? violation.raw.replace(/^(CREATE\s+(?:UNIQUE\s+)?INDEX)\s+/i, '$1 CONCURRENTLY ').replace(/;\s*$/, '') + ';'
+        ? concurrentIndex(violation.raw)||'-- Index rewrite could not be established; review the original SQL manually.'
         : `CREATE INDEX CONCURRENTLY ${indexName} ON ${table} (${cols});`
     ].join('\n');
   }

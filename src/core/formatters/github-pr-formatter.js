@@ -7,6 +7,7 @@ class GitHubPrFormatter {
   static format(results) {
     const list = Array.isArray(results) ? results : [results];
     const md = [];
+    if(!list.length)return '<!-- lockguard-report -->\n## LockGuard\nNo SQL migration files were checked. This is not an approval of database changes.\n';
 
     let totalViolations = 0;
     let totalCritical = 0;
@@ -24,6 +25,7 @@ class GitHubPrFormatter {
     md.push('<!-- lockguard-report -->');
     md.push('## 🛡️ LockGuard: PostgreSQL Migration Safety Gatekeeper');
     md.push('');
+    for(const r of list)if(r.coverageComplete===false)md.push(`> ⚠️ **PARTIAL COVERAGE**: ${r.coverage?.disabledRuleIds?.length||0} disabled rule(s), ${r.coverage?.suppressedFindings?.length||0} suppressed finding(s). Do not treat this as a complete review.`);
 
     if (anyFailed) {
       md.push('> ❌ **MERGE BLOCKED**: Findings meet the configured failure threshold. Review the SQL, schema and transaction boundaries. Application impact and lock waiting have not been measured.');

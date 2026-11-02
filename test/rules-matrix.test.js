@@ -233,7 +233,7 @@ test('Matrix LG-007 - Positive: VACUUM statement inside migration', () => {
   assert.equal(v.severity, Severity.CRITICAL);
   assert.equal(v.line, 2);
   assert.ok(v.safeFix && v.safeFix.length > 0, 'Safe SQL Recipe must be non-empty');
-  assert.ok(v.safeFix.includes('Run maintenance operations outside'));
+  assert.ok(v.safeFix.includes('standalone maintenance job'));
 });
 
 test('Matrix LG-007 - Negative: Standard DDL without VACUUM does not trigger LG-007', () => {

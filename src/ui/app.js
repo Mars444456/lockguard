@@ -248,7 +248,7 @@ class LockGuardApp {
 
     // Simulate Webhook Check
     document.getElementById('btn-simulate-webhook').addEventListener('click', () => {
-      this.simulatePrWebhook();
+      this.fetchRuns();
     });
 
     // Create Key
@@ -553,7 +553,9 @@ class LockGuardApp {
     document.getElementById('analysis-details').classList.remove('hidden');
 
     const verdictBadge = document.getElementById('verdict-badge');
-    if (result.passed && result.violationsCount > 0) {
+    if(result.coverageComplete===false){
+      verdictBadge.className='verdict-pill warning';verdictBadge.textContent='Есть исключённые проверки';
+    } else if (result.passed && result.violationsCount > 0) {
       verdictBadge.className = 'verdict-pill warning';
       verdictBadge.textContent = `Замечания · ${result.violationsCount}`;
     } else if (result.passed) {
@@ -696,11 +698,12 @@ class LockGuardApp {
       if (!data.runs.length) tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Здесь появятся ваши проверки. Начните с редактора SQL.</td></tr>';
       data.runs.forEach(run => {
         const tr = document.createElement('tr');
-        const isPassed = run.status === 'PASSED';
+        const isPassed = run.status === 'PASSED' || run.status === 'WARNING';
+        const hasWarnings = run.coverageComplete===false || run.violationsCount>0;
         tr.innerHTML = `
           <td>
-            <span class="verdict-pill ${isPassed ? 'passed' : 'blocked'}">
-              ${isPassed ? 'Без нарушений' : 'Есть риски'}
+            <span class="verdict-pill ${isPassed ? hasWarnings?'warning':'passed' : 'blocked'}">
+              ${isPassed ? hasWarnings?'Есть замечания':'Без нарушений' : 'Есть риски'}
             </span>
           </td>
           <td>
@@ -767,26 +770,6 @@ class LockGuardApp {
       });
     } catch (err) {
       console.warn('Failed to fetch keys:', err);
-    }
-  }
-
-  async simulatePrWebhook() {
-    try {
-      const prNumber = Math.floor(Math.random() * 800) + 100;
-      const res = await apiFetch('/api/v1/github/webhook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prNumber,
-          branch: 'feat/dangerous-db-changes-' + prNumber
-        })
-      });
-
-      const data = await res.json();
-      this.showToast(`Тестовый PR #${prNumber} проверен: ${data.action.toUpperCase()}`);
-      await this.fetchRuns();
-    } catch (err) {
-      this.showToast('Ошибка тестового PR: ' + err.message);
     }
   }
 

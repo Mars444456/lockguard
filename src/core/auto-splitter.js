@@ -4,6 +4,8 @@
  * Supports targets: Raw SQL, Prisma, Drizzle, Alembic, and Django.
  */
 
+const rewrite = require('./sql-rewrite');
+const PgParser=require('./pg-parser');
 const { generatedName } = require('./sql-identifiers');
 class AutoSplitter {
   /**
@@ -12,11 +14,12 @@ class AutoSplitter {
    * @param {string} targetOrm 'sql' | 'prisma' | 'drizzle' | 'alembic' | 'django'
    */
   static generatePlan(analysis, targetOrm = 'sql') {
+    if(!['sql','prisma','drizzle','alembic','django'].includes(targetOrm))throw Object.assign(new Error('Unsupported migration format.'),{statusCode:400});
     const phases = [];
     const manualSteps = [];
     const violations = analysis.violations || [];
-    if (analysis.analysisComplete === false) {
-      throw new Error('Cannot generate migration phases from incomplete SQL analysis.');
+    if (analysis.analysisComplete === false || analysis.coverageComplete === false) {
+      throw Object.assign(new Error('Cannot generate migration phases from incomplete SQL analysis or excluded checks.'),{statusCode:422});
     }
 
     if (violations.length === 0) {
@@ -45,11 +48,15 @@ class AutoSplitter {
       switch (v.ruleId) {
         // 1. ADD COLUMN with volatile DEFAULT
         case 'LG-001': {
+          if(v.rewriteReason==='DEFAULT_VOLATILITY_UNKNOWN'){
+            manualSteps.push({ruleId:v.ruleId,table,column:v.column,checks:['Inspect function and cast volatility, column type constraints and historical default semantics in the target database. No equivalent staged rewrite is established.']});
+            break;
+          }
           const col = v.column || 'new_column';
           const check = generatedName('chk', table, col, 'not_null');
           const def = v.defaultValue || 'now()';
           phase1Statements.push(`-- Phase 1 (Deploy 1): Add column as nullable without default`);
-          phase1Statements.push(`ALTER TABLE ${table} ADD COLUMN ${col} ${v.dataType || 'TEXT'};`);
+          phase1Statements.push(`ALTER TABLE ${table} ADD COLUMN ${col} ${v.dataType || 'TEXT'}${v.collation ? ' COLLATE '+v.collation : ''};`);
           phase1Statements.push(`ALTER TABLE ${table} ALTER COLUMN ${col} SET DEFAULT ${def};`);
 
           phase2Operations.push(`-- Phase 2 (Async Background Worker): Backfill historical rows in small batches`);
@@ -74,32 +81,19 @@ class AutoSplitter {
 
         // 2. CREATE INDEX without CONCURRENTLY
         case 'LG-002': {
-          const idxName = v.indexName || `idx_${table}_col`;
-          const cols = (v.columns && v.columns.length > 0) ? v.columns.join(', ') : 'column_name';
-          phase1Statements.push(`-- Phase 1: Build index concurrently (must run outside multi-statement transaction)`);
-          phase1Statements.push(v.raw
-            ? v.raw.replace(/^(CREATE\s+(?:UNIQUE\s+)?INDEX)\s+/i, '$1 CONCURRENTLY ').replace(/;\s*$/, '') + ';'
-            : `CREATE INDEX CONCURRENTLY ${idxName} ON ${table} (${cols});`);
+          const sql=v.raw ? rewrite.concurrentIndex(v.raw) : null;
+          if(sql)phase1Statements.push(sql);
+          else manualSteps.push({ruleId:v.ruleId,table,checks:['Review the original index definition; no equivalent rewrite was established.']});
           break;
         }
 
         // 3. Foreign Key without NOT VALID
         case 'LG-003': {
-          const constraint = v.constraintName || `fk_${table}_ref`;
-          const foreignTable = v.foreignTable || 'referenced_table';
-          const cols = (v.columns && v.columns.length > 0) ? v.columns : ['foreign_id'];
-          const colList = cols.join(', ');
-          const colSlug = cols.join('_').replace(/[^a-zA-Z0-9_]/g, '');
-
-          phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent cascade locks`);
-          phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
-          phase1Statements.push(`-- Phase 1 (Deploy 1): Attach FK with NOT VALID; acquisition and transaction holding still require review`);
-          phase1Statements.push(v.raw
-            ? `${/^ALTER\s+TABLE/i.test(v.raw) ? v.raw : `ALTER TABLE ${table} ${v.raw}`} NOT VALID;`
-            : `ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${colList}) REFERENCES ${foreignTable}${v.foreignColumns?.length ? `(${v.foreignColumns.join(', ')})` : ''} NOT VALID;`);
-
-          phase4Statements.push(`-- Phase 4 (Deploy 2): Validate existing rows (weak lock SHARE UPDATE EXCLUSIVE)`);
-          phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${constraint};`);
+          const sql=rewrite.foreignKey(v.raw,table);
+          if(sql && v.constraintName) {
+            phase1Statements.push(sql);
+            phase4Statements.push(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${v.constraintName};`);
+          } else manualSteps.push({ruleId:v.ruleId,table,checks:['Review the exact foreign-key definition and its generated constraint name before separating validation.']});
           break;
         }
 
@@ -113,25 +107,15 @@ class AutoSplitter {
 
         // 5. Direct UNIQUE constraint
         case 'LG-005': {
-          const constraint = v.constraintName || `uq_${table}_key`;
-          const indexName = `${constraint}_idx`;
-          const cols = (v.columns && v.columns.length > 0) ? v.columns.join(', ') : 'key_col';
-
-          phase1Statements.push(`-- Phase 1 (Deploy 1): Create unique index concurrently without blocking writes`);
-          phase1Statements.push(`CREATE UNIQUE INDEX CONCURRENTLY ${indexName} ON ${table} (${cols});`);
-
-          phase3Statements.push(`-- Phase 3 (Deploy 2): Attach constraint to pre-built index; review lock waits and transaction duration`);
-          phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${constraint} UNIQUE USING INDEX ${indexName};`);
+          const sql=rewrite.unique(v);
+          if(sql) {phase1Statements.push(sql.create);phase3Statements.push(sql.attach);}
+          else manualSteps.push({ruleId:v.ruleId,table,checks:['Review unique index options; an equivalent concurrent rewrite could not be established.']});
           break;
         }
 
         // 6. Direct DROP TABLE / COLUMN
         case 'LG-006': {
-          const col = v.column || 'col_to_drop';
-          phase1Statements.push(`-- Phase 1 (Deploy 1): Remove column from ORM schema / mark as @ignore`);
-          phase3Statements.push(`-- Phase 3 (Deploy 2 / Maintenance Window): Drop physically`);
-          phase3Statements.push(`-- lockguard-ignore: LG-006`);
-          phase3Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col};`);
+          manualSteps.push({ruleId:v.ruleId,table,kind:'destructive_change_review',checks:['Review the original DROP after all deployed application versions stop using the object.', 'Inventory dependencies and CASCADE effects; verify backups and recovery. No destructive SQL is generated.']});
           break;
         }
 
@@ -154,23 +138,22 @@ class AutoSplitter {
           const colList = cols.join(', ');
           const colSlug = cols.join('_').replace(/[^a-zA-Z0-9_]/g, '');
           phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent child table locks`);
-          phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
+          phase1Statements.push(`CREATE INDEX CONCURRENTLY ${generatedName('idx',table,...cols)} ON ${table} (${colList});`);
           break;
         }
 
         // 12. Truncate / Unconcurrent Matview
         case 'LG-012': {
-          if (v.matview) {
-            phase1Statements.push(`-- Phase 1: Concurrent Materialized View Refresh (requires unique index)`);
-            phase1Statements.push(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${v.matview};`);
-          } else {
-            phase2Operations.push(`-- Phase 2 (Async Batch): Purge data in small batches to avoid ACCESS EXCLUSIVE lock:`);
-            phase2Operations.push(`DELETE FROM ${table} WHERE ctid = ANY (ARRAY(SELECT ctid FROM ${table} LIMIT 10000));`);
-          }
+          if(v.operationType==='REFRESH_MATVIEW' && !v.withNoData) {
+            phase1Statements.push(`-- Verify that the view is populated and has an eligible UNIQUE index before execution.
+REFRESH MATERIALIZED VIEW CONCURRENTLY ${table};`);
+            manualSteps.push({ruleId:v.ruleId,table,checks:['Verify a populated view and a valid UNIQUE index on plain columns covering all rows.']});
+          } else manualSteps.push({ruleId:v.ruleId,table,kind:'data_removal_review',checks:[v.withNoData?'WITH NO DATA intentionally leaves the view unpopulated and cannot be combined with CONCURRENTLY. Review dependencies.':'Review the original TRUNCATE, triggers, foreign keys, CASCADE, identity and recovery. DELETE is not an equivalent replacement.']});
           break;
         }
 
         default:
+          manualSteps.push({ruleId:v.ruleId,table,kind:'execution_review',checks:[v.ruleId==='LG-010'?'Execute CONCURRENTLY outside an explicit or runner-created transaction, one statement per request on the same connection.':v.ruleId==='LG-008'?'Choose effective positive lock_timeout and statement_timeout before DDL. Review SET LOCAL, RESET and transaction boundaries in the complete original script.':'Review the original maintenance operation, runtime context and transaction boundaries.']});
           break;
       }
     }
@@ -218,7 +201,7 @@ class AutoSplitter {
       phases.push({
         phaseNumber: 4,
         title: 'Release 4: Validation & Final Cleanup',
-        description: 'Validate constraints under weak SHARE UPDATE EXCLUSIVE locks and drop deprecated shadow columns.',
+        description: 'Validate constraints and review the locks needed by final catalog changes.',
         sql: wrapDdlPhase(phase4Statements)
       });
     }
@@ -226,6 +209,7 @@ class AutoSplitter {
     // Format for specific ORMs
     for (const phase of phases) {
       phase.requiresReview = true;
+      phase.executionMode = 'one_statement_per_request_same_connection';
       phase.mustRunOutsideTransaction = /\bCONCURRENTLY\b/.test(phase.sql);
       phase.dependsOn = phases.filter(p => p.phaseNumber < phase.phaseNumber).map(p => p.phaseNumber);
       phase.preconditions = phase.phaseNumber > 2
@@ -328,7 +312,7 @@ class AutoSplitter {
     return phases.map(p => ({
       phaseNumber: p.phaseNumber,
       title: p.title,
-      instruction: `Run via: npx prisma db execute --stdin\nOr place in prisma/migrations/phase_${p.phaseNumber}/migration.sql`,
+      instruction: 'Review migration ordering. Execute concurrent DDL one statement per request on the same connection without a transaction wrapper; verify the Prisma runner behavior before deployment.',
       code: p.sql
     }));
   }
@@ -337,7 +321,7 @@ class AutoSplitter {
     return phases.map(p => ({
       phaseNumber: p.phaseNumber,
       title: p.title,
-      instruction: `Place in drizzle/000${p.phaseNumber}_phase.sql`,
+      instruction: 'Integrate into your migration chain after review. Concurrent DDL requires a non-transactional runner and one statement per request on the same connection.',
       code: p.sql
     }));
   }
@@ -347,7 +331,7 @@ class AutoSplitter {
       phaseNumber: p.phaseNumber,
       title: p.title,
       instruction: `# Django Migration Phase ${p.phaseNumber} (migrations.RunSQL)`,
-      code: `# Generated by LockGuard Auto-Splitter for Django (Safe Phase ${p.phaseNumber})\nfrom django.db import migrations\n\nclass Migration(migrations.Migration):\n    dependencies = []\n    operations = [\n        migrations.RunSQL(\n            sql="""${p.sql.replace(/"""/g, '\\"\\"\\"')}""",\n            reverse_sql=""\n        ),\n    ]`
+      code: '# Review dependencies and add this class to your migration chain. No reverse operation is inferred.\nfrom django.db import migrations\n\nclass Migration(migrations.Migration):\n    atomic = '+(p.mustRunOutsideTransaction?'False':'True')+'\n    dependencies = []\n    operations = [\n'+PgParser.parse(p.sql).map(stmt=>'        migrations.RunSQL('+JSON.stringify(stmt.raw+';')+'),').join('\n')+'\n    ]'
     }));
   }
 
@@ -356,7 +340,7 @@ class AutoSplitter {
       phaseNumber: p.phaseNumber,
       title: p.title,
       instruction: `# Alembic / SQLAlchemy Phase ${p.phaseNumber} (op.execute)`,
-      code: `"""Zero-downtime migration phase ${p.phaseNumber}"""\nfrom alembic import op\nimport sqlalchemy as sa\n\ndef upgrade():\n    op.execute("""${p.sql.replace(/"""/g, '\\"\\"\\"')}""")\n\ndef downgrade():\n    pass`
+      code: '# Integrate into the reviewed Alembic revision chain. Autocommit commits any previous transaction.\nfrom alembic import op\n\ndef upgrade():\n'+(p.mustRunOutsideTransaction?'    with op.get_context().autocommit_block():\n':'')+PgParser.parse(p.sql).map(stmt=>(p.mustRunOutsideTransaction?'        ':'    ')+'op.execute('+JSON.stringify(stmt.raw+';')+')').join('\n')+'\n\ndef downgrade():\n    raise NotImplementedError("No automatic reversal; follow the reviewed recovery plan.")'
     }));
   }
 }

@@ -6,7 +6,7 @@ module.exports = {
   name: 'VACUUM or autovacuum storage parameter changes inside migration transaction',
   severity: Severity.HIGH,
   lockLevel: LockLevel.SHARE_UPDATE_EXCLUSIVE,
-  description: 'VACUUM cannot run inside a multi-statement transaction block. Modifying autovacuum settings inside a transaction can cause deadlock or transaction failure.',
+  description: 'VACUUM cannot run inside an explicit transaction block. VACUUM FULL requires ACCESS EXCLUSIVE. Autovacuum settings need workload review and can be changed in a transaction.',
   
   check(astStatements) {
     const violations = [];
@@ -25,14 +25,16 @@ module.exports = {
           ruleId: this.id,
           ruleCode: this.code,
           ruleName: this.name,
-          severity: Severity.CRITICAL,
+          severity: stmt.isFull || inTransaction ? Severity.CRITICAL : Severity.MEDIUM,
+          operationType: 'VACUUM',
           lockLevel: stmt.isFull ? LockLevel.ACCESS_EXCLUSIVE : LockLevel.SHARE_UPDATE_EXCLUSIVE,
           table: 'all',
           line: stmt.line,
+          sourceStart: stmt.sourceStart,
           raw: stmt.raw,
           message: stmt.isFull 
             ? `VACUUM FULL locks tables completely (ACCESS EXCLUSIVE) and cannot be executed in standard migrations!`
-            : `VACUUM statement found in migration script. VACUUM cannot run within an explicit transaction block!`
+            : inTransaction ? 'VACUUM inside an explicit transaction block will fail.' : 'VACUUM is outside an explicit transaction. Verify that the migration runner does not wrap it in a transaction and review maintenance load.'
         });
       }
 
@@ -47,8 +49,10 @@ module.exports = {
               lockLevel: LockLevel.SHARE_UPDATE_EXCLUSIVE,
               table: sub.table,
               line: stmt.line,
+              sourceStart: stmt.sourceStart,
               raw: sub.raw,
-              message: `Changing autovacuum settings (${sub.params}) on table '${sub.table}' inside migration script. Run outside migration transactions.`
+              operationType: 'AUTOVACUUM_SETTINGS',
+              message: `Changing autovacuum settings on '${sub.table}' needs workload review. This ALTER is permitted inside a transaction; lock acquisition and transaction duration still matter.`
             });
           }
         }
@@ -59,11 +63,9 @@ module.exports = {
   },
 
   generateSafeFix(violation) {
-    const table = violation.table || 'your_table';
     return [
-      `-- Run maintenance operations outside transactional migration scripts:`,
-      `-- e.g. run via standalone DBA job or pg_cron:`,
-      `ALTER TABLE ${table} SET (autovacuum_vacuum_scale_factor = 0.05);`
+      violation.operationType === 'VACUUM' ? '-- Run the original VACUUM in a standalone maintenance job without an explicit transaction.' : '-- Review the original autovacuum settings against observed vacuum progress, dead tuples and I/O load.',
+      '-- No workload-specific parameter values can be inferred from this SQL alone.'
     ].join('\n');
   }
 };

@@ -89,7 +89,7 @@ test('The initial demo waits for an explicit check and keeps simulated metrics s
   assert.equal(app.lastAnalysis, null);
   assert.equal(document.getElementById('analysis-details').classList.contains('hidden'), true);
   assert.equal(document.querySelectorAll('.primary-metrics .metric-tile').length, 2);
-  assert.equal(document.getElementById('simulation-estimates').hasAttribute('open'), false);
+  assert.equal(document.getElementById('simulation-estimates'),null);
   await app.runAnalysis();
   assert.ok(document.getElementById('res-affected-tables').textContent.includes('accounts'));
   assert.equal(document.getElementById('btn-analyze').disabled, false);
@@ -100,12 +100,11 @@ test('DML displays its actual inferred table lock and does not promise zero down
   app.sqlInput.value = 'UPDATE orders SET id=1;';
   await app.runAnalysis();
   assert.equal(document.getElementById('res-max-lock').textContent, 'ROW EXCLUSIVE');
-  assert.equal(document.getElementById('simulation-estimates').hidden, true);
-  assert.equal(document.getElementById('res-downtime').textContent, '—');
+  assert.equal(document.getElementById('simulation-estimates'),null);
   await app.exportPdfReport();
   const printed = parseHTML(report()).document;
   assert.ok(printed.body.textContent.includes('ROW EXCLUSIVE'));
-  assert.ok(printed.body.textContent.includes('Не оценено'));
+  assert.ok(printed.body.textContent.includes('не измерены'));
   assert.ok(!printed.body.textContent.includes('Расчетный простой базы: 0.0'));
 });
 

@@ -53,6 +53,7 @@ module.exports = {
               column: sub.column,
               newType: sub.newType,
               line: sub.line || stmt.line,
+              sourceStart: stmt.sourceStart,
               raw: sub.raw,
               rewrite, sourceType, targetType:sub.targetType,
               evidence:{source:sourceType ? baseline ? 'imported_schema_and_sql' : 'earlier_sql' : 'sql_only', certainty:rewrite === 'unknown' ? 'requires_database_review' : baseline ? 'conditional_on_snapshot' : 'conditional_on_execution',

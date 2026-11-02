@@ -40,9 +40,8 @@ test('ContextAnalyzer - enriches violations with table rows, size, and estimated
 
   assert.equal(enriched.hasTableMetrics, true);
   assert.equal(enriched.hasLiveContext, false);
-  assert.ok(enriched.maxEstimatedDowntimeSec > 30);
-  assert.ok(enriched.violations[0].contextualMessage.includes('14.2M rows'));
-  assert.ok(enriched.violations[0].contextualMessage.includes('8.2 GB'));
+  assert.equal(enriched.maxEstimatedDowntimeSec,null);
+  assert.deepEqual(enriched.violations[0].tableStats,{rowCount:14200000,sizeMb:8400});
 });
 
 test('CascadeGraph - detects unindexed foreign key hazards on parent table modification', () => {
@@ -73,18 +72,11 @@ test('PostDeployWatchdog - identifies broken invalid indexes from failed concurr
   const report = PostDeployWatchdog.evaluate(telemetry);
   assert.equal(report.healthy, false);
   assert.equal(report.totalInvalidCount, 1);
-  assert.ok(report.invalidIndexes[0].safeFix.includes('REINDEX INDEX CONCURRENTLY'));
+  assert.match(report.invalidIndexes[0].safeFix,/No DROP is generated/);
 });
 
-test('ShadowReplaySimulator - measures simulated lock latency and blocked requests', () => {
-  const sql = "CREATE INDEX idx_orders_email ON orders (email);";
-  const engine = new RuleEngine();
-  const analysis = engine.analyze(sql);
-
-  const sim = ShadowReplaySimulator.simulate(analysis, { simulatedRows: 50000, concurrentRps: 200 });
-  assert.ok(sim.totalLockWaitContentionMs > 0);
-  assert.ok(sim.totalBlockedQueriesEstimated > 0);
-  assert.equal(sim.tableSimulations[0].table, 'orders');
+test('Shadow replay refuses to report an unmeasured benchmark',()=>{
+  assert.throws(()=>ShadowReplaySimulator.simulate(new RuleEngine().analyze('CREATE INDEX ix ON orders(id);')),error=>error.statusCode===410);
 });
 
 // ==============================================================================
@@ -119,12 +111,12 @@ test('AutoSplitter - formats multi-phase migrations for Prisma, Drizzle, Django,
   const prismaPlan = AutoSplitter.generatePlan(violationAnalysis, 'prisma');
   assert.equal(prismaPlan.targetOrm, 'prisma');
   assert.ok(Array.isArray(prismaPlan.ormSnippets));
-  assert.ok(prismaPlan.ormSnippets[0].instruction.includes('prisma'));
+  assert.ok(prismaPlan.ormSnippets[0].instruction.includes('Prisma'));
 
   // Drizzle
   const drizzlePlan = AutoSplitter.generatePlan(violationAnalysis, 'drizzle');
   assert.equal(drizzlePlan.targetOrm, 'drizzle');
-  assert.ok(drizzlePlan.ormSnippets[0].instruction.includes('drizzle'));
+  assert.ok(drizzlePlan.ormSnippets[0].instruction.includes('migration chain'));
 
   // Django
   const djangoPlan = AutoSplitter.generatePlan(violationAnalysis, 'django');
@@ -142,8 +134,8 @@ test('AutoSplitter - formats multi-phase migrations for Prisma, Drizzle, Django,
 test('AutoSplitter - handles LG-002, LG-003, LG-004, LG-005, LG-006 anti-patterns in phased plan', () => {
   const multiViolationAnalysis = {
     violations: [
-      { ruleId: 'LG-002', table: 'posts', indexName: 'idx_posts_author', columns: ['author_id'] },
-      { ruleId: 'LG-003', table: 'posts', constraintName: 'fk_posts_author', foreignTable: 'authors', columns: ['author_id'] },
+      { ruleId: 'LG-002', table: 'posts', indexName: 'idx_posts_author', columns: ['author_id'],raw:'CREATE INDEX idx_posts_author ON posts(author_id)' },
+      { ruleId: 'LG-003', table: 'posts', constraintName: 'fk_posts_author', foreignTable: 'authors', columns: ['author_id'],raw:'ADD CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES authors' },
       { ruleId: 'LG-004', table: 'users', column: 'points', newType: 'BIGINT' },
       { ruleId: 'LG-005', table: 'users', constraintName: 'uq_users_username', columns: ['username'] },
       { ruleId: 'LG-006', table: 'users', column: 'old_secret' }
@@ -156,13 +148,14 @@ test('AutoSplitter - handles LG-002, LG-003, LG-004, LG-005, LG-006 anti-pattern
 
   const p1Sql = plan.phases.find(p => p.phaseNumber === 1).sql;
   assert.ok(p1Sql.includes('CREATE INDEX CONCURRENTLY idx_posts_author'), 'LG-002 handled in Phase 1');
-  assert.ok(p1Sql.includes('ADD CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES authors NOT VALID'), 'LG-003 uses parent primary key without assuming its column name');
+  assert.ok(/ADD CONSTRAINT fk_posts_author FOREIGN KEY \(author_id\) REFERENCES authors\s+NOT VALID/.test(p1Sql), 'LG-003 uses parent primary key without assuming its column name');
   assert.ok(plan.manualSteps.some(s=>s.ruleId==='LG-004'), 'Type changes need dependency review before generating swaps');
   assert.ok(p1Sql.includes('CREATE UNIQUE INDEX CONCURRENTLY uq_users_username_idx'), 'LG-005 concurrent unique index in Phase 1');
 
   const p3Sql = plan.phases.find(p => p.phaseNumber === 3).sql;
   assert.ok(p3Sql.includes('UNIQUE USING INDEX uq_users_username_idx'), 'LG-005 USING INDEX in Phase 3');
-  assert.ok(p3Sql.includes('ALTER TABLE users DROP COLUMN IF EXISTS old_secret'), 'LG-006 DROP COLUMN in Phase 3');
+  assert.ok(plan.manualSteps.some(step=>step.ruleId==='LG-006'));
+  assert.doesNotMatch(p3Sql,/DROP COLUMN/);
 });
 
 // ==============================================================================
@@ -173,7 +166,7 @@ test('PostDeployWatchdog.inspectProduction - returns healthy: true and positive 
   assert.equal(resultClean.healthy, true);
   assert.equal(resultClean.hasBrokenIndexes, false);
   assert.equal(resultClean.totalInvalidCount, 0);
-  assert.ok(resultClean.message.includes('100% healthy'));
+  assert.match(resultClean.message,/does not establish overall database health/);
 
   const validTelemetry = [
     { index_name: 'idx_users_email', table_name: 'users', is_valid: true, index_size: '12 MB' }
@@ -193,9 +186,9 @@ test('PostDeployWatchdog.inspectProduction - returns healthy: false, hasBrokenIn
   assert.equal(result.healthy, false);
   assert.equal(result.hasBrokenIndexes, true);
   assert.equal(result.totalInvalidCount, 2);
-  assert.ok(result.message.includes('Detected 2 INVALID/BROKEN index(es)'));
-  assert.ok(result.message.includes('REINDEX INDEX CONCURRENTLY idx_orders_status'));
-  assert.ok(result.message.includes('DROP INDEX CONCURRENTLY IF EXISTS idx_payments_ref'));
+  assert.match(result.message,/Detected 2 INVALID index/);
+  assert.match(result.message,/Inspect the qualified index/);
+  assert.doesNotMatch(result.message,/DROP INDEX/);
 });
 
 test('PostDeployWatchdog.getDiagnosticQuery - returns diagnostic SQL checking pg_index.indisvalid', () => {
@@ -208,24 +201,7 @@ test('PostDeployWatchdog.getDiagnosticQuery - returns diagnostic SQL checking pg
 // ==============================================================================
 // ShadowReplaySimulator outageSeverity calculation tests
 // ==============================================================================
-test('ShadowReplaySimulator - calculates outageSeverity accurately: NONE, MODERATE, HIGH, CATASTROPHIC', () => {
-  const engine = new RuleEngine();
 
-  // 1. Safe migration: contention 0 -> NONE
-  const safeAnalysis = engine.analyze("SET lock_timeout = '3s'; CREATE INDEX CONCURRENTLY idx_users ON users(id);");
-  const simNone = ShadowReplaySimulator.simulate(safeAnalysis, { simulatedRows: 1000, concurrentRps: 10 });
-  assert.equal(simNone.outageSeverity, 'NONE');
-
-  // 2. Heavy non-concurrent index: large database -> CATASTROPHIC
-  const heavyAnalysis = engine.analyze("CREATE INDEX idx_orders_user ON orders(user_id);");
-  const simCatastrophic = ShadowReplaySimulator.simulate(heavyAnalysis, { simulatedRows: 10000000, concurrentRps: 500 });
-  assert.equal(simCatastrophic.outageSeverity, 'CATASTROPHIC');
-
-  // 3. Medium load simulation -> verifies MODERATE or HIGH severity thresholds
-  const mediumAnalysis = engine.analyze("CREATE INDEX idx_orders_user ON orders(user_id);");
-  const simMedium = ShadowReplaySimulator.simulate(mediumAnalysis, { simulatedRows: 50000, concurrentRps: 100 });
-  assert.ok(['MODERATE', 'HIGH', 'CATASTROPHIC'].includes(simMedium.outageSeverity));
-});
 
 test('RuleEngine - CascadeGraph activates and records foreignTable in affectedTables', () => {
   const engine = new RuleEngine();

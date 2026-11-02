@@ -1,4 +1,5 @@
 const { LockLevel, Severity } = require('../types');
+const {foreignKey}=require('../sql-rewrite');
 
 module.exports = {
   id: 'LG-003',
@@ -33,8 +34,9 @@ module.exports = {
               columns: sub.columns,
               foreignColumns: sub.foreignColumns,
               line: sub.line || stmt.line,
+              sourceStart: stmt.sourceStart,
               raw: sub.raw,
-              message: `Foreign Key '${sub.constraintName}' on '${sub.table}' referencing '${sub.foreignTable}' lacks 'NOT VALID'. Validation holds SHARE ROW EXCLUSIVE on both tables and can block concurrent writes; ordinary SELECT remains compatible.`
+              message: `Foreign Key '${sub.constraintName || '(database-assigned name)'}' on '${sub.table}' referencing '${sub.foreignTable}' lacks 'NOT VALID'. Validation holds SHARE ROW EXCLUSIVE on both tables and can block concurrent writes; ordinary SELECT remains compatible.`
             });
           }
         }
@@ -45,6 +47,7 @@ module.exports = {
   },
 
   generateSafeFix(violation) {
+    if(!violation.raw||!violation.constraintName)return '-- Review the exact foreign-key definition and database-generated constraint name before splitting validation. No guessed SQL is generated.';
     const table = violation.table || 'your_table';
     const constraint = violation.constraintName || 'fk_' + table;
     const foreignTable = violation.foreignTable || 'target_table';
@@ -53,7 +56,7 @@ module.exports = {
     return [
       `-- Step 1: Add foreign key with NOT VALID (skips the initial scan; lock acquisition can still wait)`,
       violation.raw
-        ? `${/^ALTER\s+TABLE/i.test(violation.raw) ? violation.raw : `ALTER TABLE ${table} ${violation.raw}`} NOT VALID;`
+        ? foreignKey(violation.raw,table)||'-- Foreign-key rewrite requires manual review; no replacement statement was generated.'
         : `ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${cols}) REFERENCES ${foreignTable}${violation.foreignColumns?.length ? `(${violation.foreignColumns.join(', ')})` : ''} NOT VALID;`,
       ``,
       `-- Step 2: Validate existing rows in a separate statement (acquires only SHARE UPDATE EXCLUSIVE - writes proceed!)`,

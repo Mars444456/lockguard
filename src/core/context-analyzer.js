@@ -1,249 +1,42 @@
-/**
- * LockGuard Context-Aware Metadata Analyzer
- * Evaluates live/replica table metrics (row counts, sizes, Postgres versions)
- * to produce illustrative estimates, without measuring execution or lock waits.
- */
-
+// Table metadata provides context, not a calibrated execution-time forecast.
 class ContextAnalyzer {
-  /**
-   * Enriches an analysis result with real-world DB context.
-   * @param {object} analysis AST analysis result from RuleEngine
-   * @param {object} dbContext Table metadata { tables: { table: { rowCount, sizeMb } }, demoMode: boolean, pgVersion }
-   */
-  static enrich(analysis, dbContext = {}) {
-    const enrichedViolations = [];
-    let maxEstimatedDowntimeSec = 0;
-
-    const defaultStats = {
-      orders: { rowCount: 14200000, sizeMb: 8400 },
-      transactions: { rowCount: 28500000, sizeMb: 16200 },
-      users: { rowCount: 4500000, sizeMb: 2100 },
-      accounts: { rowCount: 3200000, sizeMb: 1800 },
-      order_items: { rowCount: 42000000, sizeMb: 19500 },
-      payments: { rowCount: 8900000, sizeMb: 4300 }
-    };
-
-    const providedTables = dbContext.tables || {};
-    const useDemoStats = !!dbContext.demoMode;
-
-    for (const v of analysis.violations) {
-      const tableName = v.table || 'default';
-      let stats = providedTables[tableName];
-
-      // Only use demo fallback stats when explicitly requested by demo/playground mode
-      if (!stats && useDemoStats) {
-        stats = defaultStats[tableName] || { rowCount: 100000, sizeMb: 50 };
-      }
-
-      if (!stats) {
-        stats = { rowCount: 0, sizeMb: 0 };
-      }
-
-      const lockDuration = this.calculateLockDuration(v, stats, dbContext.pgVersion || 16);
-      if (lockDuration.seconds > maxEstimatedDowntimeSec) {
-        maxEstimatedDowntimeSec = lockDuration.seconds;
-      }
-
-      const contextualMessage = this.generateContextualRiskMessage(v, stats, lockDuration);
-
-      enrichedViolations.push({
-        ...v,
-        tableStats: stats,
-        estimatedLockDurationSec: lockDuration.seconds,
-        estimatedDowntimeFormatted: lockDuration.formatted,
-        downtimeRiskLevel: lockDuration.riskLevel,
-        contextualMessage
-      });
+  static validateStats(input){
+    if(!input||typeof input!=='object'||Array.isArray(input))throw new TypeError('Table statistics must be an object keyed by SQL table name.');
+    const result=Object.create(null);
+    for(const [table,stats] of Object.entries(input)){
+      if(!stats||typeof stats!=='object'||Array.isArray(stats))throw new TypeError('Invalid table statistics.');
+      const rowCount=stats.rowCount??stats.row_count??stats.rows??null,sizeMb=stats.sizeMb??stats.size_mb??stats.size??null;
+      if([rowCount,sizeMb].some(n=>n!==null&&(typeof n!=='number'||!Number.isFinite(n)||n<0)))throw new TypeError('Statistics must be non-negative numbers or null (unknown).');
+      result[table]={rowCount,sizeMb};
     }
-
-    const hasAnyStats = analysis.affectedTables.some(t => providedTables[t] || (useDemoStats && defaultStats[t]));
-
-    return {
-      ...analysis,
-      violations: enrichedViolations,
-      hasLiveContext: hasAnyStats && dbContext.source === 'database' && !useDemoStats,
-      hasTableMetrics: hasAnyStats,
-      metricsSource: useDemoStats ? 'demo' : dbContext.source === 'database' ? 'database' : hasAnyStats ? 'provided' : 'unavailable',
-      measured: false,
-      maxEstimatedDowntimeSec,
-      maxEstimatedDowntimeFormatted: this.formatSeconds(maxEstimatedDowntimeSec),
-      contextSummary: hasAnyStats 
-        ? `Scenario using ${useDemoStats ? 'demonstration' : 'provided'} table metrics (not measured execution): ${analysis.affectedTables.map(t => {
-            const s = providedTables[t] || (useDemoStats && defaultStats[t]) || { rowCount: 0 };
-            return `${t} (${(s.rowCount / 1000000).toFixed(1)}M rows)`;
-          }).join(', ')}`
-        : 'Context analysis enabled without live metrics. Use --schema-stats=<file.json> or set DATABASE_URL to provide actual table sizes.'
-    };
+    return result;
   }
-
-  static calculateLockDuration(violation, stats, pgVersion = 16) {
-    if(violation.ruleId==='LG-004'&&violation.rewrite!=='required')return {seconds:0,formatted:'N/A',riskLevel:'UNKNOWN (RUNTIME LOCK WAITS)'};
-    const { rowCount = 0, sizeMb = 0 } = stats;
-    if (rowCount <= 0 && sizeMb <= 0) {
-      return {
-        seconds: 0,
-        formatted: 'N/A',
-        riskLevel: 'UNKNOWN (NO TABLE METRICS)'
-      };
-    }
-
-    let seconds = 0;
-
-    switch (violation.ruleId) {
-      // ADD COLUMN with volatile DEFAULT
-      case 'LG-001': {
-        seconds = Math.max(1, Math.round(rowCount / 150000) + Math.round(sizeMb / 300));
-        break;
-      }
-
-      // Non-concurrent CREATE INDEX
-      case 'LG-002': {
-        seconds = Math.max(2, Math.round(rowCount / 80000));
-        break;
-      }
-
-      // Foreign Key without NOT VALID
-      case 'LG-003': {
-        seconds = Math.max(1, Math.round(rowCount / 200000));
-        break;
-      }
-
-      // ALTER COLUMN TYPE rewrite
-      case 'LG-004': {
-        seconds = Math.max(2, Math.round(rowCount / 100000) * 1.5);
-        break;
-      }
-
-      // Direct UNIQUE constraint
-      case 'LG-005': {
-        seconds = Math.max(2, Math.round(rowCount / 90000));
-        break;
-      }
-
-      // Immediate DROP COLUMN / TABLE
-      case 'LG-006': {
-        seconds = 0.5;
-        break;
-      }
-
-      // Missing lock timeout
-      case 'LG-008': {
-        seconds = 15;
-        break;
-      }
-
-      // Unsafe SET NOT NULL
-      case 'LG-009': {
-        seconds = Math.max(2, Math.round(rowCount / 180000));
-        break;
-      }
-
-      // TRUNCATE / MATVIEW
-      case 'LG-012': {
-        seconds = Math.max(1, Math.round(rowCount / 250000));
-        break;
-      }
-
-      default:
-        seconds = 1;
-        break;
-    }
-
-    let riskLevel = 'LOW';
-    if (seconds > 30) riskLevel = 'CRITICAL (ESTIMATED HIGH CONTENTION)';
-    else if (seconds > 5) riskLevel = 'HIGH (SEVERE SPIKE)';
-    else if (seconds > 1) riskLevel = 'MEDIUM (LATENCY ELEVATED)';
-
-    return {
-      seconds: Math.round(seconds),
-      formatted: this.formatSeconds(seconds),
-      riskLevel
-    };
+  static enrich(analysis,dbContext={}){
+    const tables=this.validateStats(dbContext.tables||{});
+    const hasStats=analysis.affectedTables.some(table=>Object.hasOwn(tables,table));
+    return {...analysis,measured:false,hasTableMetrics:hasStats,hasLiveContext:hasStats&&dbContext.source==='database',
+      metricsSource:hasStats?(dbContext.source==='database'?'database':'provided'):'unavailable',
+      maxEstimatedDowntimeSec:null,maxEstimatedDowntimeFormatted:'Not measured',
+      contextSummary:hasStats?'Supplied table metadata only. Row counts may be estimates. Execution time and lock waits have not been measured.':'No table metadata was supplied. SQL was not executed; duration and lock waiting are unknown.',
+      violations:analysis.violations.map(v=>({...v,tableStats:Object.hasOwn(tables,v.table)?tables[v.table]:null,
+        estimatedLockDurationSec:null,estimatedDowntimeFormatted:null,downtimeRiskLevel:'UNKNOWN',
+        contextualMessage:`${v.table}: ${Object.hasOwn(tables,v.table)?'supplied table metadata attached':'table metrics unavailable'}. Execution time and lock waiting require measurement on a representative database.`}))};
   }
-
-  static generateContextualRiskMessage(violation, stats, lockDuration) {
-    if ((stats.rowCount || 0) <= 0 && (stats.sizeMb || 0) <= 0) {
-      return `Table '${violation.table}' live metrics unavailable. Operation will acquire ${violation.lockLevel} lock. Provide --schema-stats for estimated duration.`;
-    }
-
-    const rowsFormatted = (stats.rowCount >= 1000000) 
-      ? (stats.rowCount / 1000000).toFixed(1) + 'M rows'
-      : (stats.rowCount / 1000).toFixed(0) + 'k rows';
-
-    const sizeFormatted = (stats.sizeMb >= 1024)
-      ? (stats.sizeMb / 1024).toFixed(1) + ' GB'
-      : stats.sizeMb + ' MB';
-
-    return `Table '${violation.table}' contains ${rowsFormatted} (~${sizeFormatted}). ` +
-      `Model estimate: ~${lockDuration.formatted} with ${violation.lockLevel}; actual duration and waiting depend on workload and transaction boundaries. ` +
-      `Estimated contention: ${lockDuration.riskLevel}. This is not a measured lower bound.`;
-  }
-
-  static formatSeconds(sec) {
-    if (sec <= 0) return '0.0s';
-    if (sec < 1) return '< 1s';
-    if (sec < 60) return `${Math.round(sec)}s`;
-    const mins = Math.floor(sec / 60);
-    const rem = Math.round(sec % 60);
-    return `${mins}m ${rem}s`;
-  }
-
-  /**
-   * Retrieves table schema statistics from live PostgreSQL (via psql) or a local JSON file.
-   * @param {object} options { schemaStatsPath, useLiveDb, databaseUrl }
-   * @returns {object} { [tableName]: { rowCount: number, sizeMb: number } }
-   */
-  static fetchSchemaStats(options = {}) {
-    const fs = require('fs');
-    const path = require('path');
-
-    if (options.schemaStatsPath) {
-      const resolved = path.resolve(process.cwd(), options.schemaStatsPath);
-      if (fs.existsSync(resolved)) {
-        try {
-          const content = fs.readFileSync(resolved, 'utf8');
-          const parsed = JSON.parse(content);
-          const normalized = {};
-          for (const [key, val] of Object.entries(parsed)) {
-            normalized[key.toLowerCase()] = {
-              rowCount: val.rowCount || val.row_count || val.rows || 0,
-              sizeMb: val.sizeMb || val.size_mb || val.size || 0
-            };
-          }
-          return normalized;
-        } catch (err) {
-          console.warn(`⚠️ Warning: Failed to parse schema stats from ${options.schemaStatsPath}: ${err.message}`);
-        }
-      }
-    }
-
-    const dbUrl = options.databaseUrl || process.env.DATABASE_URL;
-    if (options.useLiveDb && dbUrl) {
-      try {
-        const { execFileSync } = require('child_process');
-        const sql = `SELECT c.relname, c.reltuples::bigint, pg_total_relation_size(c.oid) / (1024*1024) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r';`;
-        const output = execFileSync('psql', ['-X', '-w', '-d', dbUrl, '-t', '-A', '-F', ',', '-c', sql], {
-          encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'pipe']
-        });
-        const stats = {};
-        for (const line of output.trim().split('\n')) {
-          if (!line.trim()) continue;
-          const [table, rows, sizeMb] = line.split(',');
-          if (table) {
-            stats[table.trim().toLowerCase()] = {
-              rowCount: Math.max(0, parseInt(rows, 10) || 0),
-              sizeMb: Math.max(0, parseInt(sizeMb, 10) || 0)
-            };
-          }
-        }
-        return stats;
-      } catch (err) {
-        // Live psql query failed; fall through to empty stats
-      }
-    }
-
-    return {};
+  static fetchSchemaStats(options={}){
+    if(options.schemaStatsPath)return this.validateStats(JSON.parse(require('node:fs').readFileSync(require('node:path').resolve(options.schemaStatsPath),'utf8')));
+    if(!options.useLiveDb)return {};
+    const dbUrl=options.databaseUrl||process.env.DATABASE_URL;
+    if(!dbUrl)throw new Error('Set DATABASE_URL or provide --schema-stats; metadata was not retrieved.');
+    try{
+      const sql=`SELECT COALESCE(json_object_agg(table_name,json_build_object('rowCount',row_count,'sizeMb',size_mb)),'{}'::json) FROM (
+        SELECT CASE WHEN n.nspname='public' THEN quote_ident(c.relname) ELSE format('%I.%I',n.nspname,c.relname) END AS table_name,
+        CASE WHEN c.reltuples<0 THEN NULL ELSE c.reltuples::bigint END AS row_count,
+        pg_total_relation_size(c.oid)::numeric/(1024*1024) AS size_mb
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE c.relkind IN ('r','m') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%') s`;
+      const raw=require('node:child_process').execFileSync('psql',['-X','-w','--set=ON_ERROR_STOP=1','-d',dbUrl,'-t','-A','-c',sql],{encoding:'utf8',timeout:15000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','ignore']});
+      return this.validateStats(JSON.parse(raw));
+    }catch{throw new Error('Table metadata was not retrieved: psql connection, query or JSON decoding failed.');}
   }
 }
-
-module.exports = ContextAnalyzer;
+module.exports=ContextAnalyzer;

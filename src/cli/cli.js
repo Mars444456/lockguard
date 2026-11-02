@@ -204,7 +204,7 @@ COMMANDS:
   split         Auto-Splitter: Deconstruct monolithic migration into zero-downtime multi-phase releases
   install-hook  Install Git pre-commit hook to catch locks before pushing to GitHub
   watchdog      Post-deploy watchdog: Detect invalid/broken indexes from failed CONCURRENTLY runs
-  simulate      Shadow replay: Simulate concurrent query traffic and measure lock latency
+  simulate      Removed: use check and measure runtime on a representative database
   rules         Display the catalog of Top-12 fatal PostgreSQL lock rules
   action        Generate GitHub Action CI workflow (.github/workflows/lockguard.yml) in 1 second
   init          Scaffold GitHub Action workflow and configuration
@@ -574,35 +574,15 @@ jobs:
 
   static handleWatchdogCommand(args) {
     console.log(`🛡️  LockGuard Post-Deploy Watchdog starting...`);
-    const status = PostDeployWatchdog.inspectProduction();
+    const input=args.files[0];
+    const status = PostDeployWatchdog.inspectProduction(input ? JSON.parse(fs.readFileSync(input,'utf8')) : undefined);
     console.log(status.message);
     return status.hasBrokenIndexes ? 1 : 0;
   }
 
-  static handleSimulateCommand(args) {
-    const targetFile = args.files[0];
-    if (!targetFile || !fs.existsSync(targetFile)) {
-      console.error('Please specify a valid migration file: lockguard simulate <file.sql>');
-      return 1;
-    }
-
-    const sql = fs.readFileSync(targetFile, 'utf8');
-    const engine = new RuleEngine();
-    const analysis = engine.analyze(sql, { filename: targetFile });
-
-    const sim = ShadowReplaySimulator.simulate(analysis, { simulatedRows: 14200000, concurrentRps: 250 });
-
-    console.log(`\n========================================================================`);
-    console.log(`  🛡️  LockGuard Shadow Replay Simulation`);
-    console.log(`========================================================================\n`);
-    console.log(`Simulated Database Size: 14,200,000 rows (~8.4 GB)`);
-    console.log(`Concurrent Traffic: 250 RPS\n`);
-    console.log('Illustrative scenario only. SQL is not executed; actual downtime and lock waits are unknown.');
-    console.log(`Modeled operation cost: ${(sim.totalLockWaitContentionMs / 1000).toFixed(2)} seconds`);
-    console.log(`Estimated Blocked Queries: ~${sim.totalBlockedQueriesEstimated.toLocaleString()} requests`);
-    console.log(`Scenario impact: ${sim.outageSeverity}\n`);
-
-    return sim.outageSeverity === 'CATASTROPHIC' ? 1 : 0;
+  static handleSimulateCommand() {
+    console.error('Uncalibrated simulation has been removed. Use lockguard check; measure runtime and lock waiting on a representative database.');
+    return 1;
   }
 }
 

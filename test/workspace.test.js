@@ -28,7 +28,11 @@ test('Invites are bound to email, stored as hashes, single use and do not replac
 
 test('Review cards keep an immutable source and finding snapshot, scoped to their organization',()=>{
   const sql="SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY ix ON customers(id);";
-  const run=store.addRun({sqlHash:digest(sql),findingsVersion:1,analysisComplete:true,findings:[],schemaRevision:'abc',pgVersion:17});
+  const run=store.addRun({sqlHash:digest(sql),findingsVersion:1,analysisComplete:true,coverageComplete:true,findings:[],schemaRevision:'abc',pgVersion:17});
+  const partial=store.addRun({findingsVersion:1,analysisComplete:true,coverageComplete:false,findings:[]});
+  assert.throws(()=>service.createReview(owner,{title:'Excluded checks',runId:partial.id}),/полная проверка/);
+  const old=store.addRun({findingsVersion:1,analysisComplete:true,findings:[]});
+  assert.throws(()=>service.createReview(owner,{title:'Unknown coverage',runId:old.id}),/полная проверка/);
   assert.throws(()=>service.createReview(owner,{title:'wrong SQL',runId:run.id,sql:'SELECT 1;'}));
   review=service.createReview(owner,{title:'Customer migration',runId:run.id,sql});
   assert.equal(review.sql,sql);assert.equal(review.run.schemaRevision,'abc');
@@ -52,7 +56,7 @@ test('Approval requires independent review and attestations; stale updates and e
 });
 
 test('High findings require reasoned, time-limited waivers; removal immediately revokes workspace access',()=>{
-  const run=store.addRun({findingsVersion:1,analysisComplete:true,findings:[{ruleId:'LG-004',severity:'CRITICAL',table:'customers'}]});
+  const run=store.addRun({findingsVersion:1,analysisComplete:true,coverageComplete:true,findings:[{ruleId:'LG-004',severity:'CRITICAL',table:'customers'}]});
   let card=service.createReview(owner,{title:'Type conversion',runId:run.id}),member=db.getSession(reviewer.token);
   for(const check of ['schemaFresh','backfillVerified','applicationCompatible','stagingVerified'])card=service.event(owner,card.id,{kind:'attest',check,value:true,expectedRevision:card.revision});
   card=service.event(owner,card.id,{kind:'submit',expectedRevision:card.revision});

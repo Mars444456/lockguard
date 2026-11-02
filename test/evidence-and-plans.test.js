@@ -6,22 +6,12 @@ const { RuleEngine, SchemaCatalog, ShadowReplaySimulator, AutoSplitter, ContextA
 const engine = new RuleEngine();
 const change = (type, schema, prefix='', options={}) => engine.analyze(`${prefix}SET lock_timeout='3s'; ALTER TABLE customers ALTER COLUMN name TYPE ${type};`, {schema,...options}).violations.find(v=>v.ruleId==='LG-004');
 
-test('Zero scenario inputs survive, invalid values fail, and estimates never claim measurements', () => {
+test('Uncalibrated simulations cannot produce runtime predictions',()=>{
   const analysis=engine.analyze('CREATE INDEX ix ON customers(id);');
-  const noTraffic=ShadowReplaySimulator.simulate(analysis,{concurrentRps:0});
-  assert.equal(noTraffic.simulatedConcurrentRps,0);
-  assert.equal(noTraffic.totalBlockedQueriesEstimated,0);
-  assert.equal(noTraffic.timeToPoolExhaustionSec,null);
-  assert.equal(noTraffic.isPoolExhausted,false);
-  assert.equal(noTraffic.lockContentionProbability,0);
-  const empty=ShadowReplaySimulator.simulate(analysis,{simulatedRows:0});
-  assert.equal(empty.simulatedRows,0); assert.equal(empty.totalLockWaitContentionMs,0);
-  for(const value of [-1,Infinity,NaN,'0',1e13]) assert.throws(()=>ShadowReplaySimulator.simulate(analysis,{simulatedRows:value}));
-  assert.throws(()=>ShadowReplaySimulator.simulate(analysis,{pgBouncerPoolSize:0}));
-  assert.equal(noTraffic.measured,false);assert.equal(noTraffic.actualDowntimeSec,null);
-  assert.doesNotMatch(noTraffic.summary,/measured \d|will exhaust|HTTP 504/);
-  assert.equal(ShadowReplaySimulator.simulate(engine.analyze('DROP DATABASE postgres;')).assessmentStatus,'incomplete');
-  assert.equal(ContextAnalyzer.enrich(analysis,{tables:{customers:{rowCount:10,sizeMb:1}}}).hasLiveContext,false);
+  assert.throws(()=>ShadowReplaySimulator.simulate(analysis),error=>error.statusCode===410);
+  const context=ContextAnalyzer.enrich(analysis,{tables:{customers:{rowCount:0,sizeMb:0}}});
+  assert.equal(context.hasTableMetrics,true);assert.equal(context.hasLiveContext,false);
+  assert.equal(context.maxEstimatedDowntimeSec,null);
 });
 
 test('Type snapshot v2 retains types; v1 remains usable with unknown source type', () => {

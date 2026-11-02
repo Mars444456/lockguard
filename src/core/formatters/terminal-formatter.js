@@ -43,6 +43,7 @@ class TerminalFormatter {
 
       lines.push(`File: ${colors.bold}${res.filename}${colors.reset}  ${badge}`);
       lines.push(`Statements: ${res.astStatementsCount} | Violations: ${res.violationsCount} (Critical: ${res.criticalCount}, High: ${res.highCount})`);
+      if(res.coverageComplete===false)lines.push('PARTIAL COVERAGE: disabled rules or suppressed findings are present. Inspect the JSON coverage field before release.');
       lines.push(`Inferred Table Lock: ${colors.bold}${colors.yellow}${res.highestLockLevel}${colors.reset}`);
       if (res.affectedTables.length > 0) {
         lines.push(`Affected Tables: ${res.affectedTables.map(t => colors.cyan + t + colors.reset).join(', ')}`);

@@ -1,3 +1,4 @@
+const { generatedName } = require('../sql-identifiers');
 const { LockLevel, Severity } = require('../types');
 const foreignKeyIndexes = require('../foreign-key-indexes');
 
@@ -25,8 +26,9 @@ module.exports = {
           constraintName: sub.constraintName,
           columns: sub.columns,
           line: sub.line || stmt.line,
+          sourceStart: stmt.sourceStart,
           raw: sub.raw,
-          message: `Foreign Key '${sub.constraintName}' on '${sub.table} (${colList})' lacks a supporting index. Any UPDATE or DELETE on parent '${sub.foreignTable}' will lock and sequentially scan '${sub.table}'!`
+          message: `Foreign Key '${sub.constraintName || '(database-assigned name)'}' on '${sub.table} (${colList})' lacks a confirmed supporting index in the supplied context. An UPDATE of referenced keys or DELETE on parent '${sub.foreignTable}' may need a sequential scan of '${sub.table}', increasing runtime and contention. This does not imply table-level lock escalation.`
         });
       }
     }
@@ -37,7 +39,7 @@ module.exports = {
   generateSafeFix(violation) {
     const table = violation.table || 'your_table';
     const cols = (violation.columns && violation.columns.length > 0) ? violation.columns : ['foreign_id'];
-    const idxName = `idx_${table}_${cols.join('_').replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const idxName = generatedName('idx',table,...cols);
 
     return [
       `-- Add supporting index concurrently to prevent cascade lock escalation:`,

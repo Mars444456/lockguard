@@ -81,7 +81,7 @@ test('QA psql connection string is an argument, not shell code', t => {
     assert.equal(file, 'psql');
     assert.equal(args[args.indexOf('-d') + 1], dbUrl);
     assert.ok(options.timeout > 0);
-    return 'users,123,4\n';
+    return '{"users":{"rowCount":123,"sizeMb":4}}';
   });
   assert.equal(ContextAnalyzer.fetchSchemaStats({ useLiveDb: true, databaseUrl: dbUrl }).users.rowCount, 123);
 });

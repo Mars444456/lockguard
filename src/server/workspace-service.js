@@ -78,7 +78,7 @@ class WorkspaceService {
     if(typeof body.runId!=='string'||body.runId.length>100)fail('Неверный идентификатор проверки.');
     const title=clean(body.title,120,'Название: от 1 до 120 символов.'),run=this.db.forOrganization(user.organizationId).getRun(body.runId);
     if(!run)fail('Проверка не найдена.',404);
-    if(run.findingsVersion!==1||run.analysisComplete===false)fail('Для ревью нужна полная проверка нового формата.',409);
+    if(run.findingsVersion!==1||run.analysisComplete===false||run.coverageComplete!==true)fail('Для ревью нужна полная проверка нового формата без отключённых или подавленных правил.',409);
     let sql=null;
     if(body.sql!==undefined) {
       if(typeof body.sql!=='string'||Buffer.byteLength(body.sql)>256*1024||digest(body.sql)!==run.sqlHash)fail('SQL отличается от выбранной проверки или превышает 256 КБ.');

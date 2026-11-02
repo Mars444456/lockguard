@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
 const { Client } = require('pg');
 const {RuleEngine}=require('../src/core');
+const {AutoSplitter,PgParser}=require('../src/core');
 const connectionString = process.env.LOCKGUARD_TEST_DATABASE_URL;
 if (!connectionString) throw new Error('Set LOCKGUARD_TEST_DATABASE_URL to a disposable local database named *_test.');
 const url = new URL(connectionString);
@@ -32,6 +33,26 @@ test.before(async()=>{
 });
 test.after(async()=>{
   if(observer) { assert.match(schema,/^lockguard_test_[a-f0-9]{16}$/); await observer.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`); await observer.end(); }
+});
+
+test('Generated unique plans preserve INCLUDE and deferrability on the target PostgreSQL version',async()=>{
+  await observer.query('CREATE TABLE unique_probe(email text,payload int); INSERT INTO unique_probe VALUES(NULL,1)');
+  const {rows:[{version}]}=await observer.query("SELECT current_setting('server_version_num')::int/10000 AS version");
+  const sql=`ALTER TABLE unique_probe ADD CONSTRAINT "Unique Plan" UNIQUE ${version>=15?'NULLS NOT DISTINCT ':''}(email) INCLUDE(payload) DEFERRABLE INITIALLY DEFERRED;`;
+  const plan=AutoSplitter.generatePlan(new RuleEngine().analyze(sql,{pgVersion:version}));
+  for(const phase of plan.phases)for(const stmt of PgParser.parse(phase.sql))await observer.query(stmt.raw);
+  const {rows:[constraint]}=await observer.query("SELECT condeferrable,condeferred FROM pg_constraint WHERE conrelid='unique_probe'::regclass");
+  assert.equal(constraint.condeferrable,true);assert.equal(constraint.condeferred,true);
+  if(version>=15)await assert.rejects(observer.query('INSERT INTO unique_probe VALUES(NULL,2)'),error=>error.code==='23505');
+});
+
+test('Generated foreign-key validation preserves CASCADE and handles comments and multiple ALTER actions',async()=>{
+  await observer.query('CREATE TABLE fk_parent_probe(id int PRIMARY KEY); CREATE TABLE fk_child_probe(pid int)');
+  const sql='/* UTF-8 миграция */ ALTER /* note */ TABLE fk_child_probe ADD COLUMN note text, ADD CONSTRAINT "Foreign Plan" FOREIGN KEY(pid) REFERENCES fk_parent_probe(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;';
+  const plan=AutoSplitter.generatePlan(new RuleEngine().analyze(sql));
+  for(const phase of plan.phases)for(const stmt of PgParser.parse(phase.sql))await observer.query(stmt.raw);
+  const {rows:[constraint]}=await observer.query("SELECT confdeltype,condeferrable,condeferred,convalidated FROM pg_constraint WHERE conrelid='fk_child_probe'::regclass");
+  assert.deepEqual(constraint,{confdeltype:'c',condeferrable:true,condeferred:true,convalidated:true});
 });
 test('ALTER TABLE waits behind SELECT and lock_timeout cancels the DDL',async()=>{
   const reader=await connect(), ddl=await connect();

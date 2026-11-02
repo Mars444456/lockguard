@@ -138,7 +138,14 @@ test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, cl
     const watchdogJson = JSON.parse(watchdogRes.body);
     assert.equal(watchdogJson.success, true);
     assert.equal(watchdogJson.report,null,'No fabricated production telemetry');
-    assert.equal(watchdogJson.status,'not_connected');
+    assert.equal(watchdogJson.status,'input_required');
+    assert.match(watchdogJson.diagnosticQuery,/pg_index/);
+    const rowsRes=await makeRequest(target,{path:'/api/v1/watchdog',method:'POST',headers:{'Content-Type':'application/json'}},JSON.stringify({rows:[{index_name:'actual_index',table_name:'actual_table',is_valid:'f'}]}));
+    assert.equal(rowsRes.statusCode,200);assert.equal(JSON.parse(rowsRes.body).report.totalInvalidCount,1);
+    const invalidRows=await makeRequest(target,{path:'/api/v1/watchdog',method:'POST',headers:{'Content-Type':'application/json'}},'{}');
+    assert.equal(invalidRows.statusCode,400);
+    const fakePr=await makeRequest(target,{path:'/api/v1/github/webhook',method:'POST',headers:{'Content-Type':'application/json'}},'{}');
+    assert.ok([400,401].includes(fakePr.statusCode));assert.ok(!fakePr.body.includes('acme/ecommerce'));
 
     // 7. HTTP POST to /api/v1/simulate
     const simulateRes = await makeRequest(target, {
@@ -146,10 +153,8 @@ test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, cl
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     }, JSON.stringify({ sql: "CREATE INDEX idx_users ON users(id);" }));
-    assert.equal(simulateRes.statusCode, 200, 'POST /api/v1/simulate should return 200 OK');
-    const simJson = JSON.parse(simulateRes.body);
-    assert.equal(simJson.success, true);
-    assert.ok(simJson.simulation, 'Should return simulation');
+    assert.equal(simulateRes.statusCode,410,'Uncalibrated simulation is removed');
+    assert.match(JSON.parse(simulateRes.body).error,/removed/);
 
     // 8. Path Traversal Protection: accessing path outside src/ui returns 403 Forbidden
     const traversalRes = await makeRequest(target, {

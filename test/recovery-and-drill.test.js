@@ -42,7 +42,7 @@ test('Email reset sends only through an explicitly configured provider and keeps
 test('Encrypted backups restore records, reject wrong keys and remove temporary credentials',async()=>{
   process.env.LOCKGUARD_BACKUP_KEY=crypto.randomBytes(32).toString('base64');
   const originalKey=process.env.LOCKGUARD_BACKUP_KEY,owner={...user,role:'owner'},store=db.forOrganization(user.organizationId);
-  store.updatePlan('team');store.addRun({findingsVersion:1,findings:[],analysisComplete:true});
+  store.updatePlan('team');store.addRun({findingsVersion:1,findings:[],analysisComplete:true,coverageComplete:true});
   const run=store.getRuns()[0],review=db.workspaces.createReview(owner,{title:'Restore review',runId:run.id});
   db.workspaces.invite(owner,{email:'new@example.invalid',role:'reviewer'});db.recovery.issue(user.id);db.createSession(user.id);
   const backup=await db.createBackup(path.join(directory,'backups'));assert.match(backup,/\.enc$/);

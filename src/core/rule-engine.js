@@ -57,16 +57,25 @@ class RuleEngine {
    * @param {object} options { filename, enabledRuleIds, failOnSeverity, ignoreRules, sharedState }
    */
   analyze(sqlText, options = {}) {
+    if(typeof sqlText!=='string'||new TextEncoder().encode(sqlText).length>512*1024)throw new SyntaxError('SQL must be UTF-8 text up to 512 KB.');
     const filename = options.filename || 'migration.sql';
     const enabledRuleIds = options.enabledRuleIds || null;
     const failOnSeverity = options.failOnSeverity || Severity.HIGH;
     if (![Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM].includes(failOnSeverity)) {
       throw new Error(`Invalid severity threshold: ${failOnSeverity}`);
     }
-    const configIgnoreRules = (options.ignoreRules || []).map(r => r.toUpperCase());
+    const configIgnoreRules = Array.isArray(options.ignoreRules) ? options.ignoreRules.map(r=>typeof r==='string'?r.toUpperCase():r) : [];
+    for (const ids of [enabledRuleIds, options.ignoreRules]) {
+      if (ids !== undefined && ids !== null && (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !this.rules.some(rule => rule.id === id.toUpperCase())))) {
+        throw new TypeError('Rule selection must contain known rule IDs.');
+      }
+    }
+    if (enabledRuleIds && enabledRuleIds.length === 0) throw new TypeError('At least one rule must be enabled.');
 
     // 1. Parse AST
     const astStatements = PgParser.parse(sqlText);
+    if(!astStatements.length)throw new SyntaxError('No SQL statements were supplied for analysis.');
+    if(astStatements.length>1000)throw new SyntaxError('Split the audit input into files of at most 1000 SQL statements.');
 
     // 2. Build Context (Created tables in this migration, transaction state, shared state)
     const sharedState = options.sharedState || null;
@@ -111,6 +120,8 @@ class RuleEngine {
     };
 
     context.schemaCatalog = options.schema ? SchemaCatalog.from(options.schema) : null;
+    context.pgVersion = options.pgVersion ?? context.schemaCatalog?.pgVersion ?? 17;
+    if (!Number.isInteger(context.pgVersion) || context.pgVersion < 10 || context.pgVersion > 18) throw new TypeError('pgVersion must be an integer from 10 to 18.');
     context.fkIndexCoverage = foreignKeyIndexes(astStatements, context);
     cascadeGraph.buildFromAst(astStatements, context);
     // 3. Run Rules
@@ -120,18 +131,21 @@ class RuleEngine {
       (stmt.type === 'ALTER_TABLE' && !stmt.subcommands?.length) ||
       stmt.subcommands?.some(sub => sub.subtype === 'UNSUPPORTED') ||
       stmt.requiresManualAnalysis ||
-      stmt.table === 'unknown_table'
+      stmt.table === 'unknown_table' ||
+      (stmt.requiredPgVersion && stmt.requiredPgVersion > context.pgVersion)
     );
     const rawViolations = unsupported.map(stmt => ({
       ruleId: 'LG-000', ruleCode: 'INCOMPLETE_ANALYSIS', ruleName: 'SQL requires manual analysis',
       severity: Severity.CRITICAL, lockLevel: LockLevel.ACCESS_EXCLUSIVE,
-      table: stmt.table || 'global', line: stmt.line, raw: stmt.raw,
+      table: stmt.table || 'global', line: stmt.line, raw: stmt.raw, sourceStart:stmt.sourceStart,
       message: `Unsupported SQL construct (${stmt.type}). Lock safety cannot be established.`,
       safeFix: null
     }));
     const activeRules = enabledRuleIds 
-      ? this.rules.filter(r => enabledRuleIds.includes(r.id))
+      ? this.rules.filter(r => enabledRuleIds.map(id=>id.toUpperCase()).includes(r.id))
       : this.rules;
+    const suppressedFindings = [];
+    const disabledRuleIds = this.rules.filter(rule => !activeRules.includes(rule) || configIgnoreRules.includes(rule.id)).map(rule=>rule.id);
 
     for (const rule of activeRules) {
       // Check if rule is disabled globally in config
@@ -143,21 +157,23 @@ class RuleEngine {
         const found = rule.check(astStatements, context);
         for (const v of found) {
           // Check inline statement-level ignore directives (-- lockguard-ignore: LG-XXX)
-          const targetStmt = astStatements.find(s => 
-            s.line === v.line || 
+          const targetStmt = astStatements.find(s => v.sourceStart !== undefined ? s.sourceStart === v.sourceStart :
+            s.line === v.line ||
             (s.subcommands && s.subcommands.some(sub => sub.line === v.line))
           );
 
           if (targetStmt) {
             if (targetStmt.ignoreAll) {
+              suppressedFindings.push({ruleId:v.ruleId,line:v.line,sourceStart:v.sourceStart});
               continue;
             }
             if (targetStmt.ignoreRules && targetStmt.ignoreRules.includes(v.ruleId.toUpperCase())) {
+              suppressedFindings.push({ruleId:v.ruleId,line:v.line,sourceStart:v.sourceStart});
               continue;
             }
           }
 
-          const safeFix = rule.generateSafeFix ? rule.generateSafeFix(v, context) : null;
+          const safeFix = rule.generateSafeFix && !unsupported.includes(targetStmt) ? rule.generateSafeFix(v, context) : null;
           rawViolations.push({
             ...v,
             safeFix,
@@ -236,7 +252,8 @@ class RuleEngine {
       passed = false;
     }
 
-    const status = violations.length === 0 ? 'PASSED' : (passed ? 'WARNING' : 'FAILED');
+    const coverageComplete = !disabledRuleIds.length && !suppressedFindings.length;
+    const status = violations.length === 0 && coverageComplete ? 'PASSED' : (passed ? 'WARNING' : 'FAILED');
 
     const hasDdl = astStatements.some(s => 
       s.type === 'ALTER_TABLE' || 
@@ -264,6 +281,9 @@ class RuleEngine {
       status,
       passed,
       analysisComplete: unsupported.length === 0,
+      coverageComplete,
+      coverage: {activeRuleIds:activeRules.filter(r=>!disabledRuleIds.includes(r.id)).map(r=>r.id),disabledRuleIds,suppressedFindings},
+      pgVersion:context.pgVersion,
       originalSql: sqlText,
       isDmlOnly,
       dmlDescription: isDmlOnly ? 'DDL checks do not apply to this SELECT / DML script. Runtime locks and downtime are not assessed.' : null,

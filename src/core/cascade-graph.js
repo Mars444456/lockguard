@@ -1,3 +1,4 @@
+const { generatedName }=require('./sql-identifiers');
 const foreignKeyIndexes = require('./foreign-key-indexes');
 
 /**
@@ -67,8 +68,8 @@ class CascadeGraph {
             fkName: edge.fkName,
             columns: edge.columns,
             severity: 'HIGH',
-            warning: `Warning: Altering parent table '${targetTable}' will cause lock escalation on child table '${edge.fromTable}' because foreign key '${edge.fkName}' (${edge.fromTable}.${edge.columns.join(', ')}) is not indexed!`,
-            safeFix: `CREATE INDEX CONCURRENTLY idx_${edge.fromTable}_${edge.columns.join('_')} ON ${edge.fromTable} (${edge.columns.join(', ')});`
+            warning: `Warning: Updating referenced keys or deleting rows in '${targetTable}' may require sequential scans of child table '${edge.fromTable}' because foreign key '${edge.fkName}' (${edge.fromTable}.${edge.columns.join(', ')}) is not indexed!`,
+            safeFix: `CREATE INDEX CONCURRENTLY ${generatedName('idx',edge.fromTable,...edge.columns)} ON ${edge.fromTable} (${edge.columns.join(', ')});`
           });
         }
       }

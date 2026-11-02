@@ -97,7 +97,7 @@ function registerRoutes(router) {
       });
 
       if (withContext && !profile) {
-        result = ContextAnalyzer.enrich(result, { demoMode: true });
+        result = ContextAnalyzer.enrich(result);
       }
 
       const markdownReport = GitHubPrFormatter.format([result]);
@@ -107,6 +107,7 @@ function registerRoutes(router) {
         if (!verifiedKey && !req.auth && !requireAdmin(req, res)) return;
         run = store.addRun({
           filename: result.filename, findingsVersion: 1, findings: RunComparison.findings(result), analysisComplete: result.analysisComplete,
+          coverageComplete: result.coverageComplete, coverage: result.coverage,
           schemaId: profile?.id || null, schemaRevision: profile?.revision || null,
           source: repo ? 'api' : 'dashboard',
           repo: repo || '',
@@ -118,12 +119,12 @@ function registerRoutes(router) {
           sqlHash: require('./workspace-service').digest(sql),
           pgVersion: profile?.schema.pgVersion || 17,
           markdownReport,
-          status: result.passed ? 'PASSED' : 'BLOCKED',
+          status: result.passed ? result.violationsCount || !result.coverageComplete ? 'WARNING' : 'PASSED' : 'BLOCKED',
           highestLockLevel: result.highestLockLevel,
           violationsCount: result.violationsCount,
           criticalCount: result.criticalCount,
           highCount: result.highCount,
-          summary: result.passed 
+          summary: result.coverageComplete===false ? 'Partial coverage: disabled rules or suppressed findings. Manual review required.' : result.passed && result.violationsCount ? 'Findings are below the failure threshold. Review them before release.' : result.passed
             ? 'No configured rule findings. Runtime verification is still required.'
             : `Blocked: ${result.criticalCount} critical, ${result.highCount} high lock violations.`
         });
@@ -292,54 +293,14 @@ function registerRoutes(router) {
     return res.status(410).json({ error: 'Автоподписки отключены. Доступ Pro продлевается разовой оплатой за 30 дней.' });
   });
 
-  // 8. GitHub PR Webhook (Real & Simulated)
+  // GitHub webhook accepts only signed provider events.
   router.post('/api/v1/github/webhook', async (req, res) => {
-    const isRealGithub = !!(req.headers && req.headers['x-github-event']);
-    if (isRealGithub) {
+    if (req.headers?.['x-github-event']) {
       const service = new GitHubService();
       service.verify(req.rawBody, req.headers['x-hub-signature-256']);
       return res.json(await service.audit(req.body, req.headers['x-github-event']));
     }
-    const prData = req.body && req.body.pull_request ? req.body.pull_request : null;
-    const repoData = req.body && req.body.repository ? req.body.repository : null;
-
-    const repo = repoData ? repoData.full_name : (req.body && req.body.repo ? req.body.repo : 'acme/ecommerce-api');
-    const prNumber = prData ? prData.number : (req.body && req.body.prNumber ? Number(req.body.prNumber) : 422);
-    const branch = prData && prData.head ? prData.head.ref : (req.body && req.body.branch ? req.body.branch : 'feat/db-upgrade');
-    const commit = prData && prData.head && prData.head.sha ? prData.head.sha.substring(0, 7) : (req.body && req.body.commit ? req.body.commit : 'e92a10c');
-    const author = req.body && req.body.sender ? req.body.sender.login : (req.body && req.body.author ? req.body.author : 'developer');
-
-    const sampleSql = (req.body && req.body.sql) || `
-      BEGIN;
-      CREATE INDEX idx_products_sku ON products (sku);
-      ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT 'unverified' NOT NULL;
-      COMMIT;
-    `;
-    const analysis = ruleEngine.analyze(sampleSql, { filename: 'migration_pr_' + prNumber + '.sql' });
-    const markdown = GitHubPrFormatter.format([analysis]);
-
-    const runRecord = req.store.addRun({
-      repo,
-      prNumber: Number(prNumber),
-      branch,
-      commit,
-      author,
-      status: analysis.passed ? 'PASSED' : 'BLOCKED',
-      highestLockLevel: analysis.highestLockLevel,
-      violationsCount: analysis.violationsCount,
-      criticalCount: analysis.criticalCount,
-      highCount: analysis.highCount,
-      summary: analysis.passed ? 'Zero downtime migration' : 'Blocked: Dangerous locks detected.'
-    });
-
-    return res.status(200).json({
-      success: true,
-      action: analysis.passed ? 'approved' : 'blocked',
-      prNumber,
-      runId: runRecord.id,
-      isRealGithub,
-      markdownComment: markdown
-    });
+    return res.status(400).json({error:'A signed GitHub event is required. Synthetic PR runs are not accepted.'});
   });
 
   // 9. Auto-Splitter: Multi-phase generation
@@ -362,9 +323,10 @@ function registerRoutes(router) {
 
   // 10. Post-Deploy Watchdog: Invalid Index Inspection
   router.get('/api/v1/watchdog', async (req, res) => {
-    return res.status(200).json({ success: true, status: 'not_connected', measured: false,
-      report: null, message: 'Database telemetry is not connected. No index inspection has been performed.' });
+    return res.status(200).json({success:true,status:'input_required',measured:false,report:null,
+      diagnosticQuery:PostDeployWatchdog.getDiagnosticQuery(),message:'Run this read-only query on your database and submit the JSON rows. No inspection has been performed on the server.'});
   });
+  router.post('/api/v1/watchdog',async(req,res)=>res.json({success:true,report:PostDeployWatchdog.inspectProduction(req.body?.rows === undefined ? null : req.body.rows)}));
 
   // 11. Shadow Replay Simulator
   router.post('/api/v1/simulate', async (req, res) => {

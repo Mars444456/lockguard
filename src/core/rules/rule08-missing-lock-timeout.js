@@ -69,6 +69,7 @@ module.exports = {
         lockLevel: LockLevel.ACCESS_EXCLUSIVE,
         table: 'global',
         line: unsafeStatement.line,
+        sourceStart: unsafeStatement.sourceStart,
         raw: unsafeStatement.raw,
         message: 'No effective positive `SET lock_timeout` before this DDL statement. A missing, disabled, reset or expired timeout can allow lock waits to block production traffic.'
       });

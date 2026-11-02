@@ -50,3 +50,17 @@ test('GitHub rejects unauthorized repos, stale heads and truncated file lists', 
   const truncated = new GitHubService({ repositories: 'acme/app', token: 'test', fetchImpl: async url => new Response(JSON.stringify(url.includes('/files?') ? [] : { head: { sha: head }, changed_files: 1 })) });
   await assert.rejects(truncated.audit(payload, 'pull_request'), /Incomplete/);
 });
+
+test('An incomplete GitHub audit replaces pending with error; no-SQL reports do not claim an audit',async t=>{
+  const old=process.env.GITHUB_PUBLISH_STATUS;process.env.GITHUB_PUBLISH_STATUS='true';
+  t.after(()=>{if(old===undefined)delete process.env.GITHUB_PUBLISH_STATUS;else process.env.GITHUB_PUBLISH_STATUS=old;});
+  const statuses=[];
+  const service=new GitHubService({repositories:'acme/app',token:'test',fetchImpl:async(url,options)=>{
+    if(url.includes('/statuses/')){statuses.push(JSON.parse(options.body));return new Response('{}');}
+    return new Response(JSON.stringify(url.includes('/files?')?[]:{head:{sha:head},changed_files:1}));
+  }});
+  await assert.rejects(service.audit(payload,'pull_request'),/Incomplete/);
+  assert.deepEqual(statuses.map(s=>s.state),['pending','error']);
+  const empty=new GitHubService({repositories:'acme/app',token:'test',fetchImpl:async url=>new Response(JSON.stringify(url.includes('/statuses/')?{}:{head:{sha:head},changed_files:0}))});
+  const result=await empty.audit(payload,'pull_request');assert.equal(result.checkedFiles,0);assert.match(result.markdownComment,/No SQL migration files were checked/);
+});
