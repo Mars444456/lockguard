@@ -49,7 +49,7 @@ class GitHubPrFormatter {
     // Table of Files & Highest Lock
     md.push('### 📁 Migration Files & Max Lock Level');
     md.push('');
-    md.push('| File | Status | Max Lock Acquired | Affected Tables | Violations |');
+    md.push('| File | Status | Max Lock Inferred | Affected Tables | Violations |');
     md.push('| :--- | :---: | :---: | :--- | :---: |');
 
     for (const r of list) {
@@ -65,7 +65,7 @@ class GitHubPrFormatter {
 
     // Detailed Violations & Safe Fixes
     if (totalViolations > 0) {
-      md.push('### ⚠️ Detailed Lock Anti-Patterns & Safe SQL Alternatives');
+      md.push('### ⚠️ Detailed Lock Anti-Patterns & Suggestions for Manual Review');
       md.push('');
 
       for (const r of list) {
@@ -88,15 +88,12 @@ class GitHubPrFormatter {
           const v = r.violations[idx];
           if (v.safeFix) {
             md.push(`<details>`);
-            md.push(`<summary>💡 <b>Safe SQL Fix for #${idx + 1} (${v.ruleName} on <code>${v.table}</code>)</b></summary>`);
+            md.push(`<summary>💡 <b>Review suggestion for #${idx + 1} (${v.ruleName} on <code>${v.table}</code>)</b></summary>`);
             md.push('');
             md.push('```sql');
             md.push(v.safeFix);
             md.push('```');
-            if (v.ruleId === 'LG-002' || v.ruleId === 'LG-008') {
-              md.push('');
-              md.push(`> 💡 **Auto-Fix Available:** You can apply this fix automatically with: \`npx lockguard check ${r.filename} --fix\``);
-            }
+
             md.push('</details>');
             md.push('');
           }
@@ -107,7 +104,7 @@ class GitHubPrFormatter {
     // Explanatory Footer
     md.push('---');
     md.push('> 💡 **Why does LockGuard block this?**');
-    md.push('> In PostgreSQL, `ACCESS EXCLUSIVE` locks block even simple `SELECT` queries. If an incoming DDL transaction cannot acquire this lock immediately because of an in-flight query, it blocks in queue and subsequently freezes **all** following read and write requests, creating a catastrophic cascading outage.');
+    md.push('> ACCESS EXCLUSIVE conflicts with ordinary SELECT on the same relation. A waiting DDL request can queue later conflicting requests. The affected operations and waiting time depend on the actual lock mode, transaction lifetime, workload and timeouts; this report does not establish an outage.');
     md.push('');
     md.push('*Report generated automatically by [LockGuard](https://github.com/Mars444456/lockguard)*');
 

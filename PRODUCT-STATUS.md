@@ -1,6 +1,6 @@
 # Product status / Состояние продукта
 
-## 1.4.0: evidence and execution correctness
+## 1.4.1: evidence and execution correctness
 
 LockGuard provides static PostgreSQL migration checks, CI reports, reviewable draft plans, and a server workspace with organization-scoped history, API keys, schema snapshots and team reviews. The public browser analyzer processes SQL locally. The Telegram bot processes submitted SQL on its host and does not activate licenses or confirm payments.
 
@@ -22,7 +22,7 @@ These infrastructure dependencies are not reported as completed by the applicati
 
 ## Русский
 
-В версии 1.4.0 убраны неподтверждённые числовые прогнозы, фиктивная выдача ключей ботом и запись вымышленных PR в историю. Исправлены планы миграций, учёт версии PostgreSQL и границ транзакций. Отключённые правила и подавленные замечания видны в результате; для таких проверок не выдаётся план и не создаётся командное ревью. Старые проверки без сведений о покрытии нужно выполнить заново.
+В версии 1.4.1 убраны неподтверждённые числовые прогнозы, фиктивная выдача ключей ботом и запись вымышленных PR в историю. Исправлены планы миграций, учёт версии PostgreSQL и границ транзакций. Отключённые правила и подавленные замечания видны в результате; для таких проверок не выдаётся план и не создаётся командное ревью. Старые проверки без сведений о покрытии нужно выполнить заново.
 
 Анализ SQL, отчёты и серверные функции проверяются автоматически. Это не означает, что можно считать любой SQL корректным или обещать отсутствие блокировок. Длительность и поведение под нагрузкой проверяют на репрезентативной базе.
 

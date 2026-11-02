@@ -4,6 +4,7 @@ const {PGlite}=require('@electric-sql/pglite');
 const {RuleEngine,AutoSplitter,PgParser,SchemaCatalog,PostDeployWatchdog,ContextAnalyzer,ShadowReplaySimulator}=require('../src/core');
 const {createBot}=require('../bin/bot');
 const engine=new RuleEngine();
+const {GitHubPrFormatter}=require('../src/core');
 const analyze=sql=>engine.analyze(sql),plan=sql=>AutoSplitter.generatePlan(analyze(sql));
 const sqlOf=p=>p.phases.map(p=>p.sql).join('\n');
 
@@ -55,6 +56,19 @@ test('Target version, unknown function volatility and transaction boundaries aff
   assert.ok(analyze('START TRANSACTION READ WRITE; CREATE INDEX CONCURRENTLY ix ON t(id); COMMIT;').violations.some(v=>v.ruleId==='LG-010'));
   assert.ok(analyze('BEGIN; COMMIT AND CHAIN; CREATE INDEX CONCURRENTLY ix ON t(id); ROLLBACK;').violations.some(v=>v.ruleId==='LG-010'));
   assert.equal(engine.analyze('ALTER TABLE t ADD CONSTRAINT uq UNIQUE NULLS NOT DISTINCT(id);',{pgVersion:14}).analysisComplete,false);
+});
+
+test('Timeout recommendations use the affected statement transaction, include real SQL and no empty retry block',()=>{
+  const outside=analyze('BEGIN; SELECT 1; COMMIT; CREATE INDEX CONCURRENTLY ix ON orders(id);');
+  const finding=outside.violations.find(v=>v.ruleId==='LG-008');
+  assert.equal(finding.inTransaction,false);assert.match(finding.safeFix,/SET lock_timeout/);
+  assert.doesNotMatch(finding.safeFix,/SET LOCAL|DO \$\$|your migration|Run your DDL/);
+  assert.match(finding.safeFix,/CREATE INDEX CONCURRENTLY ix ON orders\(id\)/);
+  const inside=analyze('BEGIN; ALTER TABLE orders ADD COLUMN x int; COMMIT;').violations.find(v=>v.ruleId==='LG-008');
+  assert.equal(inside.inTransaction,true);assert.match(inside.safeFix,/SET LOCAL/);
+  const chained=analyze('BEGIN; COMMIT AND CHAIN; ALTER TABLE orders ADD COLUMN x int; COMMIT;').violations.find(v=>v.ruleId==='LG-008');
+  assert.equal(chained.inTransaction,true);
+  const report=GitHubPrFormatter.format(outside);assert.doesNotMatch(report,/Auto-Fix Available|catastrophic cascading outage|Max Lock Acquired/);
 });
 
 test('Suppressions apply to statement offsets and are visible; partial analyses cannot generate drafts',()=>{

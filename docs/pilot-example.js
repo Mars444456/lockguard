@@ -1,5 +1,5 @@
 window.LockGuardPilotExample = {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "synthetic": true,
   "schemaSql": "-- Synthetic structure snapshot. No customer data or database connection.\nCREATE TABLE accounts (id bigint PRIMARY KEY);\nCREATE TABLE orders (\n  id bigint PRIMARY KEY,\n  account_id bigint,\n  created_at timestamptz\n);\nCREATE INDEX idx_orders_account_id ON orders (account_id);\n",
   "beforeSql": "-- Review against an existing orders table, outside an explicit transaction.\nSET lock_timeout = '3s';\nCREATE INDEX idx_orders_created_at ON orders (created_at);\nALTER TABLE orders ADD CONSTRAINT orders_account_fk\n  FOREIGN KEY (account_id) REFERENCES accounts (id) NOT VALID;\n",

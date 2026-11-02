@@ -6,7 +6,7 @@ module.exports = {
   name: 'Immediate DROP COLUMN or DROP TABLE in monolithic step',
   severity: Severity.HIGH,
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
-  description: 'Dropping a table or column immediately takes an ACCESS EXCLUSIVE lock and crashes application code or replicas holding cached queries or ORM models.',
+  description: 'Dropping a table or column acquires ACCESS EXCLUSIVE and can break queries or deployed application versions that still depend on the object.',
   
   check(astStatements) {
     const violations = [];

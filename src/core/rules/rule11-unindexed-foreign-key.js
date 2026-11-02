@@ -8,7 +8,7 @@ module.exports = {
   name: 'Adding Foreign Key without supporting index on child columns',
   severity: Severity.MEDIUM,
   lockLevel: LockLevel.SHARE_ROW_EXCLUSIVE,
-  description: 'Foreign keys without an index on referencing columns cause table-level lock escalation and sequential scans on the child table whenever rows in the parent table are UPDATED or DELETED.',
+  description: 'A missing supporting child index can make referenced-key updates or parent deletes scan the child table, increasing runtime and contention. This does not imply table-level lock escalation.',
 
   check(astStatements, context = {}) {
     const violations = [];

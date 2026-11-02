@@ -215,12 +215,13 @@ test('RuleEngine - CascadeGraph activates and records foreignTable in affectedTa
   assert.ok(analysis.cascadeWarnings.length > 0, 'CascadeGraph must generate warnings for cascade risks');
 });
 
-test('LG-008 - safeFix provides PL/pgSQL lock retry loop pattern', () => {
+test('LG-008 - recommendation includes real DDL with scoped timeout settings, not an empty retry loop', () => {
   const engine = new RuleEngine();
   const sql = `ALTER TABLE users ADD COLUMN bio text;`;
   const analysis = engine.analyze(sql);
   const v = analysis.violations.find(v => v.ruleId === 'LG-008');
   assert.ok(v);
   assert.ok(v.safeFix.includes('SET lock_timeout'));
-  assert.ok(v.safeFix.includes('LOOP') && v.safeFix.includes('lock_not_available'), 'safeFix must include PL/pgSQL lock retry loop pattern');
+  assert.match(v.safeFix,/ALTER TABLE users ADD COLUMN bio text;/);
+  assert.doesNotMatch(v.safeFix,/DO \$\$|LOOP|Run your DDL/);
 });

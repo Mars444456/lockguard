@@ -1,6 +1,6 @@
 {
   "name": "lockguard",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Automated PostgreSQL CI/CD gatekeeper and AST migration analyzer for detecting dangerous table locks",
   "main": "src/core/index.js",
   "bin": {

@@ -6,7 +6,7 @@ module.exports = {
   name: 'Missing SET lock_timeout directive in migration',
   severity: Severity.HIGH,
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
-  description: 'Without SET lock_timeout, a blocked DDL statement queues up behind long-running queries, blocking ALL subsequent incoming client requests (Head-of-Line Blocking).',
+  description: 'Without an effective positive lock_timeout, waiting DDL may queue later conflicting requests on the same relation. Impact depends on lock mode, transaction lifetime and workload.',
   
   check(astStatements) {
     const violations = [];
@@ -37,7 +37,7 @@ module.exports = {
         transactionStart = sessionTimeout;
       } else if (stmt.type === 'TRANSACTION_COMMIT') {
         if (/^ROLLBACK\b/i.test(stmt.raw) && transactionStart !== undefined) sessionTimeout = transactionStart;
-        transactionStart = undefined;
+        transactionStart = stmt.pgAst?.chain ? sessionTimeout : undefined;
         localTimeout = undefined;
       } else if (stmt.type === 'SET_VARIABLE' && stmt.variable === 'lock_timeout') {
         const match = String(stmt.value || '').trim().match(/^(\d+(?:\.\d+)?)\s*(us|ms|s|min|h|d)?$/i);
@@ -71,6 +71,7 @@ module.exports = {
         line: unsafeStatement.line,
         sourceStart: unsafeStatement.sourceStart,
         raw: unsafeStatement.raw,
+        inTransaction: transactionStart !== undefined,
         message: 'No effective positive `SET lock_timeout` before this DDL statement. A missing, disabled, reset or expired timeout can allow lock waits to block production traffic.'
       });
     }
@@ -79,7 +80,7 @@ module.exports = {
   },
 
   generateSafeFix(violation, context = {}) {
-    if (context.hasTransactionBlock) {
+    if (violation.inTransaction) {
       return [
         `-- Migration runs inside a transaction block. Use SET LOCAL to scope lock_timeout to this transaction:`,
         `SET LOCAL lock_timeout = '3s';`,
@@ -88,36 +89,14 @@ module.exports = {
     }
 
     return [
-      `-- Basic Pattern: Add lock_timeout at top and RESET at end:`,
-      `SET lock_timeout = '3s';`,
-      `SET statement_timeout = '30s';`,
-      ``,
-      `-- ... (your migration statements here) ...`,
-      ``,
-      `RESET lock_timeout;`,
-      `RESET statement_timeout;`,
-      ``,
-      `-- Advanced Pattern: Zero-Downtime PL/pgSQL Lock-Retry loop:`,
-      `DO $$`,
-      `DECLARE`,
-      `  success BOOLEAN := FALSE;`,
-      `  attempts INT := 0;`,
-      `BEGIN`,
-      `  WHILE NOT success AND attempts < 5 LOOP`,
-      `    BEGIN`,
-      `      SET LOCAL lock_timeout = '2s';`,
-      `      -- (Run your DDL command here)`,
-      `      success := TRUE;`,
-      `      EXIT;`,
-      `    EXCEPTION WHEN lock_not_available THEN`,
-      `      attempts := attempts + 1;`,
-      `      PERFORM pg_sleep(1);`,
-      `    END;`,
-      `  END LOOP;`,
-      `  IF NOT success THEN`,
-      `    RAISE EXCEPTION 'Could not acquire lock after 5 attempts';`,
-      `  END IF;`,
-      `END $$;`
+      '-- Choose timeouts for the actual workload. Run these statements individually on the same connection.',
+      '-- Place the settings immediately before the affected DDL, after any preceding COMMIT or ROLLBACK.',
+      "SET lock_timeout = '3s';",
+      "SET statement_timeout = '30s';",
+      violation.raw.replace(/;\s*$/, '')+';',
+      'RESET lock_timeout;',
+      'RESET statement_timeout;',
+      '-- A timeout can abort DDL; inspect partial effects and invalid indexes before retrying.'
     ].join('\n');
   }
 };
