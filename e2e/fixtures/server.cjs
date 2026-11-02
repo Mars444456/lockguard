@@ -25,11 +25,14 @@ const controls=http.createServer(async(req,res)=>{
       const email=url.searchParams.get('email');if(!email?.endsWith('@example.invalid'))throw new Error('Invalid test address');
       res.end(JSON.stringify(inbox.filter(message=>message.to[0]===email)));return;
     }
-    if(req.method==='POST'&&url.pathname==='/grant-pro'){
+    if(req.method==='POST'&&['/grant-pro','/expire-pro'].includes(url.pathname)){
       let body='';for await(const chunk of req){body+=chunk;if(body.length>1024)throw new Error('Test control payload too large');}
       const email=JSON.parse(body).email;if(!email?.endsWith('@example.invalid'))throw new Error('Invalid test address');
       const user=db.getUserByEmail(email);if(!user)throw new Error('Test account does not exist');
-      db.forOrganization(user.organizationId).updatePlan('team');res.end('{}');return;
+      const store=db.forOrganization(user.organizationId);
+      if(url.pathname==='/expire-pro')store.updateOrganization({accessUntil:new Date(0).toISOString()});
+      else store.updatePlan('team');
+      res.end('{}');return;
     }
     res.writeHead(404);res.end('{}');
   }catch{res.writeHead(400);res.end('{"error":"Invalid test control request"}');}

@@ -90,3 +90,37 @@ test('Email recovery replaces the password and revokes the former session',async
     await expect(reset.getByRole('status')).toContainText('Пароль изменён');expect((await(await page.request.get('/api/v1/auth/session')).json()).user).toBeNull();
   }finally{await context.close();}
 });
+
+test('Pro expiry blocks stale-tab premium writes while preserving schema export and ordinary analysis',async({browser,request})=>{
+  const context=await isolatedContext(browser),page=await context.newPage(),email='journey-expiry@example.invalid';
+  const schema={name:'Expiry snapshot',sql:'CREATE TABLE customers(id int,name text);'};
+  try{
+    await register(page,email,'Expiry journey');
+    await page.getByRole('button',{name:'Схемы PRO',exact:false}).click();
+    await expect(page.locator('#btn-schema-save')).toBeDisabled();
+    expect((await page.request.post('/api/v1/schemas',{data:{...schema,pro:true,plan:'team'}})).status()).toBe(403);
+    expect((await request.post(controls+'/grant-pro',{data:{email}})).ok()).toBeTruthy();
+    await page.reload();await page.getByRole('button',{name:'Схемы PRO',exact:false}).click();
+    await page.getByLabel('Название снимка',{exact:true}).fill(schema.name);
+    await page.getByLabel('Структура схемы',{exact:true}).fill(schema.sql);
+    const saved=page.waitForResponse(r=>r.url().endsWith('/api/v1/schemas')&&r.request().method()==='POST');
+    await page.locator('#btn-schema-save').click();const savedResponse=await saved;
+    expect(savedResponse.status()).toBe(201);const id=(await savedResponse.json()).profile.id;
+    await expect(page.locator('#schema-list')).toContainText(schema.name);
+    expect((await request.post(controls+'/expire-pro',{data:{email}})).ok()).toBeTruthy();
+    // Keep the tab's old Pro state: the server must reject it independently.
+    await page.getByLabel('Название снимка',{exact:true}).fill('Forbidden after expiry');
+    await page.getByLabel('Структура схемы',{exact:true}).fill(schema.sql);
+    const rejected=page.waitForResponse(r=>r.url().endsWith('/api/v1/schemas')&&r.request().method()==='POST');
+    await page.locator('#btn-schema-save').click();expect((await rejected).status()).toBe(403);
+    await expect(page.locator('#schema-message')).toContainText('LockGuard Pro');
+    expect((await page.request.post('/api/v1/analyze',{data:{sql:'SELECT 1;',schemaId:id,pro:true}})).status()).toBe(403);
+    expect((await page.request.get('/api/v1/schemas/'+id)).status()).toBe(200);
+    const download=page.waitForEvent('download');await page.getByRole('button',{name:'Экспорт JSON',exact:true}).click();
+    const artifact=await download,exported=JSON.parse(await require('node:fs/promises').readFile(await artifact.path(),'utf8'));
+    expect(exported.tables.map(table=>table.name)).toEqual(['customers']);
+    await page.locator('#btn-schemas-refresh').click();await expect(page.locator('#btn-schema-save')).toBeDisabled();
+    await expect(page.locator('#analysis-schema-select')).toBeDisabled();await expect(page.locator('#schema-list')).toContainText(schema.name);
+    expect((await page.request.post('/api/v1/analyze',{data:{sql:"SET lock_timeout='3s'; ALTER TABLE customers ADD COLUMN note text;"}})).status()).toBe(200);
+  }finally{await context.close();}
+});
