@@ -6,7 +6,7 @@ function buildI18n(root = path.resolve(__dirname, '..')) {
   const assets = ['i18n-catalog.js', 'i18n.js', 'i18n.css'];
   const revisions = {};
   for (const asset of assets) {
-    const bytes = fs.readFileSync(path.join(root, 'src/ui', asset));
+    const bytes = fs.readFileSync(path.join(root, 'src/ui', asset), 'utf8').replaceAll('\r\n', '\n');
     fs.writeFileSync(path.join(root, 'docs', asset), bytes);
     revisions[asset] = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
   }

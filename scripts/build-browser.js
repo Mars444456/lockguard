@@ -18,15 +18,13 @@ finally{if(fs.existsSync(engineTemp))fs.unlinkSync(engineTemp);}
 fs.copyFileSync(require.resolve('libpg-query/wasm/libpg-query.wasm'), path.join(__dirname, '../docs/libpg-query.wasm'));
 // The npm artifact is executable on Unix; published static assets must have a stable mode.
 fs.chmodSync(path.join(__dirname, '../docs/libpg-query.wasm'), 0o644);
-fs.copyFileSync(path.join(__dirname, '../src/ui/design.css'), path.join(__dirname, '../docs/design.css'));
-fs.copyFileSync(path.join(__dirname, '../src/ui/labels.js'), path.join(__dirname, '../docs/labels.js'));
-fs.copyFileSync(path.join(__dirname, '../src/ui/pro.css'), path.join(__dirname, '../docs/pro.css'));
-fs.copyFileSync(path.join(__dirname, '../src/ui/site-access.js'), path.join(__dirname, '../docs/site-access.js'));
-fs.copyFileSync(path.join(__dirname, '../src/ui/review-ui.js'), path.join(__dirname, '../docs/review-ui.js'));
+for(const asset of ['design.css','labels.js','pro.css','site-access.js','review-ui.js']){
+  fs.writeFileSync(path.join(__dirname, '../docs', asset), fs.readFileSync(path.join(__dirname, '../src/ui', asset), 'utf8').replaceAll('\r\n', '\n'));
+}
 // GitHub Pages caches assets independently from HTML; change URLs whenever assets change.
 const indexPath = path.join(__dirname, '../docs/index.html');
 const html = fs.readFileSync(indexPath, 'utf8').replace(/(src|href)="(app\.js|review-ui\.js|labels\.js|lockguard-engine\.js|design\.css|pro\.css|site-access\.js)(?:\?[^"\s]*)?"/g, (_, attribute, asset) => {
-  const revision = createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../docs', asset))).digest('hex').slice(0, 12);
+  const revision = createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../docs', asset), 'utf8').replaceAll('\r\n', '\n')).digest('hex').slice(0, 12);
   return `${attribute}="${asset}?v=${revision}"`;
 });
 fs.writeFileSync(indexPath, html);
