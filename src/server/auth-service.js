@@ -69,14 +69,37 @@ class AuthService {
     }
     if (!this.db.allowAuthAttempt('ip:' + ip, 30, 15 * 60000) || !this.db.allowAuthAttempt('account:' + email, 10, 15 * 60000)) fail('Слишком много попыток. Повторите через 15 минут.', 429);
   }
-  response(user) { return { success: true, user, organization: this.db.forOrganization(user.organizationId).getOrganization(), registrationEnabled: this.env.LOCKGUARD_ALLOW_REGISTRATION !== 'false' }; }
+  response(user) { return { success: true, user, organization: this.db.forOrganization(user.organizationId).getOrganization(), recoveryEmailEnabled:this.db.recovery.configured(this.env), registrationEnabled: this.env.LOCKGUARD_ALLOW_REGISTRATION !== 'false' }; }
   signIn(req, res, user, expectedPasswordHash) {
     this.db.deleteSession(this.token(req));
     const token = this.db.createSession(user.id, expectedPasswordHash);
     this.setCookie(res, token);
-    return this.response(user);
+    return this.response(this.db.getSession(token));
   }
   registerRoutes(router) {
+    router.post('/api/v1/auth/recovery-code',async(req,res)=>{
+      this.validateMutation(req);const user=this.authenticate(req);if(!user)fail('Войдите в аккаунт.',401);
+      this.limit(req,user.email);
+      const expected=this.db.getUserByEmail(user.email).passwordHash;
+      if(!await verifyPassword(passwordValue(req.body.currentPassword),expected))fail('Текущий пароль неверен.',401);
+      const recovery=this.db.transaction(()=>{
+        if(this.db.getUserByEmail(user.email).passwordHash!==expected)fail('Учётные данные изменены. Войдите заново.',401);
+        return this.db.recovery.issue(user.id);
+      });
+      return res.json({success:true,recovery});
+    });
+    router.post('/api/v1/auth/forgot',async(req,res)=>{
+      this.validateMutation(req);const email=emailAddress(req.body.email);this.limit(req,email);
+      if(!this.db.recovery.configured(this.env))fail('Почтовое восстановление пока не настроено. Используйте сохранённый резервный код.',503);
+      void this.db.recovery.send(email,this.env).catch(()=>console.error('LockGuard recovery delivery could not be started.'));
+      return res.json({success:true,message:'Если аккаунт существует, инструкция отправлена на его email.'});
+    });
+    router.post('/api/v1/auth/recover',async(req,res)=>{
+      this.validateMutation(req);const email=emailAddress(req.body.email),password=passwordValue(req.body.password);this.limit(req,email);
+      const record=this.db.recovery.verify(email,req.body.token),nextHash=await hashPassword(password);
+      this.db.recovery.consume(email,req.body.token,nextHash,record.passwordHash);
+      this.setCookie(res,null);return res.json({success:true});
+    });
     router.get('/api/v1/auth/session', async (req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       const user = this.authenticate(req);

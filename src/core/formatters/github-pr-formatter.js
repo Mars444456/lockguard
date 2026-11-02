@@ -26,11 +26,11 @@ class GitHubPrFormatter {
     md.push('');
 
     if (anyFailed) {
-      md.push('> ❌ **MERGE BLOCKED**: One or more migrations acquire dangerous PostgreSQL table locks (`ACCESS EXCLUSIVE` / `SHARE`) that can freeze your production database or cause 504 Gateway Timeouts.');
+      md.push('> ❌ **MERGE BLOCKED**: Findings meet the configured failure threshold. Review the SQL, schema and transaction boundaries. Application impact and lock waiting have not been measured.');
     } else if (totalViolations > 0) {
-      md.push('> ⚠️ **WARNING**: Non-blocking migration warnings detected. Review best practices before deployment.');
+      md.push('> ⚠️ **WARNING**: Findings are below the configured failure threshold. This does not mean the operations are non-blocking.');
     } else {
-      md.push('> ✅ **ALL MIGRATIONS SAFE**: No dangerous locks detected. Conforms to PostgreSQL zero-downtime deployment standards.');
+      md.push('> ✅ **NO RULE FINDINGS**: No configured checks reported a finding. DDL can still acquire locks. Runtime behavior and downtime are not measured or guaranteed.');
     }
     md.push('');
 

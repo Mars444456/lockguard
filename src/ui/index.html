@@ -10,7 +10,7 @@
 
 
 <meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=20261031"><link rel="stylesheet" href="pro.css?v=20261031">
-<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=0ef274b6ea39"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
+<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=799d262acef9"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
 </head>
 <body class="bg-dark text-light antialiased">
   <!-- Top Announcement Banner -->
@@ -19,7 +19,7 @@
   <!-- Top Navigation Bar -->
   <header class="navbar">
     <div class="nav-container">
-      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.2</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
+      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.3</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
 
 
 
@@ -66,7 +66,7 @@
           <label>Email<input placeholder="you@company.ru" id="account-email" name="email" type="email" autocomplete="username" maxlength="254" required></label>
           <label id="account-organization-field" hidden>Название организации<input placeholder="Команда или название проекта" id="account-organization" name="organizationName" autocomplete="organization" maxlength="100"></label>
           <label>Пароль<input placeholder="Не менее 12 символов" id="account-password" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required></label>
-          <p class="account-hint">От 12 символов. Сохраните пароль: восстановление по email пока не подключено.</p>
+          <p class="account-hint">От 12 символов. После входа сохраните резервный код в менеджере паролей. <a href="reset.html">Восстановить доступ</a></p>
           <button id="account-auth-submit" class="btn-primary" type="submit">Войти</button>
         </form>
       </div><div id="account-profile" hidden>
@@ -304,7 +304,7 @@
     <!-- TAB 4: RULE CATALOG -->
     <section id="tab-schemas" class="tab-pane">
   <div class="section-header"><div><p class="eyebrow">КОНТЕКСТ ВАШЕГО ПРОЕКТА <span>/ PRO</span></p><h1 class="page-title">Анализ с учётом схемы.</h1><p class="page-desc">Сохраните структуру таблиц и индексов. LockGuard учтёт существующие индексы и подтверждённые ограничения при следующих проверках.</p></div></div>
-  <div id="pro-locked-note" class="pro-callout"><div><span class="pro-label">LOCKGUARD PRO</span><h2>Один раз загрузите схему.<br>Используйте в каждом релизе.</h2><p>До 10 схем организации, 1000 последних проверок и сравнение замечаний до и после исправления.</p><p>Бесплатный анализ и все 12 правил остаются доступны в Community.</p></div><div><button class="btn-primary" onclick="app.switchTab('billing')">Посмотреть возможности Pro →</button><p class="account-hint">Онлайн-оплата подключается. Платный доступ активирует сервер.</p></div></div>
+  <div id="pro-locked-note" class="pro-callout"><div><span class="pro-label">LOCKGUARD PRO</span><h2>Один раз загрузите схему.<br>Используйте в каждом релизе.</h2><p>До 10 схем, 1000 проверок, сравнение результатов и закрытое командное ревью с историей решений.</p><p>Бесплатный анализ и все 12 правил остаются доступны в Community.</p></div><div><button class="btn-primary" onclick="app.switchTab('billing')">Посмотреть возможности Pro →</button><p class="account-hint">Онлайн-оплата подключается. Платный доступ активирует сервер.</p></div></div>
   <p id="pro-active-note" class="notice-strip" hidden>Pro активен. Схемы доступны только вашей организации. Снимок следует обновлять после изменений базы.</p>
   <div class="schema-layout"><form id="schema-form" class="schema-import-card"><h2>Добавить снимок структуры</h2><p class="account-hint">Только описание схемы, без строк данных. SQL не выполняется. Сохраняется нормализованная структура, а не исходный файл.</p>
     <fieldset id="schema-fields" disabled><label>Название снимка<input id="schema-name" maxlength="80" required placeholder="Например, production · октябрь"></label>
@@ -337,7 +337,7 @@ CREATE INDEX ix_account ON orders (account_id);"></textarea></label>
         </div>
       </div>
 
-      <p style="margin-bottom:1rem">До оплаты ознакомьтесь с <a rel="noopener noreferrer" href="offer.html" target="_blank">офертой и правилами возврата</a> и <a rel="noopener noreferrer" href="contacts.html" target="_blank">реквизитами исполнителя</a>.</p><!-- plan-comparison:start --><div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr></tbody></table></div><!-- plan-comparison:end --><div class="pricing-grid">
+      <p style="margin-bottom:1rem">До оплаты ознакомьтесь с <a rel="noopener noreferrer" href="offer.html" target="_blank">офертой и правилами возврата</a> и <a rel="noopener noreferrer" href="contacts.html" target="_blank">реквизитами исполнителя</a>.</p><!-- plan-comparison:start --><div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr><tr><td>Командное ревью изменений</td><td>—</td><td>До 20 участников · 100 закрытых карточек</td></tr><tr><td>История согласования</td><td>—</td><td>Роли, подтверждения и временные исключения</td></tr></tbody></table></div><!-- plan-comparison:end --><div class="pricing-grid">
         <!-- Free Card -->
         <div class="pricing-card" id="card-plan-free">
           <div class="pricing-badge">ОТКРЫТОЕ ЯДРО</div>
@@ -418,6 +418,6 @@ CREATE INDEX ix_account ON orders (account_id);"></textarea></label>
 <!-- Notification Toast Container -->
   <div role="status" id="toast" class="toast"></div>
 
-  <script src="labels.js?v=20261031"></script><script src="pro.js?v=20261031"></script><script src="app.js"></script>
+  <script src="review-ui.js"></script><script src="labels.js?v=20261031"></script><script src="pro.js?v=20261031"></script><script src="workspace.js"></script><script src="app.js"></script><script src="recovery.js"></script>
 </body>
 </html>

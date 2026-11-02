@@ -6,7 +6,7 @@ const uiText = value => window.LockGuardI18n?.t(value) ?? value;
  */
 
 const PRESETS = {
-  catastrophic: `-- Catastrophic Real-World E-Commerce PR Migration
+  catastrophic: `-- Illustrative combined migration risks
 -- Warning: Missing SET lock_timeout!
 BEGIN;
 
@@ -22,7 +22,7 @@ ALTER TABLE transactions
   FOREIGN KEY (account_id)
   REFERENCES accounts(id);
 
--- 4. Full Table Rewrite
+-- 4. Type change: review the source type and conversion
 ALTER TABLE transactions ALTER COLUMN amount TYPE NUMERIC(18, 4);
 
 -- 5. Direct Unique Constraint
@@ -540,7 +540,7 @@ class LockGuardWebPlayground {
 
     const delayMs = simulation.totalLockWaitContentionMs;
     const estSec = (delayMs / 1000).toFixed(1);
-    this.resDowntime.textContent = `${estSec}s`;
+    this.resDowntime.textContent = simulation.assessmentStatus === 'scenario' ? `${estSec}s` : '—';
     this.resDowntime.className = delayMs > 1000 ? 'metric-value text-red' : (delayMs > 0 ? 'metric-value text-amber' : 'metric-value text-emerald');
     this.resDowntimeSub.textContent = `Модель: ${(rows / 1000000).toFixed(1)} млн строк`;
 
@@ -548,7 +548,7 @@ class LockGuardWebPlayground {
     this.resBlockedQueries.className = simulation.totalBlockedQueriesEstimated > 100 ? 'metric-value text-cyan' : 'metric-value text-emerald';
 
     if (this.resPoolTime) {
-      this.resPoolTime.textContent = `${simulation.timeToPoolExhaustionSec}s`;
+      this.resPoolTime.textContent = simulation.timeToPoolExhaustionSec === null ? '—' : `${simulation.timeToPoolExhaustionSec}s`;
       this.resPoolTime.className = simulation.isPoolExhausted ? 'metric-value text-amber' : 'metric-value text-emerald';
       this.resPoolSub.textContent = simulation.isPoolExhausted ? 'В модели лимит пула достигнут' : 'В модели лимит не достигнут';
     }
@@ -580,6 +580,10 @@ class LockGuardWebPlayground {
       this.resCollisionSub.textContent = prob > 70
         ? 'Высокий риск коллизии'
         : (prob > 35 ? 'Средняя плотность очереди' : 'Низкая вероятность коллизии');
+    }
+    if(simulation.assessmentStatus!=='scenario') {
+      for(const metric of [this.resDowntime,this.resBlockedQueries,this.resPoolTime,this.resFinancialLoss,this.resCollisionProb])if(metric){metric.textContent='—';metric.className='metric-value text-amber';}
+      this.resDowntimeSub.textContent=analysis.analysisComplete===false?'Анализ неполный: время не оценено':'Отсутствие замечаний не определяет время операции';
     }
   }
 
@@ -649,6 +653,7 @@ class LockGuardWebPlayground {
         });
       }
 
+      window.LockGuardReview?.finding(card,v,this.sqlInput);
       this.violationsList.appendChild(card);
     });
   }
@@ -673,7 +678,7 @@ class LockGuardWebPlayground {
     const plan = window.LockGuard.generatePlan(this.lastAnalysis, this.currentOrm);
     this.splitterPhases.innerHTML = '';
 
-    if (!plan.phases || plan.phases.length === 0) {
+    if ((!plan.phases || plan.phases.length === 0) && !plan.manualSteps?.length) {
       this.splitterPhases.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">Нет нарушений, для которых доступен шаблон разбиения.</div>';
       return;
     }
@@ -730,6 +735,7 @@ class LockGuardWebPlayground {
       }).join('\n\n');
     }
 
+    fileContent += '\n\n'+(plan.manualSteps||[]).map(step=>'-- MANUAL REVIEW: '+step.ruleId+' '+step.table+'\n'+step.checks.map(check=>'-- '+check).join('\n')+'\n'+(step.verificationSql?'-- '+step.verificationSql:'')).join('\n\n');
     const blob = new Blob(['-- DRAFT: manual review required; compare with the complete original migration.\n' + fileContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -757,6 +763,7 @@ class LockGuardWebPlayground {
       cpuCores: cpuCores
     });
     const splitPlan = analysis.analysisComplete === false ? { phases: [] } : window.LockGuard.generatePlan(analysis, 'sql');
+    const unassessed=analysis.isDmlOnly||simulation.assessmentStatus!=='scenario';
 
     const lossPerSec = gmv / 86400;
     const directLoss = lossPerSec * (simulation.totalLockWaitContentionMs / 1000);
@@ -787,13 +794,14 @@ class LockGuardWebPlayground {
         </div>
         ${v.safeFix ? `
           <div style="background:#0F172A; color:#E2E8F0; padding:10px 14px; border-radius:6px; font-family:Consolas, monospace; font-size:12px; line-height:1.5; white-space:pre-wrap;">
-<span style="color:#38BDF8; font-weight:bold;">-- Безопасный альтернативный Zero-Downtime код:</span>
+<span style="color:#38BDF8; font-weight:bold;">-- Черновая рекомендация для ручной проверки:</span>
 <code data-i18n-ignore style="white-space:pre-wrap">${escapeHtml(v.safeFix)}</code>
           </div>
         ` : ''}
       </div>
     `).join('');
 
+    const manualHtml=(splitPlan.manualSteps||[]).map(step=>`<section><h3>${escapeHtml(step.ruleId)} · Manual review</h3><p>${step.checks.map(escapeHtml).join('<br>')}</p></section>`).join('');
     const phasesHtml = (splitPlan.phases || []).map(p => `
       <div style="border:1px solid #E2E8F0; border-radius:6px; padding:12px; margin-bottom:10px; background:#F8FAFC; page-break-inside:avoid;">
         <div style="font-weight:700; color:#0F172A; font-size:14px; margin-bottom:4px;">📦 [ЭТАП ${p.phaseNumber}]: ${escapeHtml(p.title)}</div>
@@ -883,19 +891,19 @@ class LockGuardWebPlayground {
     </div>
     <div class="stat-box">
       <div class="stat-label">Время по модели</div>
-      <div class="stat-val ${analysis.isDmlOnly ? '' : 'red'}">${analysis.isDmlOnly ? 'Не оценено' : estDowntimeSec + ' сек'}</div>
+      <div class="stat-val ${analysis.isDmlOnly ? '' : 'red'}">${unassessed ? 'Не оценено' : estDowntimeSec + ' сек'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Ожидание по модели</div>
-      <div class="stat-val ${simulation.lockContentionProbability > 60 && !analysis.isDmlOnly ? 'red' : ''}">${analysis.isDmlOnly ? 'Не оценено' : (simulation.lockContentionProbability || 0) + '%'}</div>
+      <div class="stat-val ${simulation.lockContentionProbability > 60 && !analysis.isDmlOnly ? 'red' : ''}">${unassessed ? 'Не оценено' : (simulation.lockContentionProbability || 0) + '%'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Пул PgBouncer (${poolSize})</div>
-      <div class="stat-val ${simulation.isPoolExhausted && !analysis.isDmlOnly ? 'red' : ''}">${analysis.isDmlOnly ? 'Не оценено' : simulation.timeToPoolExhaustionSec + 's'}</div>
+      <div class="stat-val ${simulation.isPoolExhausted && !analysis.isDmlOnly ? 'red' : ''}">${unassessed ? 'Не оценено' : simulation.timeToPoolExhaustionSec === null ? 'Не применимо' : simulation.timeToPoolExhaustionSec + 's'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Условные потери</div>
-      <div class="stat-val ${totalLossRub > 0 ? 'red' : ''}">${analysis.isDmlOnly ? 'Не оценено' : '~' + totalLossRub.toLocaleString(window.LockGuardI18n?.locale || 'ru-RU') + ' ₽'}</div>
+      <div class="stat-val ${totalLossRub > 0 ? 'red' : ''}">${unassessed ? 'Не оценено' : '~' + totalLossRub.toLocaleString(window.LockGuardI18n?.locale || 'ru-RU') + ' ₽'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">Нарушений в коде</div>
@@ -906,17 +914,18 @@ class LockGuardWebPlayground {
   <h2>1. Анализ блокировок и найденные антипаттерны (${analysis.violationsCount})</h2>
   ${violationsHtml || '<p style="color:#16A34A;">Антипаттернов блокировок не обнаружено.</p>'}
 
-  ${splitPlan.phases && splitPlan.phases.length > 0 ? `
+  ${splitPlan.phases?.length || splitPlan.manualSteps?.length ? `
     <h2 style="page-break-before:always;">2. Черновой план изменений для ручной проверки</h2>
     <p style="font-size:12px; color:#475569; margin-bottom:12px;">Черновые этапы требуют ручной проверки полноты, порядка и применимости на тестовой базе:</p>
     ${phasesHtml}
+    ${manualHtml}
   ` : ''}
 
   <h2>3. Заключение и экспертные рекомендации</h2>
   <ol style="padding-left:18px; font-size:12px; color:#334155; line-height:1.6;">
-    <li><b>Интеграция в CI/CD:</b> Рекомендуется подключить автоматический линтер <code>uses: Mars444456/lockguard@v1</code> в GitHub Actions для автоматической блокировки PR с опасным DDL.</li>
-    <li><b>Обязательный таймаут:</b> Каждая транзакция DDL должна начинаться с директивы <code>SET lock_timeout = '3s';</code> во избежание Head-of-Line блокировок.</li>
-    <li><b>Фоновое построение индексов:</b> Все индексы должны создаваться с модификатором <code>CONCURRENTLY</code> вне транзакционных блоков.</li>
+    <li><b>Интеграция в CI/CD:</b> Используйте проверенную версию анализатора, например <code>uses: Mars444456/lockguard@v1.3.0</code>, и просмотрите результат проверки миграции.</li>
+    <li><b>Таймауты:</b> Подберите <code>lock_timeout</code> и <code>statement_timeout</code> под нагрузку и обработку ошибок. Они не гарантируют отсутствие задержек.</li>
+    <li><b>Индексы:</b> Для занятой таблицы рассмотрите <code>CONCURRENTLY</code> вне транзакционного блока и проверьте ограничения этого режима.</li>
   </ol>
 
   <div class="footer">
@@ -1017,8 +1026,8 @@ const PG_LOCK_CONFLICTS = {
 
 const PG_LOCK_DETAILS = {
   'ACCESS EXCLUSIVE': {
-    title: '🚨 ACCESS EXCLUSIVE: Фатальная блокировка таблицы (Full Outage)',
-    desc: 'Блокирует <b>абсолютно все операции</b>: чтение (<code>SELECT</code>), запись (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), создание индексов и любые другие DDL/DML. Если в этот момент выполняется долгий аналитический запрос, DDL встает в очередь, а все последующие <code>SELECT</code> выстраиваются за ним (Head-of-Line Blocking), исчерпывая пул соединений и приводя к массовым ошибкам <b>HTTP 504 Gateway Timeout</b>.',
+    title: 'ACCESS EXCLUSIVE: конфликт со всеми табличными режимами',
+    desc: 'Конфликтует со всеми табличными режимами блокировок, включая обычный SELECT. Ожидание DDL за долгой транзакцией может задержать последующие запросы. Длительность очереди и влияние на приложение зависят от транзакций, нагрузки, таймаутов и повторов; исчерпание пула и HTTP-ошибки не следуют из одного SQL.',
     blocked: ['SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'VACUUM / ANALYZE'],
     safe: []
   },

@@ -16,9 +16,10 @@ fs.copyFileSync(path.join(__dirname, '../src/ui/design.css'), path.join(__dirnam
 fs.copyFileSync(path.join(__dirname, '../src/ui/labels.js'), path.join(__dirname, '../docs/labels.js'));
 fs.copyFileSync(path.join(__dirname, '../src/ui/pro.css'), path.join(__dirname, '../docs/pro.css'));
 fs.copyFileSync(path.join(__dirname, '../src/ui/site-access.js'), path.join(__dirname, '../docs/site-access.js'));
+fs.copyFileSync(path.join(__dirname, '../src/ui/review-ui.js'), path.join(__dirname, '../docs/review-ui.js'));
 // GitHub Pages caches assets independently from HTML; change URLs whenever assets change.
 const indexPath = path.join(__dirname, '../docs/index.html');
-const html = fs.readFileSync(indexPath, 'utf8').replace(/(src|href)="(app\.js|labels\.js|lockguard-engine\.js|design\.css|pro\.css|site-access\.js)(?:\?[^"\s]*)?"/g, (_, attribute, asset) => {
+const html = fs.readFileSync(indexPath, 'utf8').replace(/(src|href)="(app\.js|review-ui\.js|labels\.js|lockguard-engine\.js|design\.css|pro\.css|site-access\.js)(?:\?[^"\s]*)?"/g, (_, attribute, asset) => {
   const revision = createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../docs', asset))).digest('hex').slice(0, 12);
   return `${attribute}="${asset}?v=${revision}"`;
 });

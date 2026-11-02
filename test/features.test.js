@@ -21,7 +21,8 @@ test('AutoSplitter - splits dangerous ADD COLUMN with volatile DEFAULT into 4 sa
   assert.equal(plan.totalPhases, 4);
 
   assert.ok(plan.phases[0].sql.includes('ALTER TABLE orders ADD COLUMN created_at TIMESTAMP;'));
-  assert.ok(plan.phases[1].sql.includes('UPDATE orders SET created_at = clock_timestamp() WHERE created_at IS NULL;'));
+  assert.match(plan.phases[1].sql,/LIMIT 5000 FOR UPDATE SKIP LOCKED/);
+  assert.match(plan.phases[1].sql,/UPDATE orders AS lg_target SET created_at = clock_timestamp\(\)/);
   assert.ok(plan.phases[2].sql.includes('CHECK (created_at IS NOT NULL) NOT VALID'));
   assert.ok(plan.phases[3].sql.includes('VALIDATE CONSTRAINT chk_orders_created_at_not_null'));
 });
@@ -37,7 +38,8 @@ test('ContextAnalyzer - enriches violations with table rows, size, and estimated
     }
   });
 
-  assert.equal(enriched.hasLiveContext, true);
+  assert.equal(enriched.hasTableMetrics, true);
+  assert.equal(enriched.hasLiveContext, false);
   assert.ok(enriched.maxEstimatedDowntimeSec > 30);
   assert.ok(enriched.violations[0].contextualMessage.includes('14.2M rows'));
   assert.ok(enriched.violations[0].contextualMessage.includes('8.2 GB'));
@@ -96,7 +98,7 @@ test('AutoSplitter - returns isSafe: true and empty phases when migration has no
   const plan = AutoSplitter.generatePlan(analysis, 'sql');
   assert.equal(plan.isSafe, true);
   assert.equal(plan.phases.length, 0);
-  assert.ok(plan.message.includes('safe'));
+  assert.match(plan.message,/Runtime locks.*require review/);
 });
 
 test('AutoSplitter - formats multi-phase migrations for Prisma, Drizzle, Django, and Alembic', () => {
@@ -155,7 +157,7 @@ test('AutoSplitter - handles LG-002, LG-003, LG-004, LG-005, LG-006 anti-pattern
   const p1Sql = plan.phases.find(p => p.phaseNumber === 1).sql;
   assert.ok(p1Sql.includes('CREATE INDEX CONCURRENTLY idx_posts_author'), 'LG-002 handled in Phase 1');
   assert.ok(p1Sql.includes('ADD CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES authors NOT VALID'), 'LG-003 uses parent primary key without assuming its column name');
-  assert.ok(p1Sql.includes('points_new BIGINT'), 'LG-004 shadow column in Phase 1');
+  assert.ok(plan.manualSteps.some(s=>s.ruleId==='LG-004'), 'Type changes need dependency review before generating swaps');
   assert.ok(p1Sql.includes('CREATE UNIQUE INDEX CONCURRENTLY uq_users_username_idx'), 'LG-005 concurrent unique index in Phase 1');
 
   const p3Sql = plan.phases.find(p => p.phaseNumber === 3).sql;

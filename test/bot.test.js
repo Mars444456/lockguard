@@ -11,13 +11,14 @@ test('Telegram Bot - generateLicenseKey formats valid Pro token', () => {
   assert.equal(parts.length, 6);
 });
 
-test('Telegram Bot - formatAuditMessage returns 100% safe status for clean migration', () => {
+test('Telegram Bot - no rule findings does not promise zero downtime', () => {
   const engine = new RuleEngine();
   const safeSql = `SET lock_timeout = '3s';\nALTER TABLE users ADD COLUMN bio text;`;
   const analysis = engine.analyze(safeSql, { filename: 'safe.sql' });
   const msg = formatAuditMessage(analysis, safeSql);
 
-  assert.ok(msg.includes('100% ZERO-DOWNTIME SAFE'));
+  assert.ok(msg.includes('НАРУШЕНИЙ ПРАВИЛ НЕТ'));
+  assert.doesNotMatch(msg,/100%|0\.0 сек|ОТСУТСТВУЕТ/);
   assert.ok(msg.includes('LockGuard: Аудит PostgreSQL миграции'));
   assert.ok(msg.includes('mars444456.github.io/lockguard'));
 });
@@ -28,8 +29,14 @@ test('Telegram Bot - formatAuditMessage returns outage warning for dangerous loc
   const analysis = engine.analyze(badSql, { filename: 'bad.sql' });
   const msg = formatAuditMessage(analysis, badSql);
 
-  assert.ok(msg.includes('ОБНАРУЖЕНЫ ОПАСНЫЕ БЛОКИРОВКИ'));
-  assert.ok(msg.includes('ДЕПЛОЙ ЗАБЛОКИРОВАН'));
+  assert.ok(msg.includes('ЕСТЬ ЗАМЕЧАНИЯ ПРАВИЛ'));
+  assert.ok(msg.includes('НУЖНА ПРОВЕРКА'));
   assert.ok(msg.includes('LG-001') || msg.includes('LG-002') || msg.includes('LG-008'));
-  assert.ok(msg.includes('Безопасная замена:'));
+  assert.ok(msg.includes('Рекомендация для ручной проверки:'));
+});
+
+test('Telegram reports escape SQL identifiers and recommendations as text',()=>{
+  const analysis=new RuleEngine().analyze('CREATE INDEX ix ON "<b>fake</b>"(id);');
+  const message=formatAuditMessage(analysis,'');
+  assert.ok(message.includes('&lt;b&gt;fake&lt;/b&gt;'));assert.ok(!message.includes('<b>fake</b>'));
 });

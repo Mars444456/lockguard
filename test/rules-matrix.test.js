@@ -126,7 +126,9 @@ test('Matrix LG-004 - Positive: ALTER COLUMN TYPE on existing table', () => {
   assert.equal(v.severity, Severity.CRITICAL);
   assert.equal(v.line, 3);
   assert.ok(v.safeFix && v.safeFix.length > 0, 'Safe SQL Recipe must be non-empty');
-  assert.ok(v.safeFix.includes('age_new'));
+  assert.equal(v.rewrite,'unknown');
+  assert.match(v.safeFix,/Review template only/);
+  assert.doesNotMatch(v.safeFix,/RENAME COLUMN/);
 });
 
 test('Matrix LG-004 - Negative: ALTER COLUMN TYPE on table created in same file is safe', () => {

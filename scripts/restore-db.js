@@ -8,19 +8,25 @@ async function restore(sourcePath, targetPath) {
   if (sourceFile === targetFile || fs.existsSync(targetFile) || fs.existsSync(targetFile + '-wal') || fs.existsSync(targetFile + '-shm')) {
     throw new Error('Restore target must be a new path. Existing databases are never overwritten.');
   }
-  const source = new DatabaseSync(sourceFile, { readOnly: true });
+  const readable=await require('../src/server/backup-crypto').plaintext(sourceFile);
+  let source;
   try {
+    source = new DatabaseSync(readable.file, { readOnly: true });
     if (source.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok' || source.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Backup integrity check failed');
     if (source.prepare("SELECT value FROM metadata WHERE key='schema_version'").get()?.value !== '1') throw new Error('Unsupported backup schema');
     fs.mkdirSync(path.dirname(targetFile), { recursive: true, mode: 0o700 });
     fs.closeSync(fs.openSync(targetFile, 'wx', 0o600));
     await backup(source, targetFile);
     const restored = new DatabaseSync(targetFile);
-    try { restored.exec('PRAGMA foreign_keys=ON; DELETE FROM sessions; DELETE FROM auth_limits;'); }
+    try {
+      restored.exec('PRAGMA foreign_keys=ON; BEGIN IMMEDIATE; DELETE FROM sessions; DELETE FROM auth_limits;');
+      for(const table of ['workspace_invites','recovery_tokens'])if(restored.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))restored.exec('DELETE FROM '+table);
+      restored.exec('COMMIT');
+    }
     finally { restored.close(); }
     fs.chmodSync(targetFile, 0o600);
     return targetFile;
-  } finally { source.close(); }
+  } finally { source?.close();readable.cleanup(); }
 }
 
 if (require.main === module) restore(process.argv[2], process.argv[3])

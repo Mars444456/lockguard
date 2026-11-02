@@ -467,7 +467,7 @@ jobs:
       });
 
       if (args.withContext || args.context || args.schemaStats) {
-        analysis = ContextAnalyzer.enrich(analysis, { tables: schemaStats });
+        analysis = ContextAnalyzer.enrich(analysis, { tables: schemaStats, source:args.context&&!args.schemaStats&&process.env.DATABASE_URL?'database':'provided' });
       }
 
       results.push(analysis);
@@ -535,7 +535,8 @@ jobs:
       return 0;
     }
 
-    console.log(`Generated ${plan.totalPhases} safe deployment phases to prevent table locking:\n`);
+    console.log(`Generated ${plan.totalPhases} draft phases. Review dependencies, locks and transaction boundaries:\n`);
+    for (const step of plan.manualSteps || []) console.log(`MANUAL REVIEW ${step.ruleId} (${step.table}): ${step.checks.join(' ')}\n`);
 
     for (const phase of plan.phases) {
       console.log(`------------------------------------------------------------------------`);
@@ -596,9 +597,10 @@ jobs:
     console.log(`========================================================================\n`);
     console.log(`Simulated Database Size: 14,200,000 rows (~8.4 GB)`);
     console.log(`Concurrent Traffic: 250 RPS\n`);
-    console.log(`Total Lock Contention: ${(sim.totalLockWaitContentionMs / 1000).toFixed(2)} seconds`);
+    console.log('Illustrative scenario only. SQL is not executed; actual downtime and lock waits are unknown.');
+    console.log(`Modeled operation cost: ${(sim.totalLockWaitContentionMs / 1000).toFixed(2)} seconds`);
     console.log(`Estimated Blocked Queries: ~${sim.totalBlockedQueriesEstimated.toLocaleString()} requests`);
-    console.log(`Outage Risk: ${sim.outageSeverity}\n`);
+    console.log(`Scenario impact: ${sim.outageSeverity}\n`);
 
     return sim.outageSeverity === 'CATASTROPHIC' ? 1 : 0;
   }

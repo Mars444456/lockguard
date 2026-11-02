@@ -20,7 +20,7 @@ const ruleEngine = new RuleEngine();
 
 function registerRoutes(router) {
   const auth = new AuthService(db);
-  const authPaths = new Set(['/api/v1/auth/session', '/api/v1/auth/register', '/api/v1/auth/login', '/api/v1/auth/logout', '/api/v1/auth/password']);
+  const authPaths = new Set(['/api/v1/auth/session', '/api/v1/auth/register', '/api/v1/auth/login', '/api/v1/auth/logout', '/api/v1/auth/password', '/api/v1/auth/recovery-code', '/api/v1/auth/forgot', '/api/v1/auth/recover']);
   const publicPaths = new Set(['/api/v1/analyze', '/api/v1/rules', '/api/v1/verify-key', '/api/v1/split', '/api/v1/simulate', '/api/v1/watchdog']);
   const targetRouter = router;
   router = Object.fromEntries(['get', 'post', 'delete'].map(method => [method, (path, handler) => {
@@ -30,6 +30,15 @@ function registerRoutes(router) {
         await RuleEngine.initialize();
         req.auth = requireAdmin.isAdmin(req) ? null : auth.authenticate(req);
         req.store = req.auth ? db.forOrganization(req.auth.organizationId) : db;
+        if(req.auth && req.headers?.['x-lockguard-workspace'] && !authPaths.has(path) && req.headers['x-lockguard-workspace']!==req.auth.organizationId) {
+          return res.status(409).json({code:'WORKSPACE_CHANGED',error:'Рабочее пространство изменилось. Обновите данные перед действием.'});
+        }
+        if(req.auth && ['POST','DELETE'].includes(req.method)) {
+          const reviewerAllowed = path.startsWith('/api/v1/auth/') || path==='/api/v1/workspaces/select' || path==='/api/v1/team/accept' || path==='/api/v1/reviews/:id/events' ||
+            (path==='/api/v1/analyze' && !req.body?.recordRun && !req.body?.repo);
+          if(req.auth.role==='reviewer' && !reviewerAllowed) return res.status(403).json({error:'Рецензент может читать проверки и участвовать в ревью.'});
+          if(req.auth.role!=='owner' && (path==='/api/v1/organization' || path.startsWith('/api/v1/keys') || path.startsWith('/api/v1/billing'))) return res.status(403).json({error:'Действие доступно владельцу организации.'});
+        }
         const providerWebhook = path === '/api/v1/billing/robokassa/result' || path === '/billing/success' || path === '/billing/fail' ||
           (path === '/api/v1/github/webhook' && req.headers?.['x-github-event']);
         if (req.auth && !providerWebhook) auth.validateMutation(req);
@@ -51,6 +60,7 @@ function registerRoutes(router) {
     });
   }]));
   auth.registerRoutes(router);
+  require('./workspace-routes')(router,db,auth);
   // 1. Analyze Migration SQL
   router.post('/api/v1/analyze', async (req, res) => {
     try {
@@ -104,6 +114,9 @@ function registerRoutes(router) {
           branch: branch || '',
           commit: '',
           author: req.auth?.email || 'api',
+          authorId: req.auth?.id || null,
+          sqlHash: require('./workspace-service').digest(sql),
+          pgVersion: profile?.schema.pgVersion || 17,
           markdownReport,
           status: result.passed ? 'PASSED' : 'BLOCKED',
           highestLockLevel: result.highestLockLevel,
@@ -111,7 +124,7 @@ function registerRoutes(router) {
           criticalCount: result.criticalCount,
           highCount: result.highCount,
           summary: result.passed 
-            ? 'All lock checks passed safely.' 
+            ? 'No configured rule findings. Runtime verification is still required.'
             : `Blocked: ${result.criticalCount} critical, ${result.highCount} high lock violations.`
         });
       }
@@ -349,16 +362,8 @@ function registerRoutes(router) {
 
   // 10. Post-Deploy Watchdog: Invalid Index Inspection
   router.get('/api/v1/watchdog', async (req, res) => {
-    const mockTelemetry = [
-      {
-        index_name: 'idx_orders_user_id_failed',
-        table_name: 'orders',
-        is_valid: false,
-        index_size: '3.4 GB'
-      }
-    ];
-    const report = PostDeployWatchdog.evaluate(mockTelemetry);
-    return res.status(200).json({ success: true, report });
+    return res.status(200).json({ success: true, status: 'not_connected', measured: false,
+      report: null, message: 'Database telemetry is not connected. No index inspection has been performed.' });
   });
 
   // 11. Shadow Replay Simulator

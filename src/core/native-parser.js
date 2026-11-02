@@ -1,4 +1,5 @@
 const pg = require('libpg-query');
+const columnTypes = require('./column-types');
 let ready = false;
 const initialization = pg.loadModule().then(() => { ready = true; });
 const strings = values => (values || []).map(v => v.String.sval);
@@ -114,7 +115,13 @@ module.exports = {
             if (c.contype === 'CONSTR_CHECK' && !c.skip_validation) stmt.requiresManualAnalysis = true;
             sub.validatedColumn = check?.nulltesttype === 'IS_NOT_NULL' && check.arg?.ColumnRef?.fields?.length === 1
               ? ident(check.arg.ColumnRef.fields[0].String.sval) : undefined;
-          } else if (cmd.subtype === 'AT_AlterColumnType') sub.newType = typeName(cmd.def.ColumnDef.typeName);
+          } else if (cmd.subtype === 'AT_AlterColumnType') {
+            const column = cmd.def.ColumnDef;
+            sub.newType = typeName(column.typeName);
+            sub.targetType = columnTypes.fromAst(column.typeName);
+            sub.hasUsing = !!column.raw_default;
+            sub.hasCollation = !!column.collClause;
+          }
           else if (['AT_ValidateConstraint', 'AT_DropConstraint'].includes(cmd.subtype)) sub.constraintName = ident(cmd.name);
           return sub;
         });

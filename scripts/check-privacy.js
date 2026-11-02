@@ -15,7 +15,7 @@ function privatePath(file) {
   return /^(?:private|data|backups|reports)\//i.test(file) ||
     /^(?:IDEA\.md|docs\/habr[^/]*|src\/ui\/habr\.html)$/i.test(file) ||
     (/^\.env(?:\.|$)/i.test(name) && name !== '.env.example') ||
-    /\.(?:sqlite3?|db)(?:-(?:wal|shm)|\.(?:bak|backup|json))?$/i.test(name) ||
+    /\.(?:sqlite3?|db)(?:-(?:wal|shm)|\.(?:bak|backup|json))?(?:\.enc)?$/i.test(name) ||
     /^id_(?:rsa|dsa|ecdsa|ed25519)$/i.test(name);
 }
 
@@ -44,6 +44,7 @@ function scanRepository(cwd = root) {
   const findings = new Map();
   const add = (file, rule, line = 0) => findings.set(`${file}\0${rule}\0${line}`, { file, rule, line });
   const inspect = (file, bytes) => {
+    if(bytes.subarray(0,8).toString()==='LGBACK01')add(file,'encrypted-database-backup');
     if (bytes.includes(0)) return;
     bytes.toString('utf8').split(/\r?\n/).forEach((line, index) => {
       // JSON sometimes escapes URL slashes. Never include the matched text in logs.

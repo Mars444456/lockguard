@@ -1,7 +1,7 @@
 /**
  * LockGuard Context-Aware Metadata Analyzer
  * Evaluates live/replica table metrics (row counts, sizes, Postgres versions)
- * to calculate precise, real-world lock durations and eliminate false positives.
+ * to produce illustrative estimates, without measuring execution or lock waits.
  */
 
 class ContextAnalyzer {
@@ -61,11 +61,14 @@ class ContextAnalyzer {
     return {
       ...analysis,
       violations: enrichedViolations,
-      hasLiveContext: hasAnyStats,
+      hasLiveContext: hasAnyStats && dbContext.source === 'database' && !useDemoStats,
+      hasTableMetrics: hasAnyStats,
+      metricsSource: useDemoStats ? 'demo' : dbContext.source === 'database' ? 'database' : hasAnyStats ? 'provided' : 'unavailable',
+      measured: false,
       maxEstimatedDowntimeSec,
       maxEstimatedDowntimeFormatted: this.formatSeconds(maxEstimatedDowntimeSec),
       contextSummary: hasAnyStats 
-        ? `Audited against table metrics: ${analysis.affectedTables.map(t => {
+        ? `Scenario using ${useDemoStats ? 'demonstration' : 'provided'} table metrics (not measured execution): ${analysis.affectedTables.map(t => {
             const s = providedTables[t] || (useDemoStats && defaultStats[t]) || { rowCount: 0 };
             return `${t} (${(s.rowCount / 1000000).toFixed(1)}M rows)`;
           }).join(', ')}`
@@ -74,6 +77,7 @@ class ContextAnalyzer {
   }
 
   static calculateLockDuration(violation, stats, pgVersion = 16) {
+    if(violation.ruleId==='LG-004'&&violation.rewrite!=='required')return {seconds:0,formatted:'N/A',riskLevel:'UNKNOWN (RUNTIME LOCK WAITS)'};
     const { rowCount = 0, sizeMb = 0 } = stats;
     if (rowCount <= 0 && sizeMb <= 0) {
       return {

@@ -1,4 +1,5 @@
 const pg = require('libpg-query');
+const columnTypes = require('./column-types');
 const quote = name => /^[a-z_][a-z0-9_]*$/.test(name) ? name : '"' + name.replace(/"/g, '""') + '"';
 function invalid(message) { throw Object.assign(new Error('Схема: ' + message), { statusCode: 400 }); }
 function object(value, allowed) {
@@ -25,16 +26,16 @@ function notNullColumn(expr) {
 class SchemaCatalog {
   constructor(input) {
     object(input, ['version', 'pgVersion', 'defaultSchema', 'tables']);
-    if (input.version !== 1) invalid('поддерживается формат version: 1.');
+    if (![1, 2].includes(input.version)) invalid('поддерживается формат version: 1 или 2.');
     if (!Number.isInteger(input.pgVersion) || input.pgVersion < 10 || input.pgVersion > 18) invalid('pgVersion должен быть от 10 до 18.');
-    this.version = 1; this.pgVersion = input.pgVersion; this.defaultSchema = name(input.defaultSchema || 'public');
+    this.version = input.version; this.pgVersion = input.pgVersion; this.defaultSchema = name(input.defaultSchema || 'public');
     let indexes = 0, columns = 0;
     this.tables = list(input.tables, 500).map(table => {
       object(table, ['schema', 'name', 'columns', 'indexes', 'checks']);
       const result = { schema: name(table.schema || this.defaultSchema), name: name(table.name),
         columns: list(table.columns || [], 1600).map(c => {
-          object(c, ['name', 'notNull']); columns++;
-          return { name: name(c.name), notNull: bool(c.notNull) };
+          object(c, input.version === 2 ? ['name', 'notNull', 'type'] : ['name', 'notNull']); columns++;
+          return { name: name(c.name), notNull: bool(c.notNull), ...(c.type ? {type:columnTypes.validate(c.type)} : {}) };
         }),
         indexes: list(table.indexes || [], 200).map(i => {
           object(i, ['name', 'columns', 'method', 'valid', 'partial', 'expression', 'customSemantics']); indexes++;
@@ -70,7 +71,7 @@ class SchemaCatalog {
   static from(input) { return input instanceof SchemaCatalog ? input : new SchemaCatalog(input); }
   static fromSQL(sql, { pgVersion = 17, defaultSchema = 'public' } = {}) {
     if (typeof sql !== 'string' || new TextEncoder().encode(sql).length > 512 * 1024) invalid('SQL должен быть текстом размером до 512 КБ.');
-    const result = { version: 1, pgVersion, defaultSchema, tables: [] }, tables = new Map();
+    const result = { version: 2, pgVersion, defaultSchema, tables: [] }, tables = new Map();
     const key = relation => JSON.stringify([relation.schemaname || defaultSchema, relation.relname]);
     const find = relation => { const t = tables.get(key(relation)); if (!t) invalid('сначала укажите CREATE TABLE для ' + relation.relname); return t; };
     const addConstraint = (t, c, column) => {
@@ -99,7 +100,7 @@ class SchemaCatalog {
         if (node.inhRelations?.length || node.partbound || node.partspec) invalid('наследование и секции требуют отдельного описания в JSON.');
         const t = { schema: node.relation.schemaname || defaultSchema, name: node.relation.relname, columns: [], indexes: [], checks: [] };
         tables.set(key(node.relation), t); result.tables.push(t);
-        for (const e of node.tableElts || []) if (e.ColumnDef) t.columns.push({ name: e.ColumnDef.colname, notNull: false });
+        for (const e of node.tableElts || []) if (e.ColumnDef) t.columns.push({ name: e.ColumnDef.colname, notNull: false, type:columnTypes.fromAst(e.ColumnDef.typeName) });
         for (const e of node.tableElts || []) {
           if (e.ColumnDef) { const col = t.columns.find(c => c.name === e.ColumnDef.colname); for (const c of e.ColumnDef.constraints || []) addConstraint(t, c.Constraint, col); }
           else if (e.Constraint) addConstraint(t, e.Constraint);

@@ -295,12 +295,13 @@ test('CLI E2E - lockguard simulate measures lock contention and returns proper e
   const safeRes = runCli(['simulate', safeFile]);
   assert.equal(safeRes.status, 0, 'Safe migration simulation should exit with 0');
   assert.ok(safeRes.stdout.includes('LockGuard Shadow Replay Simulation'));
-  assert.ok(safeRes.stdout.includes('Outage Risk: NONE'));
+  assert.ok(safeRes.stdout.includes('Scenario impact: NONE'));
+  assert.match(safeRes.stdout,/actual downtime and lock waits are unknown/);
 
   const badFile = path.resolve(__dirname, '../fixtures/09_catastrophic_combined.sql');
   const badRes = runCli(['simulate', badFile]);
   assert.equal(badRes.status, 1, 'Catastrophic migration simulation should exit with 1');
-  assert.ok(badRes.stdout.includes('Outage Risk: CATASTROPHIC'));
+  assert.ok(badRes.stdout.includes('Scenario impact: CATASTROPHIC'));
 });
 
 test('CLI E2E - lockguard init creates .lockguardrc.json in target directory', () => {

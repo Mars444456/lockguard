@@ -181,6 +181,8 @@ class PersistentDatabase {
       if (!schema) this.initialize();
       this.primaryOrganizationId = this.getMeta('primary_organization');
       if (!this.readOrganization(this.primaryOrganizationId)) throw new Error('Primary organization is missing');
+      this.workspaces = new (require('./workspace-service').WorkspaceService)(this);
+      this.recovery = new (require('./recovery-service').RecoveryService)(this);
       if (!this.memoryOnly) fs.chmodSync(this.dbFilePath, 0o600);
     } catch (cause) {
       this.sql?.close();
@@ -269,6 +271,7 @@ class PersistentDatabase {
       this.sql.prepare('INSERT INTO organizations(id,data) VALUES(?,?)').run(id, json({ ...defaults(id), name: organizationName }));
       this.sql.prepare('INSERT INTO users(id,organization_id,email,password_hash,created_at) VALUES(?,?,?,?,?)')
         .run(userId, id, email, passwordHash, createdAt);
+      this.workspaces.addOwner({id:userId,organizationId:id});
       return { id: userId, email, organizationId: id, createdAt };
     });
   }
@@ -290,7 +293,7 @@ class PersistentDatabase {
   }
   getSession(token) {
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
-    const user = this.sql.prepare('SELECT u.id,u.email,u.organization_id AS organizationId,u.created_at AS createdAt FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(hash(token), Date.now());
+    const user = this.sql.prepare('SELECT u.id,u.email,COALESCE(w.organization_id,u.organization_id) AS organizationId,u.created_at AS createdAt,m.role FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN session_workspaces w ON w.token_hash=s.token_hash JOIN memberships m ON m.user_id=u.id AND m.organization_id=COALESCE(w.organization_id,u.organization_id) WHERE s.token_hash=? AND s.expires_at>?').get(hash(token), Date.now());
     return user || null;
   }
   deleteSession(token) { if (typeof token === 'string') this.sql.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(token)); }
@@ -301,6 +304,7 @@ class PersistentDatabase {
       }
       this.sql.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash, userId);
       this.sql.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
+      this.sql.prepare('DELETE FROM recovery_tokens WHERE user_id=?').run(userId);
     });
   }
   allowAuthAttempt(key, limit, windowMs) {
@@ -325,12 +329,17 @@ class PersistentDatabase {
     try {
       if (check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok' || check.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Backup integrity check failed');
     } finally { check.close(); }
+    let finalTarget=target;
+    if(process.env.LOCKGUARD_BACKUP_KEY) {
+      try {finalTarget=await require('./backup-crypto').encrypt(target,target+'.enc',process.env.LOCKGUARD_BACKUP_KEY);}
+      finally {fs.unlinkSync(target);}
+    }
     this.setMeta('last_backup_at', new Date().toISOString());
     const keep = Math.max(1, Math.min(Number(retention) || 7, 100));
-    const files = fs.readdirSync(directory, { withFileTypes: true }).filter(e => e.isFile() && /^lockguard-backup-[\dTZ-]+-[a-f0-9-]{36}\.sqlite3$/.test(e.name))
+    const files = fs.readdirSync(directory, { withFileTypes: true }).filter(e => e.isFile() && /^lockguard-backup-[\dTZ-]+-[a-f0-9-]{36}\.sqlite3(?:\.enc)?$/.test(e.name))
       .map(e => ({ name: e.name, time: fs.statSync(path.join(directory, e.name)).mtimeMs })).sort((a, b) => b.time - a.time);
     for (const file of files.slice(keep)) fs.unlinkSync(path.resolve(directory, file.name));
-    return target;
+    return finalTarget;
   }
   close() { this.sql?.close(); }
 }

@@ -22,7 +22,7 @@ For a team pilot, [discuss reviewing 1–3 sanitized migrations](https://mars444
 - Terminal, JSON, Markdown, GitHub PR comment and SARIF output formats.
 - Browser-only SQL review and draft phased changes for supported findings.
 - Server workspace with account-scoped history and API keys.
-- Pro workflow with saved schema snapshots, longer history and before / after comparisons.
+- Pro workflow with saved schemas, longer history, before / after comparisons and private team reviews.
 - GitHub webhook signature verification and PR SQL analysis; commit-status publishing is configured separately.
 - Robokassa integration with test mode, verified ResultURL notifications and duplicate-payment protection.
 
@@ -158,7 +158,7 @@ SQL entered in the server workspace is sent to that server. The GitHub Pages dem
 
 Data is stored in `data/lockguard.sqlite3`. Organization access is determined by the server session, not a submitted organization ID. Changing a password revokes previous sessions; signing out clears private UI data.
 
-Legacy JSON databases are imported once, keeping the source and a separate backup. Stop the old server before migration. SQLite supports multiple processes on one server; running across multiple hosts needs a separate server database. Multi-user organization membership, email verification and email password recovery are not implemented yet.
+Legacy JSON databases are imported once, keeping the source and a separate backup. Stop the old server before migration. SQLite supports multiple processes on one server; multiple hosts need a separate server database. Pro supports invited organization members with owner, editor and reviewer roles. Offline recovery codes work without a mail provider; email recovery requires a configured sender. Registration email verification is not implemented. [Reviews, recovery and deployment](OPERATIONS.md#english).
 
 ## LockGuard Pro
 
@@ -166,10 +166,14 @@ Legacy JSON databases are imported once, keeping the source and a separate backu
 | --- | --- | --- |
 | All 12 rules, local CLI and browser analysis | Yes · MIT | Yes |
 | Schema-file input in the open CLI | Yes | Yes |
-| Workspace history | 100 recent reviews | 1,000 recent reviews |
+| Workspace history | 100 recent checks | 1,000 recent checks |
 | Saved organization schemas | — | Up to 10 |
 | Analysis using a saved schema | — | Workspace and API key |
 | Review comparison | — | Introduced, resolved and persisting findings |
+| Team review | — | Up to 20 members and 100 private cards |
+| Change approval | — | Independent reviewer, attestations, expiring waivers and decision history |
+
+SQL snapshots import as v2 with source column types; v1 JSON remains supported without type metadata. LG-004 distinguishes a known integer rewrite, supported VARCHAR widening and missing context. Avoiding a heap rewrite does not remove ACCESS EXCLUSIVE. Type changes require dependency review instead of an automatically generated column swap. New-column backfill uses bounded batches of 5,000 rows with a separate completion check.
 
 Upload SQL or JSON structure files up to 512 KB in **Schemas PRO**. SQL is not executed; only normalized structure is saved. Supported input includes a limited set of CREATE TABLE, CREATE INDEX and constraint definitions, not arbitrary full `pg_dump` output. [Example JSON snapshot](examples/schema.snapshot.json).
 
@@ -199,7 +203,7 @@ For API analysis, send a `schemaId` from `/api/v1/schemas` with `sql` and an API
 | Offering | Price | Terms |
 | --- | --- | --- |
 | Community | Free | Open core, local CLI and browser demo |
-| Pro | 1 500 ₽ / 30 days | Saved schemas, schema-aware analysis, 1,000 recent reviews and comparison; instance address confirmed before payment |
+| Pro | 1 500 ₽ / 30 days | Saved schemas, schema-aware analysis, 1,000 recent checks and comparison; instance address confirmed before payment |
 | PostgreSQL migration audit | 30 000 ₽ / one-off order | Scope, materials and schedule agreed in writing before payment; electronic report and recommendations |
 
 Renewal is a separate payment without automatic charges. **Online payments through Robokassa are still being connected.** Integration code being present does not mean the merchant account is activated or real payments are available. Agree on an order through the [project contacts](https://mars444456.github.io/lockguard/contacts.html?lang=en) before paying.
@@ -220,7 +224,7 @@ npm run build:browser
 npm run build:legal
 ```
 
-The optional `npm run test:postgres` suite needs a disposable local PostgreSQL database, with `LOCKGUARD_TEST_DATABASE_URL` pointing to a database whose name ends in `_test`. Ordinary `npm test` does not connect to an external database. CI additionally tests real locks on PostgreSQL 14, 17 and 18, creating and removing only a random test schema.
+The optional `npm run test:postgres` suite needs a disposable local PostgreSQL database, with `LOCKGUARD_TEST_DATABASE_URL` pointing to a database whose name ends in `_test`. Ordinary `npm test` does not connect to an external database. CI is configured for PostgreSQL 14–18, including real locks and heap rewrite behavior. Check CI for the outcome of a specific run. Only a random test schema is created and removed.
 
 - `src/core/`: parser, rules, report formats and draft generation.
 - `src/cli/`, `bin/`: CLI, Git hook and Telegram bot.

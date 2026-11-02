@@ -161,6 +161,8 @@ class RuleEngine {
           rawViolations.push({
             ...v,
             safeFix,
+            evidence: v.evidence || { source:'sql_only', certainty:'static_rule', verifiedAgainstDatabase:false,
+              missing:['Verify runtime lock waits, transaction boundaries and application compatibility.'] },
             lockDetails: LockMatrix[v.lockLevel] || null
           });
         }
@@ -264,7 +266,7 @@ class RuleEngine {
       analysisComplete: unsupported.length === 0,
       originalSql: sqlText,
       isDmlOnly,
-      dmlDescription: isDmlOnly ? 'Operation is not a schema DDL migration (SELECT / DML read/write). No DDL locks detected, estimated downtime: 0.0s.' : null,
+      dmlDescription: isDmlOnly ? 'DDL checks do not apply to this SELECT / DML script. Runtime locks and downtime are not assessed.' : null,
       violationsCount: violations.length,
       criticalCount,
       highCount,

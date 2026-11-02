@@ -1,6 +1,6 @@
 /**
  * LockGuard Auto-Splitter
- * Deconstructs fatal monolithic migrations into safe, zero-downtime multi-phase releases.
+ * Drafts multi-phase migrations for manual review and isolated testing.
  * Supports targets: Raw SQL, Prisma, Drizzle, Alembic, and Django.
  */
 
@@ -13,6 +13,7 @@ class AutoSplitter {
    */
   static generatePlan(analysis, targetOrm = 'sql') {
     const phases = [];
+    const manualSteps = [];
     const violations = analysis.violations || [];
     if (analysis.analysisComplete === false) {
       throw new Error('Cannot generate migration phases from incomplete SQL analysis.');
@@ -22,8 +23,9 @@ class AutoSplitter {
       return {
         isSafe: true,
         requiresReview: true,
+        manualSteps: [],
         originalSql: analysis.originalSql,
-        message: 'Migration is already zero-downtime safe. No splitting needed.',
+        message: 'No configured rule findings. Runtime locks, data compatibility and downtime still require review.',
         phases: []
       };
     }
@@ -51,9 +53,13 @@ class AutoSplitter {
           phase1Statements.push(`ALTER TABLE ${table} ALTER COLUMN ${col} SET DEFAULT ${def};`);
 
           phase2Operations.push(`-- Phase 2 (Async Background Worker): Backfill historical rows in small batches`);
-          phase2Operations.push(`-- Execute in chunks of 5000 rows to prevent table lock saturation:`);
-          phase2Operations.push(`-- Template only: implement a bounded batch using the table primary key before executing.`);
-          phase2Operations.push(`-- UPDATE ${table} SET ${col} = ${def} WHERE ${col} IS NULL;`);
+          phase2Operations.push(`-- Run one bounded batch per transaction. Inspect progress and repeat only after review.`);
+          phase2Operations.push(`-- SKIP LOCKED may leave rows behind; a zero-row batch does not prove completion.`);
+          phase2Operations.push(`WITH lg_batch AS (SELECT tableoid, ctid FROM ${table} WHERE ${col} IS NULL LIMIT 5000 FOR UPDATE SKIP LOCKED)`);
+          phase2Operations.push(`UPDATE ${table} AS lg_target SET ${col} = ${def} FROM lg_batch WHERE lg_target.tableoid = lg_batch.tableoid AND lg_target.ctid = lg_batch.ctid;`);
+          manualSteps.push({ ruleId:v.ruleId, table, column:col, kind:'backfill_verification',
+            checks:['Confirm that recalculating the default for historical rows is intended.', 'Check for remaining NULLs without SKIP LOCKED before validation; investigate functions that can return NULL.', 'Review replication lag and transaction duration between batches.'],
+            verificationSql:`SELECT count(*) AS remaining FROM ${table} WHERE ${col} IS NULL;` });
 
           if (v.isNotNull) {
             phase3Statements.push(`-- Phase 3 (Deploy 2): Enforce NOT NULL after backfill is complete`);
@@ -87,7 +93,7 @@ class AutoSplitter {
 
           phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent cascade locks`);
           phase1Statements.push(`CREATE INDEX CONCURRENTLY idx_${table}_${colSlug} ON ${table} (${colList});`);
-          phase1Statements.push(`-- Phase 1 (Deploy 1): Attach FK with NOT VALID (instant catalog lock)`);
+          phase1Statements.push(`-- Phase 1 (Deploy 1): Attach FK with NOT VALID; acquisition and transaction holding still require review`);
           phase1Statements.push(v.raw
             ? `${/^ALTER\s+TABLE/i.test(v.raw) ? v.raw : `ALTER TABLE ${table} ${v.raw}`} NOT VALID;`
             : `ALTER TABLE ${table} ADD CONSTRAINT ${constraint} FOREIGN KEY (${colList}) REFERENCES ${foreignTable}${v.foreignColumns?.length ? `(${v.foreignColumns.join(', ')})` : ''} NOT VALID;`);
@@ -99,33 +105,9 @@ class AutoSplitter {
 
         // 4. ALTER COLUMN TYPE table rewrite
         case 'LG-004': {
-          const col = v.column || 'column_name';
-          const newType = v.newType || 'BIGINT';
-
-          phase1Statements.push(`-- Phase 1 (Deploy 1): Add shadow column & Dual-Write Trigger`);
-          phase1Statements.push(`ALTER TABLE ${table} ADD COLUMN ${col}_new ${newType};`);
-          phase1Statements.push(`CREATE OR REPLACE FUNCTION trg_sync_${table}_${col}() RETURNS TRIGGER AS $$`);
-          phase1Statements.push(`BEGIN`);
-          phase1Statements.push(`  NEW.${col}_new = NEW.${col}::${newType};`);
-          phase1Statements.push(`  RETURN NEW;`);
-          phase1Statements.push(`END;`);
-          phase1Statements.push(`$$ LANGUAGE plpgsql;`);
-          phase1Statements.push(`CREATE TRIGGER trg_${table}_${col}_dual_write`);
-          phase1Statements.push(`  BEFORE INSERT OR UPDATE ON ${table}`);
-          phase1Statements.push(`  FOR EACH ROW EXECUTE FUNCTION trg_sync_${table}_${col}();`);
-
-          phase2Operations.push(`-- Phase 2 (Async Worker): Backfill historical rows in chunks of 5000`);
-          phase2Operations.push(`UPDATE ${table} SET ${col}_new = ${col}::${newType} WHERE ${col}_new IS NULL;`);
-
-          phase3Statements.push(`-- Phase 3 (Deploy 2): Remove trigger and swap columns`);
-          phase3Statements.push(`DROP TRIGGER IF EXISTS trg_${table}_${col}_dual_write ON ${table};`);
-          phase3Statements.push(`DROP FUNCTION IF EXISTS trg_sync_${table}_${col}();`);
-          phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col} TO ${col}_deprecated;`);
-          phase3Statements.push(`ALTER TABLE ${table} RENAME COLUMN ${col}_new TO ${col};`);
-
-          phase4Statements.push(`-- Phase 4 (Cleanup): Drop deprecated column safely`);
-          phase4Statements.push(`-- lockguard-ignore: LG-006`);
-          phase4Statements.push(`ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col}_deprecated;`);
+          manualSteps.push({ruleId:v.ruleId,table,column:v.column,kind:'type_change_review',rewrite:v.rewrite || 'unknown',
+            checks:['Verify source and target types, USING and collation.', 'Inventory indexes, defaults, constraints, views, triggers, privileges and application dependencies.',
+              'Design and test dual-write, bounded backfill, cutover and recovery if a rewrite is necessary. No column swap or cleanup is generated automatically.']});
           break;
         }
 
@@ -138,7 +120,7 @@ class AutoSplitter {
           phase1Statements.push(`-- Phase 1 (Deploy 1): Create unique index concurrently without blocking writes`);
           phase1Statements.push(`CREATE UNIQUE INDEX CONCURRENTLY ${indexName} ON ${table} (${cols});`);
 
-          phase3Statements.push(`-- Phase 3 (Deploy 2): Attach constraint to pre-built index (instant operation)`);
+          phase3Statements.push(`-- Phase 3 (Deploy 2): Attach constraint to pre-built index; review lock waits and transaction duration`);
           phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${constraint} UNIQUE USING INDEX ${indexName};`);
           break;
         }
@@ -208,8 +190,8 @@ class AutoSplitter {
     if (phase1Statements.length > 0) {
       phases.push({
         phaseNumber: 1,
-        title: 'Release 1: Non-Blocking Catalog & Index Setup',
-        description: 'Safe catalog operations taking <1ms ACCESS EXCLUSIVE or background concurrent indexes.',
+        title: 'Release 1: Catalog & Index Setup',
+        description: 'Review DDL locks and dependencies. Concurrent indexes must run outside a transaction block.',
         sql: wrapDdlPhase(phase1Statements)
       });
     }
@@ -218,7 +200,7 @@ class AutoSplitter {
       phases.push({
         phaseNumber: 2,
         title: 'Release 2: Asynchronous Batch Data Backfill',
-        description: 'Run via background job, cron, or script in batches of 5000 rows to prevent table freeze.',
+        description: 'Run and inspect one batch at a time; verify completion separately before continuing.',
         sql: phase2Operations.join('\n')
       });
     }
@@ -235,13 +217,21 @@ class AutoSplitter {
     if (phase4Statements.length > 0) {
       phases.push({
         phaseNumber: 4,
-        title: 'Release 4: Non-Blocking Validation & Final Cleanup',
+        title: 'Release 4: Validation & Final Cleanup',
         description: 'Validate constraints under weak SHARE UPDATE EXCLUSIVE locks and drop deprecated shadow columns.',
         sql: wrapDdlPhase(phase4Statements)
       });
     }
 
     // Format for specific ORMs
+    for (const phase of phases) {
+      phase.requiresReview = true;
+      phase.mustRunOutsideTransaction = /\bCONCURRENTLY\b/.test(phase.sql);
+      phase.dependsOn = phases.filter(p => p.phaseNumber < phase.phaseNumber).map(p => p.phaseNumber);
+      phase.preconditions = phase.phaseNumber > 2
+        ? ['Confirm backfill completion, data consistency and application compatibility before continuing.']
+        : ['Review the SQL and dependencies; test against an isolated representative database.'];
+    }
     let ormSnippets = null;
     if (targetOrm === 'prisma') {
       ormSnippets = this.formatPrisma(phases);
@@ -256,6 +246,7 @@ class AutoSplitter {
     return {
       isSafe: false,
       requiresReview: true,
+      manualSteps,
       originalSql: analysis.originalSql,
       warning: 'Draft plan. Compare with originalSql: unflagged operations are not copied into phases. Verify types, constraints, backfill and transaction boundaries before execution.',
       targetOrm,
@@ -324,6 +315,12 @@ class AutoSplitter {
       });
     }
 
+    if(plan.manualSteps?.length) {
+      const filePath=path.join(targetDir,baseName+'_manual_review.md');
+      const content='# Manual review required\n\n'+plan.manualSteps.map(step=>'## '+step.ruleId+' '+step.table+'\n\n'+step.checks.map(check=>'- '+check).join('\n')+'\n').join('\n');
+      fs.writeFileSync(filePath,content,{encoding:'utf8',flag:'wx'});
+      writtenFiles.push({phase:'manual',path:filePath,content});
+    }
     return writtenFiles;
   }
 

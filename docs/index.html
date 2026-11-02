@@ -8,8 +8,8 @@
 
 
 
-<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=683952a1ccb6"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16">
-<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=0ef274b6ea39"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
+<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=660c26ce8895"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16">
+<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=799d262acef9"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
 </head>
 <body>
   <!-- Top Announcement Banner -->
@@ -18,7 +18,7 @@
   <!-- Top Navigation Bar -->
   <header class="navbar public-navbar">
     <div class="nav-container">
-      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.2</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
+      <a class="brand" href="index.html" aria-label="LockGuard — главная"><span class="brand-logo"><svg width="24" height="27" viewBox="0 0 24 27" fill="none" aria-hidden="true"><path d="M12 2 22 6v7c0 6-6 10-10 12C8 23 2 19 2 13V6L12 2Z" stroke="currentColor" stroke-width="1.7" /><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span><span class="brand-title">LockGuard <span class="brand-tag">1.3</span></span><span class="brand-subtitle">Проверка миграций PostgreSQL</span></span></a>
 
       <div class="nav-actions">
         <!-- public-account:start -->
@@ -333,10 +333,10 @@
 
       <div class="matrix-explainer-card" id="matrix-explainer">
         <div class="explainer-title" id="explainer-title">
-          <span>🚨 ACCESS EXCLUSIVE: Фатальная блокировка таблицы (Full Outage Risk)</span>
+          <span>ACCESS EXCLUSIVE: конфликт со всеми табличными режимами</span>
         </div>
         <div class="explainer-desc" id="explainer-desc">
-          Блокирует <b>абсолютно все операции</b>: чтение (<code>SELECT</code>), запись (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), создание индексов и любые другие DDL/DML. Если в этот момент выполняется долгий аналитический запрос, DDL встает в очередь, а все последующие <code>SELECT</code> выстраиваются за ним (Head-of-Line Blocking), исчерпывая пул соединений и приводя к массовым ошибкам <b>HTTP 504 Gateway Timeout</b>.
+          Конфликтует со всеми табличными режимами блокировок, включая обычный SELECT. Ожидание DDL за долгой транзакцией может задержать последующие запросы. Длительность очереди и влияние на приложение зависят от транзакций, нагрузки, таймаутов и повторов; исчерпание пула и HTTP-ошибки не следуют из одного SQL.
         </div>
         <div class="explainer-tags" id="explainer-tags">
           <span class="explainer-tag tag-blocked">⛔ Блокирует: SELECT</span>
@@ -356,7 +356,7 @@
     <section id="pricing" class="pricing-section">
       <div class="pricing-header"><h2 class="pricing-title">Услуги и стоимость</h2>
         <p class="pricing-subtitle">Бесплатный анализ, доступ Pro на 30 дней и разовый технический аудит. Автоматических списаний нет.</p></div>
-      <div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr></tbody></table></div>
+      <div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr><tr><td>Командное ревью изменений</td><td>—</td><td>До 20 участников · 100 закрытых карточек</td></tr><tr><td>История согласования</td><td>—</td><td>Роли, подтверждения и временные исключения</td></tr></tbody></table></div>
       <div class="pricing-grid">
         <div class="pricing-card"><div class="pricing-name">Community</div>
           <div class="pricing-price">0 ₽ <span class="pricing-period">/ без оплаты</span></div>
@@ -365,7 +365,7 @@
           <a href="#tab-playground" class="pricing-btn btn-free">Открыть бесплатный анализ</a></div>
         <div class="pricing-card featured"><div class="pricing-badge">ДОСТУП НА 30 ДНЕЙ</div>
           <div class="pricing-name">LockGuard Pro</div><div class="pricing-price">1 500 ₽ <span class="pricing-period">/ 30 дней</span></div>
-          <div class="pricing-desc">Рабочий процесс команды: сохранённые схемы, глубокая история и сравнение результатов. Нужен серверный экземпляр LockGuard.</div>
+          <div class="pricing-desc">Рабочий процесс команды: схемы, сравнение результатов и закрытое ревью с ролями и историей решений. Нужен серверный экземпляр LockGuard.</div>
           <ul class="pricing-features"><li><span class="check">✔</span> До 10 схем организации · SQL / JSON</li><li><span class="check">✔</span> Анализ с учётом существующих индексов и ограничений</li><li><span class="check">✔</span> До 1000 последних проверок</li><li><span class="check">✔</span> Сравнение новых, устранённых и оставшихся замечаний</li><li><span class="check">✔</span> 30 дней · поддержка по email · без автосписаний</li><li><span class="check">✔</span> Адрес экземпляра подтверждается до оплаты</li></ul>
           <a href="contacts.html" class="pricing-btn btn-pro">Условия и заказ Pro</a>
           <a href="offer.html#refund" class="pricing-btn btn-free">Порядок отказа и возврата</a></div>
@@ -419,7 +419,7 @@
 <!-- seller-footer:end -->
 <!-- Scripts -->
   <script src="site-access.js?v=6c7531bb874d"></script>
-  <script src="lockguard-engine.js?v=2473d591b2a5"></script>
-  <script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=98c9cd3b5750"></script>
+  <script src="lockguard-engine.js?v=13a5563883d6"></script>
+  <script src="review-ui.js?v=f346561868c9"></script><script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=9e17dee4832a"></script>
 </body>
 </html>

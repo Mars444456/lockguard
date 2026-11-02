@@ -54,7 +54,8 @@ test('RuleEngine - Fixture 04: ALTER COLUMN TYPE table rewrite (LG-004)', () => 
   assert.equal(res.passed, false);
   const v = res.violations.find(v => v.ruleId === 'LG-004');
   assert.ok(v);
-  assert.ok(v.safeFix.includes('amount_new'));
+  assert.equal(v.rewrite,'unknown');
+  assert.match(v.safeFix,/Verify source type/);
 });
 
 test('RuleEngine - Fixture 05: Direct UNIQUE constraint (LG-005)', () => {

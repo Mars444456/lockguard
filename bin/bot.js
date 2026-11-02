@@ -117,21 +117,18 @@ function generateLicenseKey(prefix = 'LG-PRO-2026') {
 
 // Format Analysis into Telegram HTML Message
 function formatAuditMessage(analysis, sql) {
-  const sim = ShadowReplaySimulator.simulate(analysis, { simulatedRows: 14200000, concurrentRps: 250 });
-  const delaySec = (sim.totalLockWaitContentionMs / 1000).toFixed(1);
+  const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 
-  if (analysis.passed) {
+  if (analysis.passed && analysis.violationsCount===0) {
     return [
       `🛡️ <b>LockGuard: Аудит PostgreSQL миграции</b>`,
       `───────────────────────`,
-      `✅ <b>СТАТУС: 100% ZERO-DOWNTIME SAFE</b>`,
+      `✅ <b>СТАТУС: НАРУШЕНИЙ ПРАВИЛ НЕТ</b>`,
       ``,
-      `В вашем коде не обнаружено опасных блокировок. Запросы не будут конфликтовать с пользовательским трафиком и не положат базу.`,
+      `Настроенные проверки не выявили замечаний. SQL может брать блокировки; нагрузка и границы транзакций требуют отдельной проверки.`,
       ``,
-      `📊 <b>Метрики симулятора (14.2M строк):</b>`,
-      `• Максимальный лок: <code>${analysis.highestLockLevel || 'ACCESS SHARE'}</code>`,
-      `• Оценка простоя: <code>0.0 сек</code>`,
-      `• Риск для продакшена: <b>ОТСУТСТВУЕТ</b>`,
+      `• Выведенная из SQL блокировка: <code>${escape(analysis.highestLockLevel || 'ACCESS SHARE')}</code>`,
+      `• SQL не исполнялся. Реальные ожидания и простой не измерены.`,
       ``,
       `🌐 <i>Проверить визуально в песочнице:</i>`,
       `<a href="https://mars444456.github.io/lockguard/">mars444456.github.io/lockguard</a>`
@@ -139,26 +136,24 @@ function formatAuditMessage(analysis, sql) {
   }
 
   const lines = [
-    `🛡️ <b>LockGuard: ВНИМАНИЕ! ОБНАРУЖЕНЫ ОПАСНЫЕ БЛОКИРОВКИ</b>`,
+    `🛡️ <b>LockGuard: ЕСТЬ ЗАМЕЧАНИЯ ПРАВИЛ</b>`,
     `───────────────────────`,
-    `🔴 <b>СТАТУС: ДЕПЛОЙ ЗАБЛОКИРОВАН (${analysis.criticalCount} Critical)</b>`,
+    `<b>СТАТУС: ${analysis.passed?'ЗАМЕЧАНИЯ НИЖЕ ПОРОГА ОШИБКИ':'НУЖНА ПРОВЕРКА'} (${analysis.criticalCount} Critical)</b>`,
     ``,
-    `⚠️ <b>Оценка последствий на базе в 14.2M строк:</b>`,
-    `• Макс. лок: <b>${analysis.highestLockLevel}</b> ⛔`,
-    `• Расчетный простой базы: <b>~${delaySec} сек</b>`,
-    `• Зависнет запросов клиентов: <b>~${sim.totalBlockedQueriesEstimated.toLocaleString()} (HTTP 504)</b>`,
+    `• Выведенная из SQL блокировка: <b>${escape(analysis.highestLockLevel)}</b>`,
+    `• SQL не исполнялся. Реальные ожидания и простой не измерены.`,
     ``,
     `🚨 <b>Найденные антипаттерны:</b>`
   ];
 
   analysis.violations.forEach((v, idx) => {
-    lines.push(`<b>#${idx + 1}. ${v.ruleName}</b> (<code>${v.ruleId}</code>)`);
-    lines.push(`• Таблица: <code>${v.table || 'default'}</code> | Строка: L${v.line || '1'}`);
-    lines.push(`• Риск: ${v.message}`);
+    lines.push(`<b>#${idx + 1}. ${escape(v.ruleName)}</b> (<code>${escape(v.ruleId)}</code>)`);
+    lines.push(`• Таблица: <code>${escape(v.table || 'default')}</code> | Строка: L${escape(v.line || '1')}`);
+    lines.push(`• Риск: ${escape(v.message)}`);
     if (v.safeFix) {
       lines.push(``);
-      lines.push(`💡 <b>Безопасная замена:</b>`);
-      lines.push(`<pre><code>${v.safeFix}</code></pre>`);
+      lines.push(`💡 <b>Рекомендация для ручной проверки:</b>`);
+      lines.push(`<pre><code>${escape(v.safeFix)}</code></pre>`);
     }
     lines.push(`───────────────────────`);
   });
@@ -168,7 +163,7 @@ function formatAuditMessage(analysis, sql) {
   lines.push(`<a href="https://mars444456.github.io/lockguard/">https://mars444456.github.io/lockguard/</a>`);
   lines.push(``);
   lines.push(`💬 <b>Заказать полный аудит всей базы или настройку в CI/CD:</b>`);
-  lines.push(`Напишите автору: @marswwu`);
+  lines.push(`<a href="https://mars444456.github.io/lockguard/contacts.html">Контакты проекта LockGuard</a>`);
 
   return lines.join('\n');
 }

@@ -137,7 +137,8 @@ test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, cl
     assert.equal(watchdogRes.statusCode, 200, 'GET /api/v1/watchdog should return 200 OK');
     const watchdogJson = JSON.parse(watchdogRes.body);
     assert.equal(watchdogJson.success, true);
-    assert.ok(watchdogJson.report, 'Should return watchdog report');
+    assert.equal(watchdogJson.report,null,'No fabricated production telemetry');
+    assert.equal(watchdogJson.status,'not_connected');
 
     // 7. HTTP POST to /api/v1/simulate
     const simulateRes = await makeRequest(target, {

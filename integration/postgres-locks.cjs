@@ -45,6 +45,24 @@ test('ALTER TABLE waits behind SELECT and lock_timeout cancels the DDL',async()=
     assert.equal((await observer.query("SELECT count(*)::int AS count FROM information_schema.columns WHERE table_schema=$1 AND table_name='orders' AND column_name='note'",[schema])).rows[0].count,0);
   } finally { await reader.query('ROLLBACK'); await Promise.all([reader.end(),ddl.end()]); }
 });
+
+test('Type evidence matches real heap rewrites, and widening VARCHAR still acquires ACCESS EXCLUSIVE',async()=>{
+  const {SchemaCatalog}=require('../src/core');
+  await observer.query('CREATE TABLE type_probe(name varchar(100),n integer); INSERT INTO type_probe VALUES(\'example\',1)');
+  const {rows:[{version}]}=await observer.query("SELECT current_setting('server_version_num')::int / 10000 AS version");
+  const schema=SchemaCatalog.fromSQL('CREATE TABLE type_probe(name varchar(100),n integer);',{pgVersion:version});
+  const result=new RuleEngine().analyze("SET lock_timeout='3s'; ALTER TABLE type_probe ALTER COLUMN name TYPE varchar(200);",{schema});
+  assert.equal(result.violations.find(v=>v.ruleId==='LG-004').rewrite,'not-required');
+  const file=async()=>(await observer.query("SELECT relfilenode::text AS file FROM pg_class WHERE oid='type_probe'::regclass")).rows[0].file;
+  const before=await file(),ddl=await connect();
+  try {
+    await ddl.query('BEGIN; ALTER TABLE type_probe ALTER COLUMN name TYPE varchar(200)');
+    const {rows}=await observer.query("SELECT mode FROM pg_locks WHERE pid=$1 AND relation='type_probe'::regclass AND granted",[ddl.processID]);
+    assert.ok(rows.some(row=>row.mode==='AccessExclusiveLock'));
+    await ddl.query('COMMIT');assert.equal(await file(),before);
+    await observer.query('ALTER TABLE type_probe ALTER COLUMN n TYPE bigint');assert.notEqual(await file(),before);
+  }finally{await ddl.query('ROLLBACK');await ddl.end();}
+});
 test('Ordinary CREATE INDEX queues writes; CONCURRENTLY lets a new writer proceed while waiting for an older writer',async()=>{
   for(const concurrent of [false,true]) {
     const blocker=await connect(), ddl=await connect(), writer=await connect();

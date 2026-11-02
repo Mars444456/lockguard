@@ -15,12 +15,14 @@ function setAdminToken() {
 async function apiFetch(url, options = {}) {
   if (window.location.protocol === 'file:') throw new Error('Откройте http://localhost:3000 после запуска npm start или используйте браузерное демо.');
   const headers = new Headers(options.headers);
+  if(window.LockGuardActiveWorkspace&&!url.startsWith('/api/v1/auth/'))headers.set('X-LockGuard-Workspace',window.LockGuardActiveWorkspace);
   if (adminToken) headers.set('Authorization', `Bearer ${adminToken}`);
   const response = await fetch(url, { credentials: 'same-origin', ...options, headers });
   if (!response.ok) {
     const data = await response.json();
     const error = new Error(data.error || `Request failed: ${response.status}`);
     error.status = response.status;
+    if(data.code==='WORKSPACE_CHANGED')document.dispatchEvent(new Event('lockguard:workspace-changed'));
     if (response.status === 401 && !url.startsWith('/api/v1/auth/') && !adminToken) document.dispatchEvent(new Event('lockguard:signed-out'));
     throw error;
   }
@@ -28,7 +30,7 @@ async function apiFetch(url, options = {}) {
 }
 
 const PRESETS = {
-  catastrophic: `-- Catastrophic Real-World E-Commerce PR Migration
+  catastrophic: `-- Illustrative combined migration risks
 -- Warning: Missing SET lock_timeout!
 BEGIN;
 
@@ -44,7 +46,7 @@ ALTER TABLE transactions
   FOREIGN KEY (account_id)
   REFERENCES accounts(id);
 
--- 4. Full Table Rewrite
+-- 4. Type change: review the source type and conversion
 ALTER TABLE transactions ALTER COLUMN amount TYPE NUMERIC(18, 4);
 
 -- 5. Direct Unique Constraint
@@ -160,6 +162,7 @@ class LockGuardApp {
     this.registrationEnabled = true;
     this.analysisRequestId = 0;
     this.pro = window.LockGuardPro ? new window.LockGuardPro(this) : null;
+    this.workspace = window.LockGuardWorkspace ? new window.LockGuardWorkspace(this) : null;
     this.ready = this.init();
   }
 
@@ -272,6 +275,7 @@ class LockGuardApp {
     document.getElementById('account-auth-form').addEventListener('submit', event => { event.preventDefault(); this.submitAccount(); });
     document.getElementById('btn-account-logout').addEventListener('click', () => this.signOut());
     document.addEventListener('lockguard:signed-out', () => { this.resetPrivateData(); this.showAccountState(); });
+    document.addEventListener('lockguard:workspace-changed',async()=>{this.resetPrivateData();await this.restoreAccount();await this.refreshPrivateData();});
     document.getElementById('account-organization-form').addEventListener('submit', async event => {
       event.preventDefault();
       try {
@@ -319,6 +323,7 @@ class LockGuardApp {
     this.accountMessage('');
   }
   showAccountState() {
+    window.LockGuardActiveWorkspace=this.account?.organizationId||'';
     document.getElementById('account-guest').hidden = !!this.account;
     document.getElementById('account-profile').hidden = !this.account;
     document.getElementById('btn-account-logout').hidden = !this.account && !adminToken;
@@ -327,7 +332,10 @@ class LockGuardApp {
     document.getElementById('account-profile-email').textContent = this.account?.email || '';
   }
   resetPrivateData() {
+    window.LockGuardActiveWorkspace='';
+    window.LockGuardRecoveryReset?.();
     this.pro?.reset();
+    this.workspace?.reset();
     this.identityVersion++;
     this.runs = [];
     const report = document.getElementById('run-report');
@@ -367,6 +375,7 @@ class LockGuardApp {
     if (!this.account && !adminToken) return;
     await Promise.all([this.fetchOrganization(), this.fetchRuns(), this.fetchKeys()]);
     await this.pro?.refresh();
+    await this.workspace?.refresh();
   }
   hasIdentity() { return !!this.account || !!adminToken; }
   async submitAccount() {
@@ -519,6 +528,7 @@ class LockGuardApp {
           `;
           violationsList.appendChild(item);
         });
+        window.LockGuardReview?.manualSteps(violationsList,data.plan);
 
         violationsList.querySelectorAll('.btn-copy-snippet').forEach(b => {
           b.addEventListener('click', (e) => {
@@ -600,6 +610,7 @@ class LockGuardApp {
             </div>
           ` : ''}
         `;
+        window.LockGuardReview?.finding(item,v,document.getElementById('sql-input'));
         violationsList.appendChild(item);
       });
 
@@ -981,8 +992,8 @@ const PG_LOCK_CONFLICTS = {
 
 const PG_LOCK_DETAILS = {
   'ACCESS EXCLUSIVE': {
-    title: '🚨 ACCESS EXCLUSIVE: Фатальная блокировка таблицы (Full Outage)',
-    desc: 'Блокирует <b>абсолютно все операции</b>: чтение (<code>SELECT</code>), запись (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), создание индексов и любые другие DDL/DML. Если в этот момент выполняется долгий аналитический запрос, DDL встает в очередь, а все последующие <code>SELECT</code> выстраиваются за ним (Head-of-Line Blocking), исчерпывая пул соединений и приводя к массовым ошибкам <b>HTTP 504 Gateway Timeout</b>.',
+    title: 'ACCESS EXCLUSIVE: конфликт со всеми табличными режимами',
+    desc: 'Конфликтует со всеми табличными режимами блокировок, включая обычный SELECT. Ожидание DDL за долгой транзакцией может задержать последующие запросы. Длительность очереди и влияние на приложение зависят от транзакций, нагрузки, таймаутов и повторов; исчерпание пула и HTTP-ошибки не следуют из одного SQL.',
     blocked: ['SELECT (ACCESS SHARE)', 'INSERT / UPDATE / DELETE (ROW EXCLUSIVE)', 'CREATE INDEX (SHARE)', 'VACUUM / ANALYZE'],
     safe: []
   },

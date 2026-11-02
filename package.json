@@ -1,6 +1,6 @@
 {
   "name": "lockguard",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Automated PostgreSQL CI/CD gatekeeper and AST migration analyzer for detecting dangerous table locks",
   "main": "src/core/index.js",
   "bin": {
@@ -13,6 +13,8 @@
     "build:legal": "node scripts/build-legal.js && node scripts/prepare-seller-site.js",
     "backup": "node --env-file-if-exists=.env scripts/backup-db.js",
     "restore": "node scripts/restore-db.js",
+    "verify:restore": "node --env-file-if-exists=.env scripts/verify-restore.js",
+    "start:durable": "node --env-file-if-exists=.env scripts/durable-server.js",
     "pro": "node --env-file-if-exists=.env scripts/manage-pro.js",
     "test:postgres": "node --test integration/postgres-locks.cjs",
     "preview:server": "node scripts/preview-server.js",
