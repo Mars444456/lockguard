@@ -31,7 +31,7 @@
 
 Развёрнут и проверен по HTTPS [облачный тестовый кабинет на Render Free](DEPLOYMENT.md#тестовый-стенд). Первый запуск после простоя может занять около минуты; SQLite и аккаунты могут сброситься при перезапуске.
 
-Текущая версия кода — **1.5.0**. Ядро, CLI и GitHub Action доступны по лицензии [MIT](LICENSE). Платные услуги описаны отдельно ниже.
+Текущая версия кода — **1.5.1**. Ядро, CLI и GitHub Action доступны по лицензии [MIT](LICENSE). Платные услуги описаны отдельно ниже.
 
 ## Возможности
 
@@ -259,6 +259,8 @@ npm run restore -- data/backups/FILE.sqlite3 data/restored.sqlite3
 [Контакты, заказы и реквизиты](https://mars444456.github.io/lockguard/contacts.html) · [Оферта и возвраты](https://mars444456.github.io/lockguard/offer.html) · [Конфиденциальность](https://mars444456.github.io/lockguard/privacy.html).
 
 ## Разработка
+
+Сценарии корректности и порядок добавления регрессий: [TESTING.md](TESTING.md).
 
 ```sh
 npm test

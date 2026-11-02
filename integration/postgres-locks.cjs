@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
 const { Client } = require('pg');
 const {RuleEngine}=require('../src/core');
-const {AutoSplitter,PgParser}=require('../src/core');
+const {AutoSplitter,PgParser,SchemaCatalog}=require('../src/core');
 const connectionString = process.env.LOCKGUARD_TEST_DATABASE_URL;
 if (!connectionString) throw new Error('Set LOCKGUARD_TEST_DATABASE_URL to a disposable local database named *_test.');
 const url = new URL(connectionString);
@@ -118,4 +118,70 @@ test('ADD FOREIGN KEY holds SHARE ROW EXCLUSIVE: reads proceed and writes wait',
     await assert.rejects(other.query('INSERT INTO orders VALUES(30,1)'),error=>error.code==='55P03');
   } finally {await ddl.query('ROLLBACK');await Promise.all([ddl.end(),other.end()]);}
   }
+});
+
+test('Repeated BEGIN does not replace the outer rollback snapshot for lock_timeout',async()=>{
+  const client=await connect();
+  try{
+    await client.query("SET lock_timeout='0'; BEGIN; SET lock_timeout='3s'; BEGIN; ROLLBACK;");
+    assert.equal((await client.query('SHOW lock_timeout')).rows[0].lock_timeout,'0');
+    const result=new RuleEngine().analyze("BEGIN; SET lock_timeout='3s'; BEGIN; ROLLBACK; ALTER TABLE orders ADD COLUMN nested_probe int;");
+    assert.ok(result.violations.some(finding=>finding.ruleId==='LG-008'));
+  }finally{await client.query('ROLLBACK');await client.end();}
+});
+
+test('COMMIT and ROLLBACK AND CHAIN both retain a transaction that forbids VACUUM',async()=>{
+  await observer.query('CREATE TABLE chain_boundary_probe(id int)');
+  for(const end of ['COMMIT','ROLLBACK']){
+    const client=await connect();
+    try{
+      await client.query('BEGIN');await client.query(end+' AND CHAIN');
+      await assert.rejects(client.query('VACUUM chain_boundary_probe'),error=>error.code==='25001');
+      await client.query('ROLLBACK');await client.query('VACUUM chain_boundary_probe');
+      const analysis=new RuleEngine().analyze('BEGIN; '+end+' AND CHAIN; VACUUM chain_boundary_probe; ROLLBACK;');
+      assert.ok(analysis.violations.some(finding=>finding.ruleId==='LG-007'));
+    }finally{await client.query('ROLLBACK');await client.end();}
+  }
+});
+
+test('A reordered leading btree key set supports equality lookup for a composite foreign key',async()=>{
+  const ddl='CREATE TABLE fk_order_parent(a int,b int,PRIMARY KEY(a,b)); CREATE TABLE fk_order_child(a int,b int); CREATE INDEX fk_order_child_ba ON fk_order_child(b,a);';
+  await observer.query(ddl);
+  await observer.query('INSERT INTO fk_order_parent SELECT n,n%11 FROM generate_series(1,1000) n; INSERT INTO fk_order_child SELECT * FROM fk_order_parent; ANALYZE fk_order_child;');
+  const foreignKey='ALTER TABLE fk_order_child ADD CONSTRAINT fk_order_pair FOREIGN KEY(a,b) REFERENCES fk_order_parent(a,b) NOT VALID;';
+  await observer.query(foreignKey);
+  const client=await connect();
+  try{
+    await client.query('SET enable_seqscan=off; SET enable_bitmapscan=off;');
+    const {rows}=await client.query('EXPLAIN (FORMAT JSON,COSTS OFF) SELECT 1 FROM fk_order_child WHERE a=17 AND b=6');
+    const plan=rows[0]['QUERY PLAN'][0].Plan;
+    assert.equal(plan['Index Name'],'fk_order_child_ba');
+    assert.match(plan['Index Cond'],/\ba = 17\b/);assert.match(plan['Index Cond'],/\bb = 6\b/);
+    const analysis=new RuleEngine().analyze("SET lock_timeout='3s'; "+foreignKey,{schema:SchemaCatalog.fromSQL(ddl)});
+    assert.equal(analysis.violations.filter(finding=>finding.ruleId==='LG-011').length,0);
+    assert.deepEqual(analysis.cascadeWarnings,[]);
+  }finally{await client.end();}
+});
+
+test('ONLY NOT NULL preserves nullable inherited children and is not rewritten as recursive DDL',async()=>{
+  await observer.query('CREATE TABLE only_scope_parent(id int); CREATE TABLE only_scope_child() INHERITS(only_scope_parent); INSERT INTO only_scope_child VALUES(NULL);');
+  const original='ALTER TABLE ONLY only_scope_parent ALTER COLUMN id SET NOT NULL;';
+  await observer.query(original);
+  assert.equal((await observer.query('SELECT count(*)::int AS n FROM only_scope_child WHERE id IS NULL')).rows[0].n,1);
+  const analysis=new RuleEngine().analyze(original);
+  assert.equal(analysis.analysisComplete,false);
+  assert.throws(()=>AutoSplitter.generatePlan(analysis),error=>error.statusCode===422);
+});
+
+test('Rolled-back CHECK validation cannot prove a later NOT NULL operation',async()=>{
+  await observer.query('CREATE TABLE rollback_proof_probe(value int); INSERT INTO rollback_proof_probe VALUES(1)');
+  const client=await connect();
+  const sql='BEGIN; ALTER TABLE rollback_proof_probe ADD CONSTRAINT rollback_nn CHECK(value IS NOT NULL) NOT VALID; ALTER TABLE rollback_proof_probe VALIDATE CONSTRAINT rollback_nn; ROLLBACK;';
+  try{
+    await client.query(sql);
+    const {rows:[{n}]}=await client.query("SELECT count(*)::int AS n FROM pg_constraint WHERE conrelid='rollback_proof_probe'::regclass AND conname='rollback_nn'");
+    assert.equal(n,0);
+    const analysis=new RuleEngine().analyze("SET lock_timeout='3s'; "+sql+' ALTER TABLE rollback_proof_probe ALTER COLUMN value SET NOT NULL;');
+    assert.ok(analysis.violations.some(finding=>finding.ruleId==='LG-009'));
+  }finally{await client.query('ROLLBACK');await client.end();}
 });

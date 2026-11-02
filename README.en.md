@@ -219,6 +219,8 @@ You can [support development on DonationAlerts](https://www.donationalerts.com/r
 
 ## Development
 
+See [TESTING.md](TESTING.md) for the synthetic migration corpus, regression workflow and verification boundaries.
+
 ```sh
 npm test
 npm run build:browser

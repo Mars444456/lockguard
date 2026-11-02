@@ -42,7 +42,8 @@ module.exports = {
     const idxName = generatedName('idx',table,...cols);
 
     return [
-      `-- Add supporting index concurrently to prevent cascade lock escalation:`,
+      `-- Review a supporting child index to reduce scans during referenced-key updates or parent deletes.`,
+      `-- Run CONCURRENTLY outside an explicit or runner-created transaction; lock waits remain possible.`,
       `CREATE INDEX CONCURRENTLY ${idxName} ON ${table} (${cols.join(', ')});`
     ].join('\n');
   }

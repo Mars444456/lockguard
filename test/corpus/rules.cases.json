@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "description": "Synthetic migration cases with expectations based on SQL semantics, not captured engine output. A missing finding for one rule is not a database safety guarantee.",
+  "references": [
+    "https://www.postgresql.org/docs/11/sql-altertable.html",
+    "https://www.postgresql.org/docs/12/sql-altertable.html",
+    "https://www.postgresql.org/docs/17/indexes-multicolumn.html"
+  ],
+  "cases": [
+    {
+      "id": "default-volatile-qualified",
+      "reason": "Schema-qualified built-in random remains volatile; qualification must not hide the rewrite risk.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD COLUMN sample float8 DEFAULT pg_catalog.random();",
+      "expected": {"present": ["LG-001"], "absent": ["LG-000"], "finding": {"ruleId": "LG-001", "severity": "CRITICAL", "isPhysicalTableRewrite": true}}
+    },
+    {
+      "id": "default-stable-pg11",
+      "reason": "PostgreSQL 11 can use a fast default for stable CURRENT_TIMESTAMP; the table still needs a DDL lock.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD COLUMN recorded_at timestamptz DEFAULT CURRENT_TIMESTAMP;",
+      "options": {"pgVersion": 11},
+      "expected": {"present": [], "absent": ["LG-001", "LG-000"]}
+    },
+    {
+      "id": "default-constant-pg10",
+      "reason": "Before PostgreSQL 11 even a literal default uses the older rewrite behavior.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD COLUMN retries int DEFAULT 0;",
+      "options": {"pgVersion": 10},
+      "expected": {"present": ["LG-001"], "absent": ["LG-000"], "finding": {"ruleId": "LG-001", "isPhysicalTableRewrite": true, "rewriteReason": "LEGACY_POSTGRES_ALL_DEFAULTS_REWRITE"}}
+    },
+    {
+      "id": "default-function-volatility-unknown",
+      "reason": "A user-defined function name does not reveal volatility or prove a physical rewrite.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD COLUMN label text DEFAULT app.make_label();",
+      "expected": {"present": ["LG-001"], "absent": ["LG-000"], "finding": {"ruleId": "LG-001", "severity": "HIGH", "isPhysicalTableRewrite": null, "rewriteReason": "DEFAULT_VOLATILITY_UNKNOWN"}}
+    },
+    {
+      "id": "index-expression-blocking",
+      "reason": "An ordinary expression index still takes the write-blocking CREATE INDEX table lock.",
+      "sql": "SET lock_timeout='3s'; CREATE INDEX readings_label_lower ON readings ((lower(label))) WHERE label IS NOT NULL;",
+      "expected": {"present": ["LG-002"], "absent": ["LG-000"], "finding": {"ruleId": "LG-002", "lockLevel": "SHARE"}}
+    },
+    {
+      "id": "index-expression-concurrent",
+      "reason": "CONCURRENTLY removes this rule's ordinary-index finding, without proving runner transaction settings or index eligibility.",
+      "sql": "SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY readings_label_lower ON readings ((lower(label))) WHERE label IS NOT NULL;",
+      "expected": {"present": [], "absent": ["LG-002", "LG-010", "LG-000"]}
+    },
+    {
+      "id": "index-new-table-populated-in-file",
+      "reason": "A table populated in the migration must not retain the empty-new-table exemption.",
+      "sql": "SET lock_timeout='3s'; CREATE TABLE readings (id int); INSERT INTO readings VALUES(1),(2); CREATE INDEX readings_id ON readings(id);",
+      "expected": {"present": ["LG-002"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "foreign-key-validated-composite",
+      "reason": "A directly validated composite foreign key needs the validation-risk finding even with action and deferrability clauses.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE details ADD CONSTRAINT details_parent FOREIGN KEY(tenant_id,parent_id) REFERENCES parents(tenant_id,id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;",
+      "expected": {"present": ["LG-003"], "absent": ["LG-000"], "finding": {"ruleId": "LG-003", "lockLevel": "SHARE ROW EXCLUSIVE"}}
+    },
+    {
+      "id": "foreign-key-not-valid-composite",
+      "reason": "NOT VALID deliberately postpones the existing-row check; it does not prove the child has an index.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE details ADD CONSTRAINT details_parent FOREIGN KEY(tenant_id,parent_id) REFERENCES parents(tenant_id,id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED NOT VALID;",
+      "expected": {"present": ["LG-011"], "absent": ["LG-003", "LG-000"]}
+    },
+    {
+      "id": "type-without-source-evidence",
+      "reason": "A target type alone cannot establish the source type or rewrite requirement.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ALTER COLUMN label TYPE text;",
+      "expected": {"present": ["LG-004"], "absent": ["LG-000"], "finding": {"ruleId": "LG-004", "rewrite": "unknown"}}
+    },
+    {
+      "id": "type-varchar-widening-snapshot",
+      "reason": "Known varchar widening avoids a heap rewrite on the target version but retains ACCESS EXCLUSIVE acquisition.",
+      "schemaSql": "CREATE TABLE readings(label varchar(20));",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ALTER COLUMN label TYPE varchar(40);",
+      "expected": {"present": ["LG-004"], "absent": ["LG-000"], "finding": {"ruleId": "LG-004", "rewrite": "not-required", "lockLevel": "ACCESS EXCLUSIVE"}}
+    },
+    {
+      "id": "type-new-empty-table",
+      "reason": "An empty table created in the same file has no existing rows requiring production rewrite analysis.",
+      "sql": "SET lock_timeout='3s'; CREATE TABLE readings(label int); ALTER TABLE readings ALTER COLUMN label TYPE bigint;",
+      "expected": {"present": [], "absent": ["LG-004", "LG-000"]}
+    },
+    {
+      "id": "unique-direct-deferrable",
+      "reason": "DEFERRABLE changes enforcement timing, not the direct index-build lock risk.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD CONSTRAINT readings_label_unique UNIQUE(label) DEFERRABLE INITIALLY DEFERRED;",
+      "expected": {"present": ["LG-005"], "absent": ["LG-000"], "finding": {"ruleId": "LG-005", "deferrable": true, "initiallyDeferred": true}}
+    },
+    {
+      "id": "unique-attach-prebuilt-index",
+      "reason": "Attaching an existing concurrent unique index must not be reported as a direct unique-index build.",
+      "sql": "SET lock_timeout='3s'; CREATE UNIQUE INDEX CONCURRENTLY readings_label_unique ON readings(label); ALTER TABLE readings ADD CONSTRAINT readings_label_unique UNIQUE USING INDEX readings_label_unique;",
+      "expected": {"present": [], "absent": ["LG-005", "LG-000"]}
+    },
+    {
+      "id": "drop-column-if-exists-cascade",
+      "reason": "IF EXISTS does not remove compatibility risk if the column does exist; CASCADE needs separate review.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings DROP COLUMN IF EXISTS legacy_label CASCADE;",
+      "expected": {"present": ["LG-006"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "add-column-name-containing-drop-keywords",
+      "reason": "DROP COLUMN inside a quoted additive column name must not be mistaken for a destructive SQL action.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD COLUMN \"drop column\" text;",
+      "expected": {"present": [], "absent": ["LG-006", "LG-000"]}
+    },
+    {
+      "id": "vacuum-full-outside-transaction",
+      "reason": "VACUUM FULL is an exclusive maintenance rewrite even without an explicit BEGIN.",
+      "sql": "VACUUM (FULL, ANALYZE) readings;",
+      "expected": {"present": ["LG-007"], "absent": ["LG-000"], "finding": {"ruleId": "LG-007", "severity": "CRITICAL", "lockLevel": "ACCESS EXCLUSIVE"}}
+    },
+    {
+      "id": "storage-fillfactor-not-autovacuum",
+      "reason": "A fillfactor change must not trigger an autovacuum-specific recommendation.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings SET (fillfactor=85);",
+      "expected": {"present": [], "absent": ["LG-007", "LG-000"]}
+    },
+    {
+      "id": "timeout-zero-disabled",
+      "reason": "Zero means no lock timeout and cannot protect subsequent DDL waits.",
+      "sql": "SET lock_timeout=0; ALTER TABLE readings ADD COLUMN note text;",
+      "expected": {"present": ["LG-008"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "timeout-positive-milliseconds",
+      "reason": "A positive millisecond setting before DDL is effective for this rule.",
+      "sql": "SET lock_timeout='250ms'; ALTER TABLE readings ADD COLUMN note text;",
+      "expected": {"present": [], "absent": ["LG-008", "LG-000"]}
+    },
+    {
+      "id": "not-null-unvalidated-check",
+      "reason": "An unvalidated CHECK does not prove the absence of pre-existing NULL rows.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD CONSTRAINT label_present CHECK(label IS NOT NULL) NOT VALID; ALTER TABLE readings ALTER COLUMN label SET NOT NULL;",
+      "expected": {"present": ["LG-009"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "not-null-validated-check-pg12",
+      "reason": "PostgreSQL 12 can use a validated CHECK to skip SET NOT NULL's existing-row scan.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD CONSTRAINT label_present CHECK(label IS NOT NULL) NOT VALID; ALTER TABLE readings VALIDATE CONSTRAINT label_present; ALTER TABLE readings ALTER COLUMN label SET NOT NULL;",
+      "options": {"pgVersion": 12},
+      "expected": {"present": [], "absent": ["LG-009", "LG-000"]}
+    },
+    {
+      "id": "not-null-validated-check-pg11-still-scans",
+      "reason": "The validated-CHECK scan optimization starts in PostgreSQL 12; the same sequence on PostgreSQL 11 still needs the risk finding.",
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ADD CONSTRAINT label_present CHECK(label IS NOT NULL) NOT VALID; ALTER TABLE readings VALIDATE CONSTRAINT label_present; ALTER TABLE readings ALTER COLUMN label SET NOT NULL;",
+      "options": {"pgVersion": 11},
+      "expected": {"present": ["LG-009"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "not-null-explicit-target-overrides-snapshot-version",
+      "reason": "An imported snapshot's newer version cannot enable optimizations absent in the explicitly selected PostgreSQL 11 target.",
+      "schemaSql": "CREATE TABLE readings(label text CONSTRAINT label_present CHECK(label IS NOT NULL));",
+      "schemaVersion": 17,
+      "options": {"pgVersion": 11},
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ALTER COLUMN label SET NOT NULL;",
+      "expected": {"present": ["LG-009"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "not-null-new-target-can-use-older-snapshot-check",
+      "reason": "The selected PostgreSQL 17 target supports the scan optimization even when the supplied validated CHECK was captured using a PostgreSQL 11 snapshot.",
+      "schemaSql": "CREATE TABLE readings(label text CONSTRAINT label_present CHECK(label IS NOT NULL));",
+      "schemaVersion": 11,
+      "options": {"pgVersion": 17},
+      "sql": "SET lock_timeout='3s'; ALTER TABLE readings ALTER COLUMN label SET NOT NULL;",
+      "expected": {"present": [], "absent": ["LG-009", "LG-000"]}
+    },
+    {
+      "id": "not-null-rolled-back-validation-is-not-proof",
+      "reason": "ROLLBACK undoes the added and validated CHECK, so it cannot prove that a later SET NOT NULL avoids scanning existing rows.",
+      "sql": "SET lock_timeout='3s'; BEGIN; ALTER TABLE readings ADD CONSTRAINT label_present CHECK(label IS NOT NULL) NOT VALID; ALTER TABLE readings VALIDATE CONSTRAINT label_present; ROLLBACK; ALTER TABLE readings ALTER COLUMN label SET NOT NULL;",
+      "expected": {"present": ["LG-009"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "concurrent-drop-in-transaction",
+      "reason": "DROP INDEX CONCURRENTLY is prohibited in an explicit transaction just like its CREATE counterpart.",
+      "sql": "SET lock_timeout='3s'; BEGIN; DROP INDEX CONCURRENTLY readings_label_unique; COMMIT;",
+      "expected": {"present": ["LG-010"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "concurrent-drop-after-commit",
+      "reason": "A completed preceding transaction does not make a following standalone concurrent drop transactional.",
+      "sql": "SET lock_timeout='3s'; BEGIN; SELECT 1; COMMIT; DROP INDEX CONCURRENTLY readings_label_unique;",
+      "expected": {"present": [], "absent": ["LG-010", "LG-000"]}
+    },
+    {
+      "id": "foreign-key-index-include-is-not-key",
+      "reason": "An INCLUDE column alone is not an index search key for the foreign-key lookup.",
+      "sql": "SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY details_payload ON details(payload) INCLUDE(parent_id); ALTER TABLE details ADD CONSTRAINT details_parent FOREIGN KEY(parent_id) REFERENCES parents(id) NOT VALID;",
+      "expected": {"present": ["LG-011"], "absent": ["LG-000"]}
+    },
+    {
+      "id": "foreign-key-index-leading-columns",
+      "reason": "A btree whose leading keys cover the composite foreign key supports the equality lookup; trailing keys do not invalidate it.",
+      "sql": "SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY details_parent_lookup ON details(tenant_id,parent_id,payload); ALTER TABLE details ADD CONSTRAINT details_parent FOREIGN KEY(tenant_id,parent_id) REFERENCES parents(tenant_id,id) NOT VALID;",
+      "expected": {"present": [], "absent": ["LG-011", "LG-000"]}
+    },
+    {
+      "id": "foreign-key-index-reordered-leading-columns",
+      "reason": "The equality lookup constrains both leading btree keys even when their order differs from the foreign-key declaration.",
+      "sql": "SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY details_parent_lookup ON details(parent_id,tenant_id,payload); ALTER TABLE details ADD CONSTRAINT details_parent FOREIGN KEY(tenant_id,parent_id) REFERENCES parents(tenant_id,id) NOT VALID;",
+      "expected": {"present": [], "absent": ["LG-011", "LG-000"]}
+    },
+    {
+      "id": "truncate-multiple-existing-tables",
+      "reason": "Every explicitly truncated existing relation has the ACCESS EXCLUSIVE/data-removal risk.",
+      "sql": "SET lock_timeout='3s'; TRUNCATE readings, details CONTINUE IDENTITY RESTRICT;",
+      "expected": {"present": ["LG-012"], "absent": ["LG-000"], "count": {"ruleId": "LG-012", "value": 2}}
+    },
+    {
+      "id": "refresh-concurrently-static-check-only",
+      "reason": "Concurrent refresh avoids the ordinary REFRESH finding; eligibility still requires a populated view and suitable unique index in the actual database.",
+      "sql": "SET lock_timeout='3s'; REFRESH MATERIALIZED VIEW CONCURRENTLY readings_summary;",
+      "expected": {"present": [], "absent": ["LG-012", "LG-000"]}
+    },
+    {
+      "id": "dynamic-sql-manual-analysis",
+      "reason": "A DO block's string contents must not be mistaken for fully analyzed SQL or receive an all-clear result.",
+      "sql": "DO $body$ BEGIN EXECUTE 'CREATE INDEX readings_id ON readings(id)'; END $body$;",
+      "expected": {"present": ["LG-000"], "absent": ["LG-002"], "analysisComplete": false, "status": "FAILED"}
+    },
+    {
+      "id": "disabled-rule-partial-coverage",
+      "reason": "Ignoring an enabled rule changes coverage even if it removes the only visible finding.",
+      "sql": "SET lock_timeout='3s'; CREATE INDEX readings_id ON readings(id);",
+      "options": {"ignoreRules": ["LG-002"]},
+      "expected": {"present": [], "absent": ["LG-002", "LG-000"], "coverageComplete": false, "disabledRuleIds": ["LG-002"], "status": "WARNING"}
+    },
+    {
+      "id": "inline-suppression-partial-coverage",
+      "reason": "A statement-level suppression must remain visible as incomplete rule coverage, not a clean pass.",
+      "sql": "SET lock_timeout='3s'; /* lockguard-ignore: LG-002 */ CREATE INDEX readings_id ON readings(id);",
+      "expected": {"present": [], "absent": ["LG-002", "LG-000"], "coverageComplete": false, "suppressedRuleIds": ["LG-002"], "status": "WARNING"}
+    }
+  ]
+}

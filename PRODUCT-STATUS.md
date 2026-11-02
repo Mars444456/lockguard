@@ -2,6 +2,8 @@
 
 ## 1.5.0: verified email and browser journeys
 
+Version 1.5.1 adds a synthetic regression corpus across all twelve rules. Timeout rollback, chained transactions and runner-wrapped VACUUM are tracked explicitly. NOT NULL checks use the selected target PostgreSQL version and do not retain rolled-back validation evidence. PostgreSQL 10–11 enforcement requires manual planning. ONLY DDL requires manual analysis rather than a recursive rewrite. Reordered leading btree keys can supply composite foreign-key index evidence. See [TESTING.md](TESTING.md).
+
 LockGuard provides static PostgreSQL migration checks, CI reports, reviewable draft plans, and a server workspace with organization-scoped history, API keys, schema snapshots and team reviews. The public browser analyzer processes SQL locally. The Telegram bot processes submitted SQL on its host and does not activate licenses or confirm payments.
 
 The uncalibrated duration, traffic, outage and financial-loss models have been removed. `simulate` and `/api/v1/simulate` no longer return numerical forecasts. Metadata enrichment accepts supplied or queried table statistics; unknown values remain unknown. No SQL is executed by the analyzer.
@@ -25,6 +27,8 @@ The public GitHub Pages analyzer is available without registration. The Render F
 These infrastructure dependencies are not reported as completed by the application. See [OPERATIONS.md](OPERATIONS.md) and [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Русский
+
+В версии 1.5.1 добавлен синтетический корпус для всех 12 правил. Исправлены границы транзакций и таймаутов, учёт версии PostgreSQL и отката проверки NOT NULL, а также распознавание составных индексов FK. Для ONLY и неподдерживаемой версии оптимизации требуется ручная проверка; черновик не меняет область действия исходной команды.
 
 В версии 1.4.1 убраны неподтверждённые числовые прогнозы, фиктивная выдача ключей ботом и запись вымышленных PR в историю. Исправлены планы миграций, учёт версии PostgreSQL и границ транзакций. Отключённые правила и подавленные замечания видны в результате; для таких проверок не выдаётся план и не создаётся командное ревью. Старые проверки без сведений о покрытии нужно выполнить заново.
 

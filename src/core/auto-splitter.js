@@ -68,7 +68,9 @@ class AutoSplitter {
             checks:['Confirm that recalculating the default for historical rows is intended.', 'Check for remaining NULLs without SKIP LOCKED before validation; investigate functions that can return NULL.', 'Review replication lag and transaction duration between batches.'],
             verificationSql:`SELECT count(*) AS remaining FROM ${table} WHERE ${col} IS NULL;` });
 
-          if (v.isNotNull) {
+          if (v.isNotNull && (analysis.pgVersion ?? 17)<12) {
+            manualSteps.push({ruleId:v.ruleId,table,column:col,kind:'not_null_version_review',checks:['PostgreSQL 10–11 cannot use a validated CHECK to skip the SET NOT NULL validation scan. Plan and verify constraint enforcement and lock acquisition manually after backfill.']});
+          } else if (v.isNotNull) {
             phase3Statements.push(`-- Phase 3 (Deploy 2): Enforce NOT NULL after backfill is complete`);
             phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${check} CHECK (${col} IS NOT NULL) NOT VALID;`);
             phase4Statements.push(`-- Phase 4 (Deploy 3): Validate constraint without blocking writes`);
@@ -122,6 +124,10 @@ class AutoSplitter {
         // 9. Unsafe SET NOT NULL
         case 'LG-009': {
           const col = v.column || 'column_name';
+          if((analysis.pgVersion ?? 17)<12){
+            manualSteps.push({ruleId:v.ruleId,table,column:col,kind:'not_null_version_review',checks:['PostgreSQL 10–11 cannot use a validated CHECK to skip the SET NOT NULL validation scan. Verify constraint enforcement and lock acquisition on the target database; no scan-free phased rewrite is established.']});
+            break;
+          }
           const check = generatedName('chk', table, col, 'not_null');
           phase3Statements.push(`-- Phase 3: Add NOT NULL via NOT VALID check constraint`);
           phase3Statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${check} CHECK (${col} IS NOT NULL) NOT VALID;`);
@@ -137,7 +143,7 @@ class AutoSplitter {
           const cols = (v.columns && v.columns.length > 0) ? v.columns : ['foreign_id'];
           const colList = cols.join(', ');
           const colSlug = cols.join('_').replace(/[^a-zA-Z0-9_]/g, '');
-          phase1Statements.push(`-- Phase 1: Create supporting index concurrently to prevent child table locks`);
+          phase1Statements.push(`-- Phase 1: Review a supporting child index to reduce scans; lock waits remain possible`);
           phase1Statements.push(`CREATE INDEX CONCURRENTLY ${generatedName('idx',table,...cols)} ON ${table} (${colList});`);
           break;
         }

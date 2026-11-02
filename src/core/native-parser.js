@@ -74,16 +74,19 @@ module.exports = {
       if (kind === 'TransactionStmt') {
         stmt.type = ['TRANS_STMT_BEGIN','TRANS_STMT_START'].includes(node.kind) ? 'TRANSACTION_START'
           : ['TRANS_STMT_COMMIT','TRANS_STMT_ROLLBACK'].includes(node.kind) ? 'TRANSACTION_COMMIT' : stmt.type;
+        if(tokens.some(token=>!comments.includes(token)&&token.text.toUpperCase()==='CHAIN'))stmt.requiredPgVersion=12;
       } else if (kind === 'CreateStmt') {
         stmt.type = 'CREATE_TABLE'; stmt.ifNotExists = !!node.if_not_exists;
         walk(node, n => { if (n.Constraint?.contype === 'CONSTR_FOREIGN') stmt.requiresManualAnalysis = true; });
       } else if (kind === 'IndexStmt') {
+        if(node.relation && !node.relation.inh)stmt.requiresManualAnalysis=true;
         if(node.nulls_not_distinct)stmt.requiredPgVersion=15;
         Object.assign(stmt, { type: 'CREATE_INDEX', indexName: node.idxname ? ident(node.idxname) : stmt.indexName,
           isUnique: !!node.unique, isConcurrent: !!node.concurrent, isPartial: !!node.whereClause,
           accessMethod: node.accessMethod, columns: (node.indexParams || []).map(p => p.IndexElem.name ? ident(p.IndexElem.name) : '(expression)') });
       } else if (kind === 'AlterTableStmt') {
-        if(node.relation?.inh===false)stmt.requiresManualAnalysis=true;
+        // Protobuf JSON omits false booleans: ONLY has no `inh` property.
+        if(node.relation && !node.relation.inh)stmt.requiresManualAnalysis=true;
         const previous = stmt.subcommands || [];
         const actions=rewrite.alterActions(raw,node.relation.location,stmt.sourceStart);
         stmt.type = 'ALTER_TABLE';

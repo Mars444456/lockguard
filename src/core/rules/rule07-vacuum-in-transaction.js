@@ -8,16 +8,16 @@ module.exports = {
   lockLevel: LockLevel.SHARE_UPDATE_EXCLUSIVE,
   description: 'VACUUM cannot run inside an explicit transaction block. VACUUM FULL requires ACCESS EXCLUSIVE. Autovacuum settings need workload review and can be changed in a transaction.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
-    let inTransaction = false;
+    let inTransaction = !!context.transactionWrapped;
 
     for (const stmt of astStatements) {
       if (stmt.type === 'TRANSACTION_START') {
         inTransaction = true;
       }
       if (stmt.type === 'TRANSACTION_COMMIT') {
-        inTransaction = false;
+        inTransaction = !!stmt.pgAst?.chain;
       }
 
       if (stmt.type === 'VACUUM') {
@@ -32,9 +32,9 @@ module.exports = {
           line: stmt.line,
           sourceStart: stmt.sourceStart,
           raw: stmt.raw,
-          message: stmt.isFull 
-            ? `VACUUM FULL locks tables completely (ACCESS EXCLUSIVE) and cannot be executed in standard migrations!`
-            : inTransaction ? 'VACUUM inside an explicit transaction block will fail.' : 'VACUUM is outside an explicit transaction. Verify that the migration runner does not wrap it in a transaction and review maintenance load.'
+          message: inTransaction ? `${stmt.isFull ? 'VACUUM FULL' : 'VACUUM'} inside an explicit or runner-created transaction block will fail.`
+            : stmt.isFull ? 'VACUUM FULL requires ACCESS EXCLUSIVE and rewrites the table. Run it as standalone maintenance after reviewing lock waits, disk capacity and workload.'
+            : 'VACUUM is outside an explicit transaction. Verify that the migration runner does not wrap it in a transaction and review maintenance load.'
         });
       }
 

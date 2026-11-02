@@ -8,16 +8,19 @@ function foreignKeyIndexes(astStatements, context = {}) {
   const disabledTables = new Set(), droppedIndexes = new Set();
   let allowUnqualified = true;
   const foreignKeys = [];
+  // FK lookups constrain every key by equality; order within the leading key
+  // columns may differ. INCLUDE columns and unrelated preceding keys do not qualify.
+  const covers=(keys,cols)=>keys.length>=cols.length && cols.every(col=>keys.slice(0,cols.length).includes(col));
 
   function hasSupportingIndex(sub) {
     const table = sub.table, cols = sub.columns;
     const baseline = catalog?.lookup(table, allowUnqualified);
     const hasNewIndex = indexes.some(index => (allowUnqualified || (index.table.includes('.') && table.includes('.'))) &&
       (index.table === table || (baseline && catalog.lookup(index.table, allowUnqualified) === baseline)) &&
-      cols.every((col, i) => index.columns[i] === col));
+      covers(index.columns,cols));
     const hasExistingIndex = baseline && !disabledTables.has(baseline) && baseline.indexes.some(index =>
       index.valid && !index.partial && !index.expression && !index.customSemantics && index.method === 'btree' &&
-      !droppedIndexes.has(index.name) && cols.every((col, i) => SchemaCatalog.quote(index.columns[i] || '') === col));
+      !droppedIndexes.has(index.name) && covers(index.columns.map(SchemaCatalog.quote),cols));
     return Boolean(hasNewIndex || hasExistingIndex);
   }
 

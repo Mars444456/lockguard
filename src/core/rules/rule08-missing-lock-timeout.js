@@ -8,7 +8,7 @@ module.exports = {
   lockLevel: LockLevel.ACCESS_EXCLUSIVE,
   description: 'Without an effective positive lock_timeout, waiting DDL may queue later conflicting requests on the same relation. Impact depends on lock mode, transaction lifetime and workload.',
   
-  check(astStatements) {
+  check(astStatements, context = {}) {
     const violations = [];
 
     // Check if any statement alters schema (ALTER TABLE, CREATE INDEX, DROP TABLE, etc.)
@@ -29,14 +29,15 @@ module.exports = {
     // Evaluate the setting at each DDL, respecting order and transaction scope.
     let sessionTimeout = false;
     let localTimeout;
-    let transactionStart;
+    let transactionStart = context.transactionWrapped ? sessionTimeout : undefined;
     let unsafeStatement;
     const ddlTypes = new Set(['ALTER_TABLE', 'CREATE_INDEX', 'DROP_TABLE', 'CREATE_TABLE', 'DROP_INDEX', 'TRUNCATE_TABLE', 'REFRESH_MATVIEW']);
     for (const stmt of astStatements) {
       if (stmt.type === 'TRANSACTION_START') {
-        transactionStart = sessionTimeout;
+        // PostgreSQL warns on a nested BEGIN; it does not start a new transaction.
+        if (transactionStart === undefined) transactionStart = sessionTimeout;
       } else if (stmt.type === 'TRANSACTION_COMMIT') {
-        if (/^ROLLBACK\b/i.test(stmt.raw) && transactionStart !== undefined) sessionTimeout = transactionStart;
+        if (stmt.pgAst?.kind === 'TRANS_STMT_ROLLBACK' && transactionStart !== undefined) sessionTimeout = transactionStart;
         transactionStart = stmt.pgAst?.chain ? sessionTimeout : undefined;
         localTimeout = undefined;
       } else if (stmt.type === 'SET_VARIABLE' && stmt.variable === 'lock_timeout') {
