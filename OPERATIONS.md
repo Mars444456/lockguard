@@ -32,6 +32,8 @@
 
 Владельцу в «История проверок → Сохранность данных» доступны статус копирования, последняя попытка и последняя успешная копия. Сбой хранится как служебный статус без текста исключения, путей и ключей. Следующая успешная проверенная копия снимает текущую ошибку; историческое время сбоя сохраняется. Просроченная или ошибочная копия не подтверждает служебную готовность. Этот блок не заменяет внешний мониторинг, уведомления и независимое хранилище.
 
+Планировщик использует `LOCKGUARD_BACKUP_HOURS` (по умолчанию 24, от 1 до 8760 часов) и `LOCKGUARD_BACKUP_RETENTION` (по умолчанию 7, от 1 до 100 файлов). После перезапуска срок следующей копии отсчитывается от сохранённого времени последней успешной копии. Если копии нет, срок истёк, дата некорректна или находится в будущем, либо последняя попытка завершилась ошибкой, копирование начинается сразу. Следующая попытка назначается через настроенный интервал после завершения текущей, включая сбой; одновременных попыток нет. Остановка планировщика отменяет будущие попытки, но не прерывает уже начатую копию.
+
 ```sh
 npm run backup
 npm run verify:restore
@@ -60,6 +62,8 @@ node --env-file-if-exists=.env scripts/restore-db.js /secure/backup.sqlite3.enc 
 ## English
 
 Owners can inspect backup status, last attempt and last verified success under Review history → Data recovery readiness. Failures persist as a safe status without exception text, paths or keys. A verified successful retry clears the current failure while retaining its historical time. Failed or overdue backup evidence does not establish operational readiness. This local diagnostic does not replace external monitoring, notifications or off-host storage.
+
+The scheduler uses `LOCKGUARD_BACKUP_HOURS` (default 24, range 1–8760 hours) and `LOCKGUARD_BACKUP_RETENTION` (default 7, range 1–100 files). Restarting preserves the deadline based on the last successful backup. Missing, overdue, invalid or future timestamps, or a failed last attempt, trigger an immediate backup. Subsequent attempts wait the configured interval after the current attempt finishes, including failure; attempts do not overlap. Stopping the scheduler cancels future attempts without interrupting a copy already in progress.
 
 Pro adds invited organization members (owner, editor, reviewer), private migration review cards, independent approval, attestations, time-limited owner waivers and an audit trail. Invitations are one-use, email-bound and expire after 48 hours. Creating and accepting invitations requires verified email ownership. Request a verification email in account settings, open the one-use link within 30 minutes, sign in to the same account and explicitly confirm. Opening a link does not consume it. Resending or changing the password revokes pending links. When mail delivery is not configured, invitations remain unavailable while normal SQL analysis works. Membership does not replace the user's personal workspace. All review URLs require authenticated organization membership. Saving complete SQL is an explicit choice checked against the analyzed SQL hash. Approval is a team decision, not a safety guarantee. No notification emails are sent automatically to teammates.
 

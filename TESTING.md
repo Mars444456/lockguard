@@ -10,6 +10,7 @@ The corpus uses synthetic SQL and independently stated expectations. It contains
 | `test/proof-boundaries.test.js` | Committed evidence, version-specific enforcement and lexical boundaries | `node --test test/proof-boundaries.test.js` |
 | `integration/postgres-locks.cjs` | Real lock waits and catalog/behavior checks on PostgreSQL 14–18 in CI | `npm run test:postgres` |
 | `e2e/customer-journey.spec.cjs` | Registration, email verification, team review, account recovery and Pro expiry in Chromium | `npm run test:browser` |
+| `test/backup-scheduler.test.js` | Persisted backup deadlines, bounded timers, retries, slow copies and shutdown with a simulated clock | `node --test test/backup-scheduler.test.js` |
 
 Run `npm test` and `npm run build:browser` before submitting a core change. The browser and live PostgreSQL suites run separately in GitHub Actions. Live tests refuse remote databases and require `LOCKGUARD_TEST_DATABASE_URL` to name a disposable local `*_test` database; they create and remove a random schema. PGlite tests execute in an isolated embedded database and do not connect to a customer server. Mail and Pro controls used by browser tests belong only to their separate test fixture.
 
