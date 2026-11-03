@@ -1,6 +1,6 @@
 # Product status / Состояние продукта
 
-Version 1.5.3 preserves the backup deadline across restarts, bounds long waits to Node timer limits and retries immediately on startup when backup evidence is missing, overdue, invalid, future-dated or failed. Attempts run one at a time; retries wait the configured interval after completion. Stopping prevents re-arming after a pending copy finishes. Seven simulated-clock regressions cover scheduling, failure and shutdown.
+The backup scheduler preserves the deadline across restarts, bounds long waits to Node timer limits and retries immediately on startup when backup evidence is missing, overdue, invalid, future-dated or failed. Attempts run one at a time; retries wait the configured interval after completion. Stopping prevents re-arming after a pending copy finishes. Seven simulated-clock regressions cover scheduling, failure and shutdown.
 
 Version 1.5.2 adds owner-visible backup attempt, success and failure diagnostics. A verified retry clears the active failure; failed, overdue or future-dated evidence cannot establish operational readiness. Scheduler errors contain no original exception text. External monitoring and off-host storage remain operator setup tasks.
 
@@ -32,7 +32,7 @@ These infrastructure dependencies are not reported as completed by the applicati
 
 ## Русский
 
-Версия 1.5.3 сохраняет срок резервирования после перезапуска и корректно обрабатывает большие интервалы. Отсутствующая, просроченная, некорректная или будущая дата и прошлый сбой вызывают попытку при запуске. Попытки не пересекаются; следующая назначается через заданный интервал после завершения текущей. Семь тестов с управляемыми часами проверяют расписание, ошибки и остановку.
+Планировщик сохраняет срок резервирования после перезапуска и корректно обрабатывает большие интервалы. Отсутствующая, просроченная, некорректная или будущая дата и прошлый сбой вызывают попытку при запуске. Попытки не пересекаются; следующая назначается через заданный интервал после завершения текущей. Семь тестов с управляемыми часами проверяют расписание, ошибки и остановку.
 
 В версии 1.5.1 добавлен синтетический корпус для всех 12 правил. Исправлены границы транзакций и таймаутов, учёт версии PostgreSQL и отката проверки NOT NULL, а также распознавание составных индексов FK. Для ONLY и неподдерживаемой версии оптимизации требуется ручная проверка; черновик не меняет область действия исходной команды.
 

@@ -10,6 +10,8 @@ Keep public GitHub comments and GitHub Issues mirroring disabled unless explicit
 
 Run checks appropriate to the change; see [TESTING.md](TESTING.md). Wait for required CI before merging, then verify the resulting Linear status rather than reporting completion from the configuration alone.
 
+Keep the current version for small fixes. Change the release number for substantial updates or a planned release.
+
 ## Русский
 
 Указывайте номер задачи в названии ветки и PR: `codex/mar-123-short-description`, `MAR-123: Описание изменения`. Для полного завершения задачи используйте `Fixes MAR-123`, для частичной работы — `Part of MAR-123`.
@@ -17,3 +19,5 @@ Run checks appropriate to the change; see [TESTING.md](TESTING.md). Wait for req
 Черновик не закрывает задачу. Готовый PR и его ревью переводят её в In Review; готовность к слиянию сама по себе не означает Done. Закрытие PR без слияния не подтверждает выполнение. После слияния проверяйте фактический статус в Linear.
 
 В публичные материалы входят только сведения об изменении продукта. Приватные обсуждения, описания внутренних задач, секреты, базы и клиентский SQL не публикуются. Публичные комментарии интеграции и синхронизация GitHub Issues включаются только по отдельному решению.
+
+Небольшие исправления сохраняют текущую версию. Номер выпуска меняется при существенном обновлении или подготовке отдельного релиза.
