@@ -46,3 +46,15 @@ test('Owner sees backup failure and recovery in both languages without a stale f
   p.workspace.operations.backupStatus='ok';p.workspace.operations.lastBackupAt='2026-11-03T00:05:00Z';p.workspace.render();
   assert.match(panel().textContent,/Backup verified/);assert.doesNotMatch(panel().textContent,/Last failure|Failed —/);
 });
+
+test('Owner sees the latest restore failure and a verified recovery in Russian and English',async()=>{
+  const p=page();await p.workspace.refresh();
+  p.workspace.operations={storage:'local_unverified',restoreStatus:'failed',lastRestoreAttemptAt:'2026-01-01T01:00:00Z',lastRestoreFailureAt:'2026-01-01T01:00:00Z',lastRestoreVerifiedAt:'2026-01-01T00:00:00Z'};p.workspace.render();
+  const panel=()=>Array.from(p.document.querySelectorAll('details')).find(n=>n.querySelector('summary')?.textContent.match(/Сохранность данных|Data recovery readiness/));
+  assert.match(panel().textContent,/Проверка восстановления: Ошибка/);assert.match(panel().textContent,/Последний сбой восстановления: 2026-01-01T01:00:00Z/);
+  p.window.LockGuardI18n.locale='en-US';p.document.dispatchEvent(new p.Event('lockguard:language'));
+  assert.match(panel().textContent,/Restore verification: Failed/);assert.match(panel().textContent,/Last restore attempt: 2026-01-01T01:00:00Z/);
+  p.workspace.operations.restoreStatus='ok';p.workspace.operations.lastRestoreVerifiedAt='2026-01-01T02:00:00Z';p.workspace.render();
+  assert.match(panel().textContent,/Restore verification: Verified/);assert.doesNotMatch(panel().textContent,/Last restore failure|Restore verification: Failed/);
+  p.app.account.role='reviewer';p.workspace.render();assert.doesNotMatch(p.document.body.textContent,/Data recovery readiness|Last restore/);
+});

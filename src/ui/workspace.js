@@ -43,7 +43,7 @@ window.LockGuardWorkspace = class {
     const switcher=this.options(h,this.t('Организация','Organization'),(this.workspaces||[]).map(w=>({value:w.id,label:w.name+' · '+this.label(w.role)})),this.app.account.organizationId);
     switcher.addEventListener('change',()=>this.perform(()=>this.switchTo(switcher.value)));
     this.el('p',this.t('Ваша роль: ','Your role: ')+this.label(role),h);
-    if(this.operations){
+    if(this.operations&&role==='owner'){
       const details=this.el('details','',h),ops=this.operations;
       this.el('summary',this.t('Сохранность данных','Data recovery readiness'),details);
       this.el('p',ops.storage==='temporary_demo'?this.t('Тестовый сервер: данные могут сброситься. Для рабочих данных нужно постоянное хранилище и внешняя резервная копия.','Temporary server: data can reset. Working data needs persistent storage and an off-host backup.'):this.t('Постоянное хранение: ','Persistent storage: ')+String(ops.persistentConfigured),details);
@@ -52,7 +52,11 @@ window.LockGuardWorkspace = class {
       this.el('p',this.t('Последняя попытка: ','Last attempt: ')+(ops.lastBackupAttemptAt||'—'),details);
       this.el('p',this.t('Последняя успешная копия: ','Last successful backup: ')+(ops.lastBackupAt||'—'),details);
       if(ops.backupStatus==='failed')this.el('p',this.t('Последний сбой: ','Last failure: ')+(ops.lastBackupFailureAt||'—'),details);
-      this.el('p',this.t('Последняя проверка восстановления: ','Last restore drill: ')+(ops.lastRestoreVerifiedAt||'—'),details);
+      const restoreLabels={ok:this.t('Проверено','Verified'),failed:this.t('Ошибка — проверьте копию и настройки восстановления','Failed — check the backup and restore configuration'),incomplete:this.t('Проверка не завершена','Verification incomplete'),overdue:this.t('Проверка устарела','Verification overdue'),never:this.t('Успешных проверок пока нет','No successful verification yet'),unknown:this.t('Статус не подтверждён','Status unverified')};
+      this.el('p',this.t('Проверка восстановления: ','Restore verification: ')+(restoreLabels[ops.restoreStatus]||restoreLabels.unknown),details);
+      this.el('p',this.t('Последняя попытка восстановления: ','Last restore attempt: ')+(ops.lastRestoreAttemptAt||'—'),details);
+      this.el('p',this.t('Последняя успешная проверка восстановления: ','Last successful restore drill: ')+(ops.lastRestoreVerifiedAt||'—'),details);
+      if(ops.restoreStatus==='failed')this.el('p',this.t('Последний сбой восстановления: ','Last restore failure: ')+(ops.lastRestoreFailureAt||'—'),details);
       this.el('p',this.t('Восстановление по email настроено: ','Email recovery configured: ')+String(ops.emailRecoveryConfigured),details);
     }
     const team=this.el('details','',h);this.el('summary',this.t('Участники и приглашения','Members and invitations'),team);
