@@ -120,3 +120,37 @@ test('Delayed responses from an old account cannot repopulate private data after
   assert.equal(document.getElementById('keys-tbody').textContent, '');
   assert.equal(document.getElementById('org-name').textContent, 'Гость');
 });
+
+for (const status of [401, 409]) test(`A delayed ${status} cannot reset a newer account or workspace`, async () => {
+  const { app, document, user, delayKeys } = await page();
+  app.account = user; app.showAccountState();
+  let finish;
+  delayKeys(() => new Promise(resolve => { finish = resolve; }));
+  const loading = app.fetchKeys();
+  app.resetPrivateData();
+  app.account = { ...user, id: 'new-user', organizationId: 'new-workspace' };
+  app.showAccountState();
+  document.getElementById('keys-tbody').textContent = 'Current workspace data';
+  let restored = 0;
+  app.restoreAccount = async () => { restored++; };
+  app.refreshPrivateData = async () => {};
+  finish(new Response(JSON.stringify({ error: 'Old request rejected', ...(status === 409 ? { code: 'WORKSPACE_CHANGED' } : {}) }), { status }));
+  await loading;
+  assert.equal(app.account?.id, 'new-user');
+  assert.equal(document.getElementById('keys-tbody').textContent, 'Current workspace data');
+  assert.equal(restored, 0);
+});
+
+for (const status of [401, 409]) test(`A current ${status} still clears private data`, async () => {
+  const { app, document, user, delayKeys } = await page();
+  app.account = user; app.showAccountState();
+  document.getElementById('keys-tbody').textContent = 'Previous private data';
+  let restored = 0;
+  app.restoreAccount = async () => { restored++; };
+  app.refreshPrivateData = async () => {};
+  delayKeys(async () => new Response(JSON.stringify({ error: 'Current request rejected', ...(status === 409 ? { code: 'WORKSPACE_CHANGED' } : {}) }), { status }));
+  await app.fetchKeys();
+  assert.equal(document.getElementById('keys-tbody').textContent, '');
+  assert.equal(app.account, null);
+  assert.equal(restored, status === 409 ? 1 : 0);
+});

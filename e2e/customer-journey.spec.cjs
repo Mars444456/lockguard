@@ -37,6 +37,8 @@ test('Verified owner and reviewer complete a schema-aware migration review witho
     await owner.getByLabel('Название снимка',{exact:true}).fill('Browser schema');
     await owner.getByLabel('Структура схемы',{exact:true}).fill('CREATE TABLE customers(id int,name varchar(100));');
     await owner.locator('#btn-schema-save').click();await expect(owner.locator('#schema-list')).toContainText('Browser schema');
+    const profile=(await(await owner.request.get('/api/v1/schemas')).json()).schemas[0];
+    expect((await reviewer.request.get('/api/v1/schemas/'+profile.id)).status()).toBe(404);
     await owner.getByRole('button',{name:'SQL-проверка',exact:true}).click();
     const select=owner.locator('#analysis-schema-select');await select.selectOption({label:'Browser schema · 1 табл.'});
     await owner.getByRole('textbox',{name:'SQL-миграция PostgreSQL'}).fill("SET lock_timeout='3s'; ALTER TABLE customers ADD COLUMN bio text;");
@@ -49,6 +51,8 @@ test('Verified owner and reviewer complete a schema-aware migration review witho
     await reviewer.getByRole('button',{name:'История проверок',exact:true}).click();await reviewer.getByText('Участники и приглашения',{exact:true}).click();
     await reviewer.getByLabel('Код приглашения в другую организацию',{exact:true}).fill(invitation);await reviewer.getByRole('button',{name:'Принять приглашение',exact:true}).click();
     await expect(reviewer.locator('#org-name')).toHaveText('Browser owner');
+    expect((await reviewer.request.post('/api/v1/organization',{data:{name:'Forbidden owner change',role:'owner',pro:true}})).status()).toBe(403);
+    expect((await reviewer.request.post('/api/v1/keys',{data:{name:'Forbidden reviewer key',role:'owner'}})).status()).toBe(403);
     await owner.getByLabel('Название изменения',{exact:true}).fill('Browser migration review');await owner.getByRole('button',{name:'Создать карточку ревью',exact:true}).click();
     await expect(owner.locator('.private-review-card')).toContainText('Browser migration review');
     for(const [index,label] of ['Снимок схемы актуален или контекст проверен вручную','Backfill проверен или не требуется','Совместимость приложения проверена','Миграция проверена на тестовой базе'].entries()){
@@ -61,6 +65,39 @@ test('Verified owner and reviewer complete a schema-aware migration review witho
     await reviewer.getByRole('button',{name:'Browser migration review · На ревью',exact:true}).click();
     await reviewer.getByLabel('Комментарий или основание решения',{exact:true}).fill('Checked independently in isolated staging.');
     await reviewer.getByRole('button',{name:'Согласовать',exact:true}).click();await expect(reviewer.locator('.private-review-card')).toContainText('Согласовано');
+    const review=(await(await owner.request.get('/api/v1/reviews')).json()).reviews[0];
+    // A second tab without cross-tab notifications still carries the old workspace.
+    const oldTab=await reviewerContext.newPage();
+    await oldTab.addInitScript(()=>{window.BroadcastChannel=undefined;});
+    await oldTab.goto('/?lang=ru');await oldTab.getByRole('button',{name:'История проверок',exact:true}).click();
+    await oldTab.getByRole('button',{name:'Browser migration review · Согласовано',exact:true}).click();
+    await reviewer.getByLabel('Организация',{exact:true}).selectOption({label:'Browser reviewer · Владелец'});
+    await expect(reviewer.locator('#org-name')).toHaveText('Browser reviewer');
+    await oldTab.getByLabel('Комментарий или основание решения',{exact:true}).fill('Forbidden after workspace switch');
+    const wrongWorkspace=oldTab.waitForResponse(r=>r.url().endsWith('/api/v1/reviews/'+review.id+'/events')&&r.request().method()==='POST');
+    await oldTab.getByRole('button',{name:'Добавить комментарий',exact:true}).click();expect((await wrongWorkspace).status()).toBe(409);
+    await expect(oldTab.locator('#org-name')).toHaveText('Browser reviewer');
+    await expect(oldTab.locator('.private-review-card')).toHaveCount(0);await oldTab.close();
+    await reviewer.getByLabel('Организация',{exact:true}).selectOption({label:'Browser owner · Рецензент'});
+    await expect(reviewer.locator('#org-name')).toHaveText('Browser owner');
+    await reviewer.getByRole('button',{name:'Browser migration review · Согласовано',exact:true}).click();
+    const members=(await(await owner.request.get('/api/v1/team')).json()).members;
+    const member=members.find(m=>m.email===reviewerEmail);
+    await owner.getByText('Участники и приглашения',{exact:true}).click();
+    owner.once('dialog',dialog=>dialog.accept());
+    const removed=owner.waitForResponse(r=>r.url().endsWith('/api/v1/team/'+member.id)&&r.request().method()==='DELETE');
+    await owner.getByRole('button',{name:'Удалить участника',exact:true}).click();expect((await removed).ok()).toBeTruthy();
+    // Keep the reviewer's stale tab open: its next write must not target the personal workspace.
+    await reviewer.getByLabel('Комментарий или основание решения',{exact:true}).fill('Forbidden after revocation');
+    const stale=reviewer.waitForResponse(r=>r.url().endsWith('/api/v1/reviews/'+review.id+'/events')&&r.request().method()==='POST');
+    await reviewer.getByRole('button',{name:'Добавить комментарий',exact:true}).click();expect((await stale).status()).toBe(409);
+    await expect(reviewer.locator('#org-name')).toHaveText('Browser reviewer');
+    await expect(reviewer.locator('.private-review-card')).toHaveCount(0);
+    await expect(reviewer.locator('#schema-list')).not.toContainText('Browser schema');
+    expect((await reviewer.request.get('/api/v1/reviews/'+review.id)).status()).toBe(404);
+    expect((await reviewer.request.get('/api/v1/schemas/'+profile.id)).status()).toBe(404);
+    const unchanged=(await(await owner.request.get('/api/v1/reviews/'+review.id)).json()).review;
+    expect(unchanged.events.some(event=>['Forbidden after revocation','Forbidden after workspace switch'].includes(event.text))).toBe(false);
   }finally{await ownerContext.close();await reviewerContext.close();}
 });
 
@@ -123,4 +160,34 @@ test('Pro expiry blocks stale-tab premium writes while preserving schema export 
     await expect(page.locator('#analysis-schema-select')).toBeDisabled();await expect(page.locator('#schema-list')).toContainText(schema.name);
     expect((await page.request.post('/api/v1/analyze',{data:{sql:"SET lock_timeout='3s'; ALTER TABLE customers ADD COLUMN note text;"}})).status()).toBe(200);
   }finally{await context.close();}
+});
+
+test('A delayed unauthorized response cannot sign out a newly authenticated browser session',async({browser})=>{
+  const context=await isolatedContext(browser),page=await context.newPage(),email='journey-delayed@example.invalid';
+  let release,ready;
+  const arrived=new Promise(resolve=>{ready=resolve;});
+  const held=new Promise(resolve=>{release=resolve;});
+  try{
+    await register(page,email,'Delayed response journey');
+    await expect(page.locator('#account-auth-submit')).toBeEnabled();
+    // Hold one old response while the actual logout/login flow replaces the session.
+    let first=true;
+    await page.route('**/api/v1/keys',async route=>{
+      if(!first){await route.fallback();return;}first=false;
+      ready();await held;
+      await route.fulfill({status:401,contentType:'application/json',body:'{"error":"Old session expired"}'});
+    });
+    await page.evaluate(()=>{window.oldKeysRequest=window.app.fetchKeys();});
+    await arrived;
+    await page.getByRole('button',{name:'Выйти',exact:true}).click();
+    await page.locator('#account-mode-login').click();
+    await page.getByRole('textbox',{name:'Email',exact:true}).fill(email);
+    await page.getByLabel('Пароль',{exact:true}).fill(password);
+    await page.locator('#account-auth-submit').click();
+    await expect(page.locator('#account-profile-email')).toHaveText(email);
+    release();await page.evaluate(()=>window.oldKeysRequest);
+    await expect(page.locator('#account-profile-email')).toHaveText(email);
+    await expect(page.locator('#org-name')).toHaveText('Delayed response journey');
+    expect((await(await page.request.get('/api/v1/auth/session')).json()).user.email).toBe(email);
+  }finally{release?.();await page.evaluate(()=>window.oldKeysRequest).catch(()=>{});await context.close();}
 });

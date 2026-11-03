@@ -14,6 +14,7 @@ function setAdminToken() {
 
 async function apiFetch(url, options = {}) {
   if (window.location.protocol === 'file:') throw new Error('Откройте http://localhost:3000 после запуска npm start или используйте браузерное демо.');
+  const identityVersion = window.app?.identityVersion, workspace = window.LockGuardActiveWorkspace, token = adminToken;
   const headers = new Headers(options.headers);
   if(window.LockGuardActiveWorkspace&&!url.startsWith('/api/v1/auth/'))headers.set('X-LockGuard-Workspace',window.LockGuardActiveWorkspace);
   if (adminToken) headers.set('Authorization', `Bearer ${adminToken}`);
@@ -22,8 +23,11 @@ async function apiFetch(url, options = {}) {
     const data = await response.json();
     const error = new Error(data.error || `Request failed: ${response.status}`);
     error.status = response.status;
-    if(data.code==='WORKSPACE_CHANGED')document.dispatchEvent(new Event('lockguard:workspace-changed'));
-    if (response.status === 401 && !url.startsWith('/api/v1/auth/') && !adminToken) document.dispatchEvent(new Event('lockguard:signed-out'));
+    // A response can arrive after another login or workspace switch. Only the
+    // context that sent the request may invalidate the current private state.
+    const current = identityVersion === window.app?.identityVersion && workspace === window.LockGuardActiveWorkspace && token === adminToken;
+    if(current && data.code==='WORKSPACE_CHANGED')document.dispatchEvent(new Event('lockguard:workspace-changed'));
+    if (current && response.status === 401 && !url.startsWith('/api/v1/auth/') && !adminToken) document.dispatchEvent(new Event('lockguard:signed-out'));
     throw error;
   }
   return response;

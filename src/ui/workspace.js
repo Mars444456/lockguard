@@ -11,7 +11,7 @@ window.LockGuardWorkspace = class {
   el(tag,text,parent) {const n=document.createElement(tag);if(text)n.textContent=text;if(parent)parent.appendChild(n);if(tag==='form')n.addEventListener('submit',e=>e.preventDefault());return n;}
   button(parent,title,action) {const b=this.el('button',title,parent);b.type='button';b.className='btn-secondary btn-sm';b.addEventListener('click',()=>this.perform(action));return b;}
   input(parent,label,type='text') {const l=this.el('label',label,parent),input=this.el('input','',l);input.type=type;return input;}
-  options(parent,label,items,value) {const l=this.el('label',label,parent),select=this.el('select','',l);for(const item of items){const o=this.el('option',item.label,select);o.value=item.value;}if(value)select.value=value;return select;}
+  options(parent,label,items,value) {const l=this.el('label',label,parent),select=this.el('select','',l);select.setAttribute('aria-label',label);for(const item of items){const o=this.el('option',item.label,select);o.value=item.value;}if(value)select.value=value;return select;}
   async api(url,method='GET',body) {const r=await apiFetch(url,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});return r.json();}
   async perform(action) {try{await action();}catch(error){this.app.showToast(error.message);}}
   reset() {this.epoch++;this.members=[];this.invites=[];this.reviews=[];this.workspaces=[];this.current=null;this.operations=null;this.render();}
