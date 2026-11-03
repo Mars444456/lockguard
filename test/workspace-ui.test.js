@@ -36,3 +36,13 @@ test('New saved checks become selectable without clearing a draft review title',
   p.app.runs=[{id:'new-run',filename:'new-migration.sql',timestamp:'2026-01-01',findingsVersion:1,analysisComplete:true,coverageComplete:true}];p.workspace.setRuns();
   assert.equal(title.value,'Keep this draft');assert.equal(p.document.querySelector('[data-review-run] option').value,'new-run');
 });
+
+test('Owner sees backup failure and recovery in both languages without a stale failure message',async()=>{
+  const p=page();await p.workspace.refresh();
+  p.workspace.operations={storage:'local_unverified',backupStatus:'failed',lastBackupAttemptAt:'2026-11-03T00:00:00Z',lastBackupFailureAt:'2026-11-03T00:00:00Z'};p.workspace.render();
+  const panel=()=>Array.from(p.document.querySelectorAll('details')).find(n=>n.querySelector('summary')?.textContent.match(/Сохранность данных|Data recovery readiness/));
+  assert.match(panel().textContent,/Ошибка — проверьте хранилище/);assert.match(panel().textContent,/Последний сбой: 2026-11-03/);
+  p.window.LockGuardI18n.locale='en-US';p.document.dispatchEvent(new p.Event('lockguard:language'));assert.match(panel().textContent,/Failed — check backup storage/);
+  p.workspace.operations.backupStatus='ok';p.workspace.operations.lastBackupAt='2026-11-03T00:05:00Z';p.workspace.render();
+  assert.match(panel().textContent,/Backup verified/);assert.doesNotMatch(panel().textContent,/Last failure|Failed —/);
+});

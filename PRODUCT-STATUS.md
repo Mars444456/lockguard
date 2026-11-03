@@ -1,5 +1,7 @@
 # Product status / Состояние продукта
 
+Version 1.5.2 adds owner-visible backup attempt, success and failure diagnostics. A verified retry clears the active failure; failed, overdue or future-dated evidence cannot establish operational readiness. Scheduler errors contain no original exception text. External monitoring and off-host storage remain operator setup tasks.
+
 ## 1.5.0: verified email and browser journeys
 
 Version 1.5.1 adds a synthetic regression corpus across all twelve rules. Timeout rollback, chained transactions and runner-wrapped VACUUM are tracked explicitly. NOT NULL checks use the selected target PostgreSQL version and do not retain rolled-back validation evidence. PostgreSQL 10–11 enforcement requires manual planning. ONLY DDL requires manual analysis rather than a recursive rewrite. Reordered leading btree keys can supply composite foreign-key index evidence. See [TESTING.md](TESTING.md).

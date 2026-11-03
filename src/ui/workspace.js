@@ -43,7 +43,18 @@ window.LockGuardWorkspace = class {
     const switcher=this.options(h,this.t('Организация','Organization'),(this.workspaces||[]).map(w=>({value:w.id,label:w.name+' · '+this.label(w.role)})),this.app.account.organizationId);
     switcher.addEventListener('change',()=>this.perform(()=>this.switchTo(switcher.value)));
     this.el('p',this.t('Ваша роль: ','Your role: ')+this.label(role),h);
-    if(this.operations){const details=this.el('details','',h);this.el('summary',this.t('Сохранность данных','Data recovery readiness'),details);this.el('p',this.operations.storage==='temporary_demo'?this.t('Тестовый сервер: данные могут сброситься. Для рабочих данных нужно постоянное хранилище и внешняя резервная копия.','Temporary server: data can reset. Working data needs persistent storage and an off-host backup.'):this.t('Постоянное хранение: ','Persistent storage: ')+String(this.operations.persistentConfigured),details);this.el('p',this.t('Последняя проверка восстановления: ','Last restore drill: ')+(this.operations.lastRestoreVerifiedAt||'—'),details);this.el('p',this.t('Восстановление по email настроено: ','Email recovery configured: ')+String(this.operations.emailRecoveryConfigured),details);}
+    if(this.operations){
+      const details=this.el('details','',h),ops=this.operations;
+      this.el('summary',this.t('Сохранность данных','Data recovery readiness'),details);
+      this.el('p',ops.storage==='temporary_demo'?this.t('Тестовый сервер: данные могут сброситься. Для рабочих данных нужно постоянное хранилище и внешняя резервная копия.','Temporary server: data can reset. Working data needs persistent storage and an off-host backup.'):this.t('Постоянное хранение: ','Persistent storage: ')+String(ops.persistentConfigured),details);
+      const labels={ok:this.t('Копия проверена','Backup verified'),failed:this.t('Ошибка — проверьте хранилище и настройки копирования','Failed — check backup storage and configuration'),overdue:this.t('Копия устарела','Backup overdue'),never:this.t('Успешных копий пока нет','No successful backup yet'),unknown:this.t('Статус не подтверждён','Status unverified')};
+      this.el('p',this.t('Резервное копирование: ','Backup status: ')+(labels[ops.backupStatus]||labels.unknown),details);
+      this.el('p',this.t('Последняя попытка: ','Last attempt: ')+(ops.lastBackupAttemptAt||'—'),details);
+      this.el('p',this.t('Последняя успешная копия: ','Last successful backup: ')+(ops.lastBackupAt||'—'),details);
+      if(ops.backupStatus==='failed')this.el('p',this.t('Последний сбой: ','Last failure: ')+(ops.lastBackupFailureAt||'—'),details);
+      this.el('p',this.t('Последняя проверка восстановления: ','Last restore drill: ')+(ops.lastRestoreVerifiedAt||'—'),details);
+      this.el('p',this.t('Восстановление по email настроено: ','Email recovery configured: ')+String(ops.emailRecoveryConfigured),details);
+    }
     const team=this.el('details','',h);this.el('summary',this.t('Участники и приглашения','Members and invitations'),team);
     for(const member of this.members) {const row=this.el('p',member.email+' · '+this.label(member.role),team);if(role==='owner'&&member.role!=='owner')this.button(row,this.t('Удалить участника','Remove member'),async()=>{if(window.confirm(this.t('Удалить участника из организации?','Remove this organization member?'))){await this.api('/api/v1/team/'+encodeURIComponent(member.id),'DELETE');await this.refresh();}});}
     for(const invite of this.invites||[]){const row=this.el('p',invite.email+' · '+this.label(invite.role)+' · '+new Date(invite.expiresAt).toLocaleString(),team);this.button(row,this.t('Отозвать приглашение','Revoke invitation'),async()=>{await this.api('/api/v1/team/invites/'+encodeURIComponent(invite.id),'DELETE');await this.refresh();});}

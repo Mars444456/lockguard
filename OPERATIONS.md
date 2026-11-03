@@ -30,6 +30,8 @@
 
 ## Проверяемые резервные копии
 
+Владельцу в «История проверок → Сохранность данных» доступны статус копирования, последняя попытка и последняя успешная копия. Сбой хранится как служебный статус без текста исключения, путей и ключей. Следующая успешная проверенная копия снимает текущую ошибку; историческое время сбоя сохраняется. Просроченная или ошибочная копия не подтверждает служебную готовность. Этот блок не заменяет внешний мониторинг, уведомления и независимое хранилище.
+
 ```sh
 npm run backup
 npm run verify:restore
@@ -56,6 +58,8 @@ node --env-file-if-exists=.env scripts/restore-db.js /secure/backup.sqlite3.enc 
 Служебная готовность сервера доступна только владельцу через `/api/v1/operations`.
 
 ## English
+
+Owners can inspect backup status, last attempt and last verified success under Review history → Data recovery readiness. Failures persist as a safe status without exception text, paths or keys. A verified successful retry clears the current failure while retaining its historical time. Failed or overdue backup evidence does not establish operational readiness. This local diagnostic does not replace external monitoring, notifications or off-host storage.
 
 Pro adds invited organization members (owner, editor, reviewer), private migration review cards, independent approval, attestations, time-limited owner waivers and an audit trail. Invitations are one-use, email-bound and expire after 48 hours. Creating and accepting invitations requires verified email ownership. Request a verification email in account settings, open the one-use link within 30 minutes, sign in to the same account and explicitly confirm. Opening a link does not consume it. Resending or changing the password revokes pending links. When mail delivery is not configured, invitations remain unavailable while normal SQL analysis works. Membership does not replace the user's personal workspace. All review URLs require authenticated organization membership. Saving complete SQL is an explicit choice checked against the analyzed SQL hash. Approval is a team decision, not a safety guarantee. No notification emails are sent automatically to teammates.
 

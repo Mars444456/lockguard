@@ -324,6 +324,20 @@ class PersistentDatabase {
   }
   async createBackup(directory = path.join(path.dirname(this.dbFilePath), 'backups'), retention = 7) {
     if (this.memoryOnly) throw new Error('Cannot back up an in-memory database');
+    const record = values => this.transaction(() => {for(const [key,value] of Object.entries(values))this.setMeta(key,value);});
+    try {record({last_backup_attempt_at:new Date().toISOString()});}catch{}
+    try {
+      const file=await this._createVerifiedBackup(directory,retention);
+      record({last_backup_at:new Date().toISOString(),last_backup_status:'ok'});
+      return file;
+    } catch(error) {
+      // Preserve the original failure even if damaged storage prevents recording it.
+      try {record({last_backup_failure_at:new Date().toISOString(),last_backup_status:'failed'});}catch{}
+      throw error;
+    }
+  }
+  async _createVerifiedBackup(directory, retention) {
+    if (this.memoryOnly) throw new Error('Cannot back up an in-memory database');
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     const name = 'lockguard-backup-' + new Date().toISOString().replace(/[:.]/g, '-') + '-' + crypto.randomUUID() + '.sqlite3';
     const target = path.resolve(directory, name);
@@ -338,7 +352,6 @@ class PersistentDatabase {
       try {finalTarget=await require('./backup-crypto').encrypt(target,target+'.enc',process.env.LOCKGUARD_BACKUP_KEY);}
       finally {fs.unlinkSync(target);}
     }
-    this.setMeta('last_backup_at', new Date().toISOString());
     const keep = Math.max(1, Math.min(Number(retention) || 7, 100));
     const files = fs.readdirSync(directory, { withFileTypes: true }).filter(e => e.isFile() && /^lockguard-backup-[\dTZ-]+-[a-f0-9-]{36}\.sqlite3(?:\.enc)?$/.test(e.name))
       .map(e => ({ name: e.name, time: fs.statSync(path.join(directory, e.name)).mtimeMs })).sort((a, b) => b.time - a.time);

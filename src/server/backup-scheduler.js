@@ -12,7 +12,7 @@ module.exports = function startBackups(db, env = process.env) {
     if (pending) return;
     pending = true;
     try { await db.createBackup(directory, retention); console.log('LockGuard database backup verified.'); }
-    catch (error) { console.error('LockGuard backup failed:', error.message); }
+    catch { console.error('LockGuard backup failed. Check backup diagnostics and local storage configuration.'); }
     finally { pending = false; }
   };
   const timer = setInterval(run, hours * 3600000);
