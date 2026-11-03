@@ -1,11 +1,12 @@
-const { LockLevel, Severity } = require('../types');
+const { Severity } = require('../types');
+const statementLock = require('../statement-lock');
 
 module.exports = {
   id: 'LG-008',
   code: 'MISSING_LOCK_TIMEOUT',
   name: 'Missing SET lock_timeout directive in migration',
   severity: Severity.HIGH,
-  lockLevel: LockLevel.ACCESS_EXCLUSIVE,
+  lockLevel: null,
   description: 'Without an effective positive lock_timeout, waiting DDL may queue later conflicting requests on the same relation. Impact depends on lock mode, transaction lifetime and workload.',
   
   check(astStatements, context = {}) {
@@ -67,13 +68,13 @@ module.exports = {
         ruleCode: this.code,
         ruleName: this.name,
         severity: Severity.HIGH,
-        lockLevel: LockLevel.ACCESS_EXCLUSIVE,
+        lockLevel: statementLock(unsafeStatement),
         table: 'global',
         line: unsafeStatement.line,
         sourceStart: unsafeStatement.sourceStart,
         raw: unsafeStatement.raw,
         inTransaction: transactionStart !== undefined,
-        message: 'No effective positive `SET lock_timeout` before this DDL statement. A missing, disabled, reset or expired timeout can allow lock waits to block production traffic.'
+        message: 'This SQL file does not establish an effective positive `SET lock_timeout` before this DDL statement. Verify session or role settings separately. A missing, disabled, reset or expired timeout can allow conflicting lock waits; it does not change the statement lock mode.'
       });
     }
 

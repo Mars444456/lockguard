@@ -29,4 +29,5 @@ const html = fs.readFileSync(indexPath, 'utf8').replace(/(src|href)="(app\.js|re
 });
 fs.writeFileSync(indexPath, html);
 require('./build-i18n').buildI18n();
+require('./build-discovery').buildDiscovery();
 require('./check-privacy').assertPublishable();

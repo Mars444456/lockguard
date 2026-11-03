@@ -685,7 +685,7 @@ class LockGuardApp {
             <div class="rule-desc">${r.description}</div>
           </div>
           <div class="rule-footer">
-            <span>Блокировка: <b style="color: var(--accent-red);">${r.lockLevel}</b></span>
+            <span>Блокировка: <b style="color: var(--accent-red);">${r.lockLevel || '—'}</b></span>
             <span>PostgreSQL</span>
           </div>
         `;

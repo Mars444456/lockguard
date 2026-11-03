@@ -201,24 +201,24 @@ USAGE:
 
 COMMANDS:
   check         Analyze SQL migration files for dangerous locks (ACCESS EXCLUSIVE, etc.)
-  split         Auto-Splitter: Deconstruct monolithic migration into zero-downtime multi-phase releases
+  split         Prepare phased SQL drafts for manual review and staging verification
   install-hook  Install Git pre-commit hook to catch locks before pushing to GitHub
   watchdog      Post-deploy watchdog: Detect invalid/broken indexes from failed CONCURRENTLY runs
   simulate      Removed: use check and measure runtime on a representative database
-  rules         Display the catalog of Top-12 fatal PostgreSQL lock rules
+  rules         Display 12 PostgreSQL migration checks and their limitations
   action        Generate GitHub Action CI workflow (.github/workflows/lockguard.yml) in 1 second
   init          Scaffold GitHub Action workflow and configuration
 
 OPTIONS:
   --changed [base]        Check only new/modified .sql files against git base (default: origin/main)
   --staged                Check only staged .sql files (for pre-commit hooks)
-  --fix                   Automatically apply safe fixes (e.g. insert lock_timeout, add CONCURRENTLY)
+  --fix                   Apply supported draft rewrites; review before execution
   --write                 Write generated split migration phases to disk (used with split)
   --out-dir=<dir>         Output directory for generated migration files (used with split)
   --isolated              Check each migration file in isolation without inter-file shared context
-  --schema-stats=<file>   Load real-world table size/row counts from JSON to enrich lock duration
+  --schema-stats=<file>   Import supplied table statistics; no runtime duration forecast
   --schema=<file>         Import SQL/JSON structure for one migration (or independent --isolated files)
-  --context               Enrich analysis with live table row count & estimated lock durations
+  --context               Query table statistics for context; no runtime duration forecast
   --format=<type>         Output format: 'table' (default), 'json', 'sarif', 'github-pr-comment', 'markdown'
   --strict                Exit with code 1 on warnings as well as critical/high errors
   --fail-on=<level>       Exit code 1 on severity: 'CRITICAL', 'HIGH' (default), 'MEDIUM'
@@ -237,7 +237,7 @@ OPTIONS:
     console.log(`\n🛡️  LockGuard Active Rule Catalog (Top-${rules.length} Fatal Anti-Patterns):\n`);
     for (const r of rules) {
       console.log(`• [${r.id}] ${r.name}`);
-      console.log(`  Severity: ${r.severity} | Lock Level: ${r.lockLevel}`);
+      console.log(`  Severity: ${r.severity} | Lock Level: ${r.lockLevel || 'Depends on SQL'}`);
       console.log(`  Description: ${r.description}\n`);
     }
     return 0;

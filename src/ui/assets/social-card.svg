@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0b0d13"/>
+  <path d="M0 568H1200M714 0V630" stroke="#242937"/>
+  <rect x="56" y="48" width="52" height="56" rx="14" fill="#211c32"/>
+  <path d="M82 59 98 65v12c0 11-9 18-16 22-7-4-16-11-16-22V65Z" fill="none" stroke="#b9a7ff" stroke-width="2.4"/>
+  <path d="m74 77 6 6 11-12" fill="none" stroke="#b9a7ff" stroke-width="2.6"/>
+  <g font-family="Arial,Helvetica,sans-serif">
+    <text x="125" y="86" fill="#f3f4fa" font-size="32" font-weight="700">LockGuard</text>
+    <text x="58" y="161" fill="#b9a7ff" font-size="14" letter-spacing="3">OPEN SOURCE / POSTGRESQL</text>
+    <text x="53" y="245" fill="#f5f6fb" font-size="64" font-weight="700">Review SQL.</text>
+    <text x="53" y="323" fill="#b7bbca" font-size="64" font-weight="700">Before release.</text>
+    <text x="58" y="383" fill="#bdc3d2" font-size="22">Find known lock risks in migration SQL.</text>
+    <text x="58" y="421" fill="#bdc3d2" font-size="22">Review the findings. Test the change.</text>
+    <rect x="58" y="467" width="600" height="48" rx="9" fill="#191d29"/>
+    <text x="81" y="498" fill="#e7e9f1" font-size="19">12 checks  ·  CLI  ·  GitHub Action  ·  MIT</text>
+    <rect x="754" y="130" width="393" height="360" rx="16" fill="#131722" stroke="#323849"/>
+    <text x="781" y="167" fill="#929bad" font-size="15">migration.sql</text>
+    <path d="M754 189H1147" stroke="#323849"/>
+    <g font-family="Consolas,monospace" font-size="20">
+      <text x="782" y="235" fill="#b9a7ff">CREATE INDEX</text>
+      <text x="782" y="270" fill="#e7e9f1">ix ON orders(user_id);</text>
+    </g>
+    <rect x="778" y="307" width="345" height="84" rx="10" fill="#30241c" stroke="#745039"/>
+    <text x="797" y="340" fill="#f2c087" font-size="20" font-weight="700">SHARE lock</text>
+    <text x="797" y="369" fill="#e0c2a6" font-size="16">Conflicts with concurrent writes</text>
+    <text x="781" y="434" fill="#a5adbF" font-size="16">Static review ≠ measured downtime</text>
+    <text x="58" y="605" fill="#aab2c5" font-size="18">Browser demo · No account required</text>
+    <text x="755" y="605" fill="#b9a7ff" font-size="18">mars444456.github.io/lockguard</text>
+  </g>
+</svg>
