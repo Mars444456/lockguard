@@ -85,6 +85,8 @@ jobs:
           git diff --exit-code -- docs/index.html docs/design.css docs/pro.css docs/labels.js docs/site-access.js docs/lockguard-engine.js docs/libpg-query.wasm src/ui/index.html docs/start.html docs/pilot-guide.css docs/pilot-guide.js docs/pilot-example.js src/ui/start.html src/ui/pilot-example.js docs/i18n.js docs/i18n-catalog.js docs/i18n.css docs/contacts.html docs/offer.html docs/privacy.html src/ui/contacts.html src/ui/offer.html src/ui/privacy.html
       - name: Verify public discovery assets match sources
         run: git diff --exit-code -- docs/favicon.svg docs/social-card.png docs/sitemap.xml
+      - name: Verify local project UI matches sources
+        run: git diff --exit-code -- docs/local-project.js
       - name: Verify safe migration exits with 0
         # Shared review UI must be generated from the same source as the workspace.
         run: |

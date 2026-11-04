@@ -22,6 +22,7 @@ For a team pilot, [discuss reviewing 1–3 sanitized migrations](https://mars444
 - Terminal, JSON, Markdown, GitHub PR comment and SARIF output formats.
 - Browser-only SQL review and draft phased changes for supported findings.
 - Server workspace with account-scoped history and API keys.
+- Free browser projects: explicitly save up to 20 SQL checks on this device, export/import a JSON project file, and reopen inputs with a fresh analysis. No account or server is needed. History and exported files are unencrypted; keep confidential SQL private. Clearing site data removes local history. The browser history is separate from server workspace history.
 - One-use email ownership verification before inviting or accepting organization members; operator-configured mail delivery.
 - Pro workflow with saved schemas, longer history, before / after comparisons and private team reviews.
 - GitHub webhook signature verification and PR SQL analysis; commit-status publishing is configured separately.

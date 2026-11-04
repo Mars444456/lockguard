@@ -681,6 +681,7 @@ class LockGuardWebPlayground {
 // Boot on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new LockGuardWebPlayground();
+  window.app.localProject=window.LockGuardLocalProject?.mount(window.app,document.getElementById('local-project'));
   initLockMatrixExplorer();
   if (window.location.hash === '#team-pilot') document.getElementById('team-pilot').scrollIntoView({ behavior: 'instant', block: 'start' });
 });

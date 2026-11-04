@@ -20,6 +20,13 @@ const controls=http.createServer(async(req,res)=>{
   res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
   try {
     const url=new URL(req.url,'http://127.0.0.1:3021');
+    if(req.method==='GET'&&url.pathname.startsWith('/demo/')){
+      const asset=url.pathname.slice(6)||'index.html';
+      if(!/^[a-z0-9-]+\.(html|js|css|wasm|svg|png)$/.test(asset)){res.writeHead(404);res.end('{}');return;}
+      const file=path.join(root,'docs',asset);if(!fs.existsSync(file)){res.writeHead(404);res.end('{}');return;}
+      const types={html:'text/html',js:'application/javascript',css:'text/css',wasm:'application/wasm',svg:'image/svg+xml',png:'image/png'};
+      res.setHeader('Content-Type',types[path.extname(file).slice(1)]);res.end(fs.readFileSync(file));return;
+    }
     if(req.method==='GET'&&url.pathname==='/ready'){res.end('{}');return;}
     if(req.method==='GET'&&url.pathname==='/inbox'){
       const email=url.searchParams.get('email');if(!email?.endsWith('@example.invalid'))throw new Error('Invalid test address');
