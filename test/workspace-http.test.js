@@ -24,6 +24,30 @@ test('HTTP team roles prevent writes and require the expected active workspace',
   assert.equal((await request('/api/v1/operations',undefined,reviewer.cookie)).status,403);
 });
 
+test('Only the workspace owner can read orders containing buyer data',async()=>{
+  const editor=await request('/api/v1/auth/register',{email:'editor-http@example.invalid',password,organizationName:'Editor HTTP'});
+  assert.equal(editor.status,201);
+  db.emailVerification.consume(editor.body.user.id,db.emailVerification.issue(editor.body.user.id).token);
+  const invite=await request('/api/v1/team/invites',{email:editor.body.user.email,role:'editor'},owner.cookie);
+  assert.equal(invite.status,201);
+  const accepted=await request('/api/v1/team/accept',{token:invite.body.invite.token},editor.cookie);
+  assert.equal(accepted.body.user.role,'editor');
+  const order=db.forOrganization(owner.body.user.organizationId).createPaymentOrder({
+    product:require('../src/server/payment-catalog').team,
+    email:'buyer-only@example.invalid',requestId:'private-order-test',testMode:true,merchantLogin:'test'
+  });
+  const allowed=await request('/api/v1/billing/orders',undefined,owner.cookie);
+  assert.equal(allowed.status,200);
+  assert.equal(allowed.body.orders.find(item=>item.id===order.id).email,order.email);
+  for (const member of [reviewer,editor]) {
+    const denied=await request('/api/v1/billing/orders',undefined,member.cookie);
+    assert.equal(denied.status,403);
+    assert.ok(!JSON.stringify(denied.body).includes(order.email));
+    assert.equal((await request('/api/v1/runs',undefined,member.cookie)).status,200);
+  }
+  assert.equal((await request('/api/v1/billing/orders')).status,401);
+});
+
 test('HTTP review links require authentication and comments cannot cross organizations or revisions',async()=>{
   const run=await request('/api/v1/analyze',{sql:"SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY ix ON customers(id);",recordRun:true},owner.cookie);
   const created=await request('/api/v1/reviews',{runId:run.body.data.runId,title:'Private HTTP review'},owner.cookie);assert.equal(created.status,201);review=created.body.review;

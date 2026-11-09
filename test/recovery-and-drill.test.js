@@ -56,3 +56,44 @@ test('Encrypted backups restore records, reject wrong keys and remove temporary 
   const report=await verifyRestore(db,path.join(directory,'backups'));assert.ok(report.verifiedTables>5);assert.ok(db.getMeta('last_restore_verified_at'));
   assert.equal(status(db,{LOCKGUARD_EPHEMERAL_DEMO:'true',LOCKGUARD_DURABLE_STORAGE:'true'}).readyForPaidUse,false);
 });
+
+test('Encrypted backup publication keeps plaintext outside the export directory and cleans failed output',async t=>{
+  process.env.LOCKGUARD_BACKUP_KEY=crypto.randomBytes(32).toString('base64');
+  const folder=path.join(directory,'encrypted-export');
+  const encryption=require('../src/server/backup-crypto');
+  const encrypt=encryption.encrypt;
+  let snapshot, published;
+  t.mock.method(encryption,'encrypt',async(source,target,secret)=>{
+    snapshot=source;
+    assert.ok(!path.resolve(source).startsWith(path.resolve(folder)+path.sep));
+    assert.deepEqual(fs.readdirSync(folder),published?[path.basename(published)]:[]);
+    return encrypt(source,target,secret);
+  });
+  published=await db.createBackup(folder);
+  assert.match(published,/\.sqlite3\.enc$/);
+  assert.deepEqual(fs.readdirSync(folder),[path.basename(published)]);
+  assert.equal(fs.existsSync(snapshot),false);
+
+  const rename=fs.renameSync;
+  t.mock.method(fs,'renameSync',(source,target)=>{
+    if (path.dirname(target)===folder) throw new Error('Synthetic publication failure');
+    return rename(source,target);
+  });
+  await assert.rejects(db.createBackup(folder),/Synthetic publication failure/);
+  assert.deepEqual(fs.readdirSync(folder),[path.basename(published)]);
+  assert.equal(fs.existsSync(snapshot),false);
+  await assert.rejects(db.createBackup(os.tmpdir()),/separate from the system temporary directory/);
+});
+
+test('Restore rejects a plaintext database substituted for an encrypted backup',async()=>{
+  delete process.env.LOCKGUARD_BACKUP_KEY;
+  const legacy=await db.createBackup(path.join(directory,'legacy-export'));
+  const substituted=legacy+'.enc',target=path.join(directory,'substituted.sqlite3');
+  fs.copyFileSync(legacy,substituted);
+  process.env.LOCKGUARD_BACKUP_KEY=crypto.randomBytes(32).toString('base64');
+  await assert.rejects(restore(substituted,target),/encrypted backup header/i);
+  assert.equal(fs.existsSync(target),false);
+  const legacyTarget=path.join(directory,'legacy-restored.sqlite3');
+  await restore(legacy,legacyTarget);
+  assert.equal(fs.existsSync(legacyTarget),true);
+});
