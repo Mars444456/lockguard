@@ -9,6 +9,18 @@ permissions:
   contents: read
 
 jobs:
+  durable-cabinet:
+    name: Cabinet data survives container replacement
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm run check:privacy
+      - run: docker build -f Dockerfile.web -t lockguard-web-ci .
+      - run: node --test integration/durable-container.cjs
   browser-tests:
     name: Customer journeys (Chromium)
     runs-on: ubuntu-latest

@@ -60,7 +60,8 @@ async function verifyRestore(db, directory) {
   });
   try {
     record({ last_restore_attempt_at: new Date().toISOString(), last_restore_status: 'incomplete' });
-    const result = await verifyBackup(await db.createBackup(directory));
+    const retention = Number(process.env.LOCKGUARD_BACKUP_RETENTION || 7);
+    const result = await verifyBackup(await db.createBackup(directory, retention));
     record({ last_restore_verified_at: result.verifiedAt, last_restore_status: 'ok' });
     return result;
   } catch {

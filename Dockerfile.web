@@ -1,0 +1,13 @@
+FROM node:24.12.0-bookworm-slim
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+COPY src ./src
+COPY config/seller.json ./config/seller.json
+COPY scripts/railway-server.js scripts/durable-server.js scripts/verify-restore.js scripts/restore-db.js ./scripts/
+ENV NODE_ENV=production \
+    LOCKGUARD_ISOLATE_PASSWORD_HASHES=true \
+    LOCKGUARD_BACKUP_RETENTION=3 \
+    UV_THREADPOOL_SIZE=1
+EXPOSE 3000
+CMD ["node", "--max-old-space-size=128", "--max-semi-space-size=4", "--liftoff-only", "--wasm-num-compilation-tasks=1", "scripts/railway-server.js"]
