@@ -19,4 +19,4 @@ async function start() {
   server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('LockGuard started after a verified encrypted restore drill. Persistent storage remains the operator’s responsibility.'));
 }
 if(require.main===module)start().catch(error=>{console.error(error.message);process.exitCode=1;});
-module.exports={validate};
+module.exports={validate,start};
