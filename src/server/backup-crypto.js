@@ -16,11 +16,11 @@ async function encrypt(source,target,secret) {
     return target;
   }catch(error){if(created)fs.unlinkSync(target);throw error;}
 }
-async function plaintext(source,secret=process.env.LOCKGUARD_BACKUP_KEY) {
+async function plaintext(source, secret = process.env.LOCKGUARD_BACKUP_KEY, { requireEncrypted = false } = {}) {
   const fd=fs.openSync(source,'r'),header=Buffer.alloc(36);let length;
   try{length=fs.readSync(fd,header);}finally{fs.closeSync(fd);}
   if (!header.subarray(0, 8).equals(MAGIC)) {
-    if (/\.enc$/i.test(source)) throw new Error('Invalid encrypted backup header');
+    if (requireEncrypted || /\.enc$/i.test(source)) throw new Error('Invalid encrypted backup header');
     return { file: source, cleanup() {} };
   }
   if(length!==36)throw new Error('Truncated encrypted backup');

@@ -76,3 +76,40 @@ test('The restore CLI returns a failure and records it without printing the priv
   const reopened=new db.PersistentDatabase({dbFilePath:childDb});
   try{const report=status(reopened,readyEnv);assert.equal(report.restoreStatus,'failed');assert.ok(report.lastRestoreAttemptAt);assert.ok(report.lastRestoreFailureAt);assert.equal(report.readyForPaidUse,false);}finally{reopened.close();}
 });
+
+test('Offline verification restores the supplied encrypted file without opening the configured database',async()=>{
+  const file=await db.createBackup(backups);
+  const receivedDirectory=path.join(directory,'received backups');
+  fs.mkdirSync(receivedDirectory);
+  const received=path.join(receivedDirectory,'received.sqlite3.enc');
+  fs.copyFileSync(file,received);
+  const configuredDatabase=path.join(directory,'unused-live.sqlite3');
+  const run=spawnSync(process.execPath,['--no-warnings',path.join(__dirname,'../scripts/verify-restore.js'),'--from',received],{
+    env:{...process.env,LOCKGUARD_DB_FILE:configuredDatabase},encoding:'utf8',timeout:30000
+  });
+  assert.equal(run.status,0,run.stderr);
+  const report=JSON.parse(run.stdout);
+  assert.equal(report.source,'provided_encrypted_file');
+  assert.equal(report.temporaryCredentialsRevoked,true);
+  assert.ok(report.verifiedTables>0);
+  assert.equal(fs.existsSync(configuredDatabase),false);
+  assert.deepEqual(fs.readFileSync(received),fs.readFileSync(file));
+  assert.ok(!run.stdout.includes(directory));
+});
+
+test('Offline verification rejects an unencrypted snapshot even when the name has no encrypted suffix',async()=>{
+  const originalKey=process.env.LOCKGUARD_BACKUP_KEY;
+  let plaintext;
+  try {
+    delete process.env.LOCKGUARD_BACKUP_KEY;
+    plaintext=await db.createBackup(path.join(directory,'local-plaintext'));
+  } finally { process.env.LOCKGUARD_BACKUP_KEY=originalKey; }
+  const configuredDatabase=path.join(directory,'unused-invalid-live.sqlite3');
+  const run=spawnSync(process.execPath,['--no-warnings',path.join(__dirname,'../scripts/verify-restore.js'),'--from',plaintext],{
+    env:{...process.env,LOCKGUARD_DB_FILE:configuredDatabase},encoding:'utf8',timeout:30000
+  });
+  assert.equal(run.status,1);
+  assert.match(run.stderr,/Restore verification failed/);
+  assert.equal(fs.existsSync(configuredDatabase),false);
+  assert.doesNotMatch(run.stdout+run.stderr,/local-plaintext|unused-invalid-live/);
+});
