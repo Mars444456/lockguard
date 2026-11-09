@@ -45,13 +45,15 @@ npm run verify:restore
 
 Для шифрования задайте `LOCKGUARD_BACKUP_KEY`: случайный ключ из 32 байт в base64, полученный в менеджере секретов. Копии используют AES-256-GCM с новым случайным IV. Ключ храните отдельно от копий; без него восстановление невозможно. При ошибке шифрования резервирование завершается ошибкой, не сохраняя незашифрованную резервную копию как запасной вариант. Ранее существовавшие незашифрованные копии автоматически не удаляются.
 
-Восстановление принимает новый путь и не перезаписывает существующую базу:
+Для восстановления укажите новый путь на файловой системе с поддержкой жёстких ссылок, например NTFS или ext4.
 
 ```sh
 node --env-file-if-exists=.env scripts/restore-db.js /secure/backup.sqlite3.enc /secure/restored.sqlite3
 ```
 
-Восстановление возвращает сохранённые аккаунты, членство, схемы, проверки, карточки и заказы. Все прежние сеансы, приглашения и коды восстановления отзываются. Восстановленные API-ключи сохраняют прежнее состояние: если копия могла быть раскрыта, оператор должен отозвать ключи отдельно.
+Скрипт готовит базу в закрытом временном каталоге на том же диске и публикует её по указанному пути после отзыва прежних сеансов, приглашений и кодов. Уже занятый путь или соседний журнал SQLite приводят к отказу. При принудительной остановке проверьте временные папки `.lockguard-restore-*` рядом с указанным путём. Они могут содержать данные резервной копии.
+
+Восстановление возвращает сохранённые аккаунты, членство, схемы, проверки, карточки и заказы. Восстановленные API-ключи сохраняют прежнее состояние: если копия могла быть раскрыта, оператор должен отозвать ключи отдельно.
 
 ## Постоянный сервер
 
@@ -75,7 +77,7 @@ Create an offline recovery code in your account settings after confirming the cu
 
 `npm run backup` creates a verified snapshot. With `LOCKGUARD_BACKUP_KEY` set to a separately retained 32-byte base64 key, backups are encrypted with AES-256-GCM. The plaintext snapshot is staged in a private temporary directory. Keep the backup destination separate from the system temporary directory and sync only completed `.sqlite3.enc` files. Restore authenticates `.enc` files before opening them as SQLite.
 
-`npm run verify:restore` restores to a temporary database, compares record checksums and checks revocation of temporary credentials. Restore always requires a new target path. API keys retain their backed-up status and must be revoked separately if exposure is suspected.
+`npm run verify:restore` restores to a temporary database, compares record checksums and checks revocation of temporary credentials. Restore requires a new path on a filesystem that supports hard links. The completed database appears at that path after temporary credentials have been revoked. Existing SQLite files and journals block publication. After a forced stop, check for private `.lockguard-restore-*` directories beside the target because they may contain backup data. API keys retain their backed-up status and must be revoked separately if exposure is suspected.
 
 Owners can see the restore status, last attempt, last successful drill and current failure under Data recovery readiness. A failed or incomplete attempt, or success older than seven days, prevents operational readiness despite an earlier success. Success is recorded only after temporary data cleanup. A full successful retry clears the current failure while retaining its historical time. Status survives restart, and CLI failures omit original exceptions with paths or secrets. After a cleanup failure, inspect temporary storage before retrying; a failed status does not confirm data removal. This diagnostic does not replace independent off-host recovery verification.
 

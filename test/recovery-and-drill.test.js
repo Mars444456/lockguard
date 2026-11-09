@@ -97,3 +97,58 @@ test('Restore rejects a plaintext database substituted for an encrypted backup',
   await restore(legacy,legacyTarget);
   assert.equal(fs.existsSync(legacyTarget),true);
 });
+
+test('Restore can retry after credential cleanup fails without publishing the old sessions',async t=>{
+  const {DatabaseSync}=require('node:sqlite');
+  const token=db.createSession(user.id);
+  const source=await db.createBackup(path.join(directory,'restore-retry-backups'));
+  const destination=path.join(directory,'restore-retry');
+  const target=path.join(destination,'restored.sqlite3');
+  const exec=DatabaseSync.prototype.exec;
+  let targetWasVisible;
+  const fault=t.mock.method(DatabaseSync.prototype,'exec',function(sql){
+    if (sql.includes('DELETE FROM sessions')) {
+      targetWasVisible=fs.existsSync(target);
+      throw new Error('Synthetic credential cleanup failure');
+    }
+    return exec.call(this,sql);
+  });
+  await assert.rejects(restore(source,target),/Synthetic credential cleanup failure/);
+  assert.equal(targetWasVisible,false);
+  assert.deepEqual(fs.readdirSync(destination),[]);
+  assert.equal(db.getSession(token).id,user.id);
+
+  fault.mock.restore();
+  await restore(source,target);
+  const restored=new PersistentDatabase({dbFilePath:target});
+  try {
+    assert.equal(restored.getSession(token),null);
+    assert.equal(restored.getUserByEmail(user.email).id,user.id);
+  } finally { restored.close(); }
+});
+
+test('Restore leaves an existing rollback journal untouched',async()=>{
+  const source=await db.createBackup(path.join(directory,'journal-check-backups'));
+  const target=path.join(directory,'journal-conflict.sqlite3');
+  const journal=target+'-journal';
+  const original=Buffer.from('Synthetic pre-existing journal');
+  fs.writeFileSync(journal,original,{flag:'wx'});
+  await assert.rejects(restore(source,target),/new path/);
+  assert.equal(fs.existsSync(target),false);
+  assert.deepEqual(fs.readFileSync(journal),original);
+});
+
+test('Concurrent restores publish a single complete database at the requested path',async()=>{
+  const source=await db.createBackup(path.join(directory,'concurrent-restore-backups'));
+  const destination=path.join(directory,'concurrent-restore');
+  const target=path.join(destination,'restored.sqlite3');
+  const attempts=await Promise.allSettled([restore(source,target),restore(source,target)]);
+  assert.equal(attempts.filter(result=>result.status==='fulfilled').length,1);
+  assert.match(attempts.find(result=>result.status==='rejected').reason.message,/new path|EEXIST/);
+  assert.deepEqual(fs.readdirSync(destination),[path.basename(target)]);
+  const restored=new PersistentDatabase({dbFilePath:target});
+  try {
+    assert.equal(restored.getUserByEmail(user.email).id,user.id);
+    assert.equal(restored.sql.prepare('SELECT count(*) AS n FROM sessions').get().n,0);
+  } finally { restored.close(); }
+});
