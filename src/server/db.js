@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { DatabaseSync, backup } = require('node:sqlite');
 const { features } = require('./pro-features');
@@ -340,23 +341,45 @@ class PersistentDatabase {
     if (this.memoryOnly) throw new Error('Cannot back up an in-memory database');
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     const name = 'lockguard-backup-' + new Date().toISOString().replace(/[:.]/g, '-') + '-' + crypto.randomUUID() + '.sqlite3';
-    const target = path.resolve(directory, name);
-    await backup(this.sql, target);
-    fs.chmodSync(target, 0o600);
-    const check = new DatabaseSync(target, { readOnly: true });
+    const secret = process.env.LOCKGUARD_BACKUP_KEY;
+    const temporaryRoot = fs.realpathSync(os.tmpdir());
+    const relativeTemporaryRoot = path.relative(fs.realpathSync(directory), temporaryRoot);
+    if (secret && !path.isAbsolute(relativeTemporaryRoot) &&
+        relativeTemporaryRoot !== '..' && !relativeTemporaryRoot.startsWith('..' + path.sep)) {
+      throw new Error('Encrypted backup directory must be separate from the system temporary directory.');
+    }
+    const target = path.resolve(directory, secret ? name + '.enc' : name);
+    const pending = path.join(path.dirname(target), '.' + path.basename(target) + '.partial');
+    let staged = false;
     try {
-      if (check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok' || check.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Backup integrity check failed');
-    } finally { check.close(); }
-    let finalTarget=target;
-    if(process.env.LOCKGUARD_BACKUP_KEY) {
-      try {finalTarget=await require('./backup-crypto').encrypt(target,target+'.enc',process.env.LOCKGUARD_BACKUP_KEY);}
-      finally {fs.unlinkSync(target);}
+      // Keep the plaintext snapshot outside the directory used for backup exports.
+      const workingDirectory = fs.mkdtempSync(path.join(temporaryRoot, 'lockguard-backup-work-'));
+      const snapshot = path.join(workingDirectory, 'snapshot.sqlite3');
+      try {
+        await backup(this.sql, snapshot);
+        fs.chmodSync(snapshot, 0o600);
+        const check = new DatabaseSync(snapshot, { readOnly: true });
+        try {
+          if (check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok' || check.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Backup integrity check failed');
+        } finally { check.close(); }
+
+        if (secret) await require('./backup-crypto').encrypt(snapshot, pending, secret);
+        else fs.copyFileSync(snapshot, pending, fs.constants.COPYFILE_EXCL);
+        staged = true;
+      } finally {
+        fs.rmSync(snapshot, { force: true });
+        fs.rmdirSync(workingDirectory);
+      }
+      // Publish the completed file with a rename on the destination filesystem.
+      fs.renameSync(pending, target);
+    } finally {
+      if (staged) fs.rmSync(pending, { force: true });
     }
     const keep = Math.max(1, Math.min(Number(retention) || 7, 100));
     const files = fs.readdirSync(directory, { withFileTypes: true }).filter(e => e.isFile() && /^lockguard-backup-[\dTZ-]+-[a-f0-9-]{36}\.sqlite3(?:\.enc)?$/.test(e.name))
       .map(e => ({ name: e.name, time: fs.statSync(path.join(directory, e.name)).mtimeMs })).sort((a, b) => b.time - a.time);
     for (const file of files.slice(keep)) fs.unlinkSync(path.resolve(directory, file.name));
-    return finalTarget;
+    return target;
   }
   close() { this.sql?.close(); }
 }

@@ -19,7 +19,10 @@ async function encrypt(source,target,secret) {
 async function plaintext(source,secret=process.env.LOCKGUARD_BACKUP_KEY) {
   const fd=fs.openSync(source,'r'),header=Buffer.alloc(36);let length;
   try{length=fs.readSync(fd,header);}finally{fs.closeSync(fd);}
-  if(!header.subarray(0,8).equals(MAGIC))return {file:source,cleanup(){}};
+  if (!header.subarray(0, 8).equals(MAGIC)) {
+    if (/\.enc$/i.test(source)) throw new Error('Invalid encrypted backup header');
+    return { file: source, cleanup() {} };
+  }
   if(length!==36)throw new Error('Truncated encrypted backup');
   const bytes=key(secret),dir=fs.mkdtempSync(path.join(os.tmpdir(),'lockguard-decrypted-')),file=path.join(dir,'backup.sqlite3');
   fs.chmodSync(dir,0o700);

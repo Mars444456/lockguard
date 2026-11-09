@@ -280,7 +280,10 @@ function registerRoutes(router) {
     res.end(acknowledgement);
   });
 
-  router.get('/api/v1/billing/orders', async (req, res) => res.json({ success: true, orders: req.store.getPaymentOrders() }));
+  router.get('/api/v1/billing/orders', async (req, res) => {
+    if (req.auth) db.workspaces.owner(req.auth);
+    return res.json({ success: true, orders: req.store.getPaymentOrders() });
+  });
 
   for (const [route, status] of [['/billing/success', 'return'], ['/billing/fail', 'cancelled']]) {
     router.get(route, async (req, res) => {
