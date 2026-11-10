@@ -4,7 +4,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 
-test('The cabinet requires its volume and retains an account and saved audit after container replacement', async () => {
+test('The cabinet requires its volume and preserves saved work after restart and container replacement', async () => {
   const id = 'lockguard-ci-' + randomUUID();
   const container = id + '-app';
   const volume = id + '-volume';
@@ -23,6 +23,11 @@ test('The cabinet requires its volume and retains an account and saved audit aft
   async function launch() {
     docker('run', '-d', '--name', container, '-p', '127.0.0.1::3000', ...settings,
       '--mount', `type=volume,src=${volume},dst=/data`, 'lockguard-web-ci');
+    await waitForCabinet();
+  }
+
+  async function waitForCabinet() {
+    // Docker can assign a new host port each time the container starts.
     base = 'http://' + docker('port', container, '3000/tcp').trim();
     for (let attempt = 0; attempt < 80; attempt++) {
       const ready = await fetch(base + '/api/v1/rules', { signal: AbortSignal.timeout(1000) })
@@ -60,19 +65,69 @@ test('The cabinet requires its volume and retains an account and saved audit aft
       body: { ...credentials, organizationName: 'Synthetic durability test' }, status: 201
     });
     assert.match(registered.cookie, /^__Host-lockguard_session=/);
+    // Seed Pro in this disposable volume using the operator's organization store.
+    docker('exec', '-e', 'LOCKGUARD_DB_FILE=/data/lockguard.sqlite3', container, 'node', '-e', `
+      const db = require('./src/server/db');
+      try {
+        const user = db.getUserByEmail(process.argv[1]);
+        db.forOrganization(user.organizationId).updatePlan('team');
+      } finally {
+        db.close();
+      }
+    `, credentials.email);
+    const cookie = registered.cookie;
+    const schema = await request('/api/v1/schemas', {
+      body: {
+        name: 'Durability fixture schema',
+        sql: 'CREATE TABLE durability_fixture (id bigint PRIMARY KEY, label text);'
+      },
+      cookie,
+      status: 201
+    });
+    const schemaRoute = '/api/v1/schemas/' + schema.data.profile.id;
+    const savedSchema = (await request(schemaRoute, { cookie })).data.profile;
+    const sql = "SET lock_timeout='3s'; CREATE INDEX CONCURRENTLY ix_durability_label ON durability_fixture(label);";
     const saved = await request('/api/v1/analyze', {
-      body: { sql: 'SELECT 1;', filename: 'durability-test.sql', recordRun: true },
-      cookie: registered.cookie
+      body: { sql, filename: 'durability-test.sql', recordRun: true, schemaId: savedSchema.id },
+      cookie
     });
     assert.ok(saved.data.data.runId);
+    const created = await request('/api/v1/reviews', {
+      body: { runId: saved.data.data.runId, title: 'Durability fixture review', sql },
+      cookie,
+      status: 201
+    });
+    const reviewRoute = '/api/v1/reviews/' + created.data.review.id;
+    const comment = 'Synthetic review note before restart.';
+    const savedReview = (await request(reviewRoute + '/events', {
+      body: { kind: 'comment', expectedRevision: created.data.review.revision, text: comment },
+      cookie
+    })).data.review;
+    assert.equal(savedReview.events.at(-1).text, comment);
+    assert.equal(savedReview.sql, sql);
+    assert.equal(savedReview.run.schemaId, savedSchema.id);
 
+    async function verifySavedWork() {
+      const signedIn = await request('/api/v1/auth/login', { body: credentials });
+      assert.equal(signedIn.data.user.id, registered.data.user.id);
+      assert.equal(signedIn.data.user.organizationId, registered.data.user.organizationId);
+      const auth = { cookie: signedIn.cookie };
+      const [history, schemaResult, reviewResult] = await Promise.all([
+        request('/api/v1/runs', auth), request(schemaRoute, auth), request(reviewRoute, auth)
+      ]);
+      const run = history.data.runs.find(run => run.id === saved.data.data.runId);
+      assert.equal(run?.schemaId, savedSchema.id);
+      assert.deepEqual(schemaResult.data.profile, savedSchema);
+      assert.deepEqual(reviewResult.data.review, savedReview);
+    }
+
+    docker('restart', container);
+    await waitForCabinet();
+    await verifySavedWork();
     docker('stop', container);
     docker('rm', container);
     await launch();
-    const signedIn = await request('/api/v1/auth/login', { body: credentials });
-    assert.equal(signedIn.data.user.id, registered.data.user.id);
-    const history = await request('/api/v1/runs', { cookie: signedIn.cookie });
-    assert.ok(history.data.runs.some(run => run.id === saved.data.data.runId));
+    await verifySavedWork();
   } finally {
     spawnSync('docker', ['rm', '-f', container, id + '-no-volume'], { timeout: 15000, stdio: 'ignore' });
     spawnSync('docker', ['volume', 'rm', volume], { timeout: 15000, stdio: 'ignore' });
