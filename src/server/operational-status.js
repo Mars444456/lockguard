@@ -1,3 +1,5 @@
+const drive = require('./drive-backup');
+
 module.exports=function operationalStatus(db,env=process.env) {
   const temporary=env.LOCKGUARD_EPHEMERAL_DEMO==='true';
   const persistentConfigured=!temporary&&env.LOCKGUARD_DURABLE_STORAGE==='true';
@@ -16,11 +18,13 @@ module.exports=function operationalStatus(db,env=process.env) {
   const hours=Number(env.LOCKGUARD_BACKUP_HOURS||24),intervalValid=Number.isFinite(hours)&&hours>=1&&hours<=8760;
   const backupRecent=intervalValid&&recent(lastBackupAt,hours*3600000);
   const backupStatus=db.getMeta('last_backup_status')==='failed'?'failed':!lastBackupAt?'never':!intervalValid||!Number.isFinite(Date.parse(lastBackupAt))||Date.parse(lastBackupAt)>now?'unknown':backupRecent?'ok':'overdue';
+  const driveBackup=drive.status(db,env,now,intervalValid?hours*3600000:NaN);
   return {storage:temporary?'temporary_demo':persistentConfigured?'persistent_configured':'local_unverified',
     persistentConfigured,lastBackupAt,lastBackupAttemptAt,lastBackupFailureAt,backupStatus,lastRestoreVerifiedAt,lastRestoreAttemptAt,lastRestoreFailureAt,restoreStatus,
+    driveBackup,
     encryptedBackupsConfigured:!!env.LOCKGUARD_BACKUP_KEY,
     emailRecoveryConfigured:db.recovery.configured(env),offlineRecoveryAvailable:true,
     emailVerificationConfigured:db.emailVerification.configured(env),emailOwnershipRequiredForInvitations:true,
-    readyForPaidUse:persistentConfigured&&restoreStatus==='ok'&&backupStatus==='ok'&&db.recovery.configured(env)&&!!env.LOCKGUARD_BACKUP_KEY,
+    readyForPaidUse:persistentConfigured&&restoreStatus==='ok'&&backupStatus==='ok'&&['ok','disabled'].includes(driveBackup.status)&&db.recovery.configured(env)&&!!env.LOCKGUARD_BACKUP_KEY,
     notice:'Persistence is an operator declaration. A local backup on an ephemeral host does not protect against host restart. Keep an off-host backup and verify recovery.'};
 };
