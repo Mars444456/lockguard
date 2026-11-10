@@ -1,0 +1,33 @@
+name: Wake LockGuard for backups
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: railway-backup-wake
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    if: ${{ github.ref_name == github.event.repository.default_branch && vars.LOCKGUARD_RAILWAY_ORIGIN != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Wake the cabinet and wait for its health endpoint
+        shell: bash
+        env:
+          LOCKGUARD_RAILWAY_ORIGIN: ${{ vars.LOCKGUARD_RAILWAY_ORIGIN }}
+        run: |
+          if [[ ! "$LOCKGUARD_RAILWAY_ORIGIN" =~ ^https://[a-z0-9-]+\.up\.railway\.app$ ]]; then
+            echo "::error::LOCKGUARD_RAILWAY_ORIGIN must be the HTTPS Railway origin."
+            exit 1
+          fi
+          curl --proto '=https' --fail --silent --show-error --output /dev/null \
+            --connect-timeout 10 --max-time 25 --retry 5 --retry-all-errors \
+            --retry-delay 8 --retry-max-time 120 \
+            "$LOCKGUARD_RAILWAY_ORIGIN/api/v1/rules"
+          echo "The cabinet answered its health check."
