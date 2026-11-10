@@ -52,6 +52,13 @@ window.LockGuardWorkspace = class {
       this.el('p',this.t('Последняя попытка: ','Last attempt: ')+(ops.lastBackupAttemptAt||'—'),details);
       this.el('p',this.t('Последняя успешная копия: ','Last successful backup: ')+(ops.lastBackupAt||'—'),details);
       if(ops.backupStatus==='failed')this.el('p',this.t('Последний сбой: ','Last failure: ')+(ops.lastBackupFailureAt||'—'),details);
+      if(ops.driveBackup){
+        const copy=ops.driveBackup;
+        const copyLabels={...labels,ok:this.t('Копия загружена','Copy uploaded'),disabled:this.t('Выгрузка не настроена','Upload not configured'),misconfigured:this.t('Проверьте настройки выгрузки','Check upload configuration'),incomplete:this.t('Выгрузка не завершена','Upload incomplete')};
+        this.el('p',this.t('Копия в Google Drive: ','Google Drive copy: ')+(copyLabels[copy.status]||labels.unknown),details);
+        if(copy.lastSuccessAt)this.el('p',this.t('Последняя успешная выгрузка: ','Last successful upload: ')+copy.lastSuccessAt,details);
+        if(copy.lastFailureAt&&copy.status==='failed')this.el('p',this.t('Последний сбой выгрузки: ','Last upload failure: ')+copy.lastFailureAt,details);
+      }
       const restoreLabels={ok:this.t('Проверено','Verified'),failed:this.t('Ошибка — проверьте копию и настройки восстановления','Failed — check the backup and restore configuration'),incomplete:this.t('Проверка не завершена','Verification incomplete'),overdue:this.t('Проверка устарела','Verification overdue'),never:this.t('Успешных проверок пока нет','No successful verification yet'),unknown:this.t('Статус не подтверждён','Status unverified')};
       this.el('p',this.t('Проверка восстановления: ','Restore verification: ')+(restoreLabels[ops.restoreStatus]||restoreLabels.unknown),details);
       this.el('p',this.t('Последняя попытка восстановления: ','Last restore attempt: ')+(ops.lastRestoreAttemptAt||'—'),details);

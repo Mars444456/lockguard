@@ -1,5 +1,10 @@
+FROM rclone/rclone:1.76.0 AS rclone
+
 FROM node:24.12.0-bookworm-slim
 WORKDIR /app
+COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
+COPY --from=rclone /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN rclone version
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 COPY src ./src
