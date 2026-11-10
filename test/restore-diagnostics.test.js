@@ -5,13 +5,20 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lockguard-restore-status-'
 process.env.LOCKGUARD_DB_FILE=path.join(directory,'source.sqlite3');process.env.NODE_ENV='test';
 process.env.LOCKGUARD_BACKUP_KEY=crypto.randomBytes(32).toString('base64');
 const db=require('../src/server/db'),status=require('../src/server/operational-status');
+const drive=require('../src/server/drive-backup');
 const backupCrypto=require('../src/server/backup-crypto'),{verifyRestore}=require('../scripts/verify-restore');
 const backups=path.join(directory,'backups');
-const readyEnv={LOCKGUARD_DURABLE_STORAGE:'true',LOCKGUARD_BACKUP_KEY:'test-only',LOCKGUARD_MAIL_API_KEY:'test-only',LOCKGUARD_MAIL_FROM:'test@example.invalid',APP_URL:'https://example.invalid'};
+const readyEnv={
+  LOCKGUARD_DURABLE_STORAGE:'true',LOCKGUARD_BACKUP_KEY:'test-only',LOCKGUARD_MAIL_API_KEY:'test-only',LOCKGUARD_MAIL_FROM:'test@example.invalid',APP_URL:'https://example.invalid',
+  LOCKGUARD_BACKUP_DRIVE_FOLDER:'test-folder-a',LOCKGUARD_BACKUP_DRIVE_CLIENT_ID:'test.apps.googleusercontent.com',
+  LOCKGUARD_BACKUP_DRIVE_CLIENT_SECRET:'synthetic-secret',LOCKGUARD_BACKUP_DRIVE_TOKEN:'{"refresh_token":"synthetic-token"}'
+};
+const verifiedCopy=lastSuccessAt=>JSON.stringify({destination:drive.settings(readyEnv).destination,status:'ok',lastSuccessAt});
 test.after(()=>{db.close();delete process.env.LOCKGUARD_BACKUP_KEY;assert.equal(path.dirname(directory),path.resolve(os.tmpdir()));assert.match(path.basename(directory),/^lockguard-restore-status-/);fs.rmSync(directory,{recursive:true,force:true});});
 
 test('A failed restore after a successful copy revokes old readiness, persists, and recovers only after a full retry',async t=>{
   await verifyRestore(db,backups);
+  db.setMeta(drive.META_KEY,verifiedCopy(new Date().toISOString()));
   assert.equal(status(db,readyEnv).readyForPaidUse,true);
   const previous=db.getMeta('last_restore_verified_at');
   const original=backupCrypto.plaintext;
@@ -56,6 +63,7 @@ test('Preparation and cleanup failures both count as failed restore drills witho
 test('Incomplete, stale, future and invalid restore evidence does not establish readiness',()=>{
   const now=Date.now(),at=age=>new Date(now-age).toISOString();
   const meta={last_backup_at:at(1000),last_backup_status:'ok',last_restore_verified_at:at(1000),last_restore_status:'ok'};
+  meta[drive.META_KEY]=verifiedCopy(at(1000));
   const fake={getMeta:key=>meta[key],recovery:{configured:()=>true},emailVerification:{configured:()=>true}};
   assert.equal(status(fake,readyEnv).readyForPaidUse,true);
   for(const state of ['failed','incomplete','unexpected']){meta.last_restore_status=state;assert.equal(status(fake,readyEnv).readyForPaidUse,false);}

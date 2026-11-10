@@ -15,16 +15,18 @@ module.exports=function operationalStatus(db,env=process.env) {
   const lastBackupAt=db.getMeta('last_backup_at')||null;
   const lastBackupAttemptAt=db.getMeta('last_backup_attempt_at')||null;
   const lastBackupFailureAt=db.getMeta('last_backup_failure_at')||null;
-  const hours=Number(env.LOCKGUARD_BACKUP_HOURS||24),intervalValid=Number.isFinite(hours)&&hours>=1&&hours<=8760;
-  const backupRecent=intervalValid&&recent(lastBackupAt,hours*3600000);
-  const backupStatus=db.getMeta('last_backup_status')==='failed'?'failed':!lastBackupAt?'never':!intervalValid||!Number.isFinite(Date.parse(lastBackupAt))||Date.parse(lastBackupAt)>now?'unknown':backupRecent?'ok':'overdue';
-  const driveBackup=drive.status(db,env,now,intervalValid?hours*3600000:NaN);
+  const hours=Number(env.LOCKGUARD_BACKUP_HOURS||24);
+  const maxAgeHours=Number(env.LOCKGUARD_BACKUP_MAX_AGE_HOURS||hours);
+  const maxAge=Number.isFinite(hours)&&hours>=1&&Number.isFinite(maxAgeHours)&&maxAgeHours>=hours&&maxAgeHours<=8760?maxAgeHours*3600000:NaN;
+  const backupStatus=db.getMeta('last_backup_status')==='failed'?'failed':!lastBackupAt?'never':!Number.isFinite(maxAge)||!Number.isFinite(Date.parse(lastBackupAt))||Date.parse(lastBackupAt)>now?'unknown':recent(lastBackupAt,maxAge)?'ok':'overdue';
+  const driveBackup=drive.status(db,env,now,maxAge);
+  const emailRecoveryConfigured=db.recovery.configured(env);
   return {storage:temporary?'temporary_demo':persistentConfigured?'persistent_configured':'local_unverified',
     persistentConfigured,lastBackupAt,lastBackupAttemptAt,lastBackupFailureAt,backupStatus,lastRestoreVerifiedAt,lastRestoreAttemptAt,lastRestoreFailureAt,restoreStatus,
     driveBackup,
     encryptedBackupsConfigured:!!env.LOCKGUARD_BACKUP_KEY,
-    emailRecoveryConfigured:db.recovery.configured(env),offlineRecoveryAvailable:true,
+    emailRecoveryConfigured,offlineRecoveryAvailable:true,
     emailVerificationConfigured:db.emailVerification.configured(env),emailOwnershipRequiredForInvitations:true,
-    readyForPaidUse:persistentConfigured&&restoreStatus==='ok'&&backupStatus==='ok'&&['ok','disabled'].includes(driveBackup.status)&&db.recovery.configured(env)&&!!env.LOCKGUARD_BACKUP_KEY,
+    readyForPaidUse:persistentConfigured&&restoreStatus==='ok'&&backupStatus==='ok'&&driveBackup.status==='ok'&&emailRecoveryConfigured&&!!env.LOCKGUARD_BACKUP_KEY,
     notice:'Persistence is an operator declaration. A local backup on an ephemeral host does not protect against host restart. Keep an off-host backup and verify recovery.'};
 };

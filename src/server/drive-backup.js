@@ -79,7 +79,7 @@ function status(db, env, now, interval) {
   const lastSuccessAt = state.lastSuccessAt || null;
   const timestamp = Date.parse(lastSuccessAt);
   const freshness = !lastSuccessAt ? 'never' :
-    !Number.isFinite(timestamp) || timestamp > now || !Number.isFinite(interval) ? 'unknown' :
+    state.status !== 'ok' || !Number.isFinite(timestamp) || timestamp > now || !Number.isFinite(interval) ? 'unknown' :
     now - timestamp > interval ? 'overdue' : 'ok';
   return {
     status: state.status === 'failed' || state.status === 'incomplete' ? state.status : freshness,
