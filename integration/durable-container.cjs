@@ -23,11 +23,12 @@ test('The cabinet requires its volume and preserves saved work after restart and
   async function launch() {
     docker('run', '-d', '--name', container, '-p', '127.0.0.1::3000', ...settings,
       '--mount', `type=volume,src=${volume},dst=/data`, 'lockguard-web-ci');
-    base = 'http://' + docker('port', container, '3000/tcp').trim();
     await waitForCabinet();
   }
 
   async function waitForCabinet() {
+    // Docker can assign a new host port each time the container starts.
+    base = 'http://' + docker('port', container, '3000/tcp').trim();
     for (let attempt = 0; attempt < 80; attempt++) {
       const ready = await fetch(base + '/api/v1/rules', { signal: AbortSignal.timeout(1000) })
         .then(response => response.ok, () => false);
