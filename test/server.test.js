@@ -34,7 +34,7 @@ function makeRequest(target, options, postData) {
   });
 }
 
-test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, closes cleanly', async () => {
+test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, closes cleanly', async t => {
   // 1. Start server on ephemeral port 0
   await new Promise((resolve, reject) => {
     server.listen(0, (err) => {
@@ -74,6 +74,26 @@ test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, cl
     });
     assert.equal(dashboardRes.statusCode, 200, 'Root dashboard should return 200 OK');
     assert.ok(dashboardRes.body.includes('LockGuard') || dashboardRes.body.includes('html'), 'Dashboard HTML should be served');
+    const health = await makeRequest(target, { path: '/api/v1/health', method: 'GET' });
+    assert.equal(health.statusCode, 200);
+    assert.equal(health.headers['cache-control'], 'no-store');
+    assert.deepEqual(JSON.parse(health.body), { status: 'ok' });
+    const previousDurable = process.env.LOCKGUARD_DURABLE_STORAGE, previousDemo = process.env.LOCKGUARD_EPHEMERAL_DEMO;
+    try {
+      process.env.LOCKGUARD_DURABLE_STORAGE = 'true';
+      delete process.env.LOCKGUARD_EPHEMERAL_DEMO;
+      const missingCopy = await makeRequest(target, { path: '/api/v1/health', method: 'GET' });
+      assert.equal(missingCopy.statusCode, 503, 'A working rules catalog cannot hide missing backup evidence');
+      assert.deepEqual(JSON.parse(missingCopy.body), { status: 'unavailable' });
+      assert.equal((await makeRequest(target, { path: '/api/v1/rules', method: 'GET' })).statusCode, 200);
+    } finally {
+      for (const [key, value] of [['LOCKGUARD_DURABLE_STORAGE', previousDurable], ['LOCKGUARD_EPHEMERAL_DEMO', previousDemo]]) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+    assert.equal((await makeRequest(target, { path: '/api/v1/health', method: 'GET' })).statusCode, 200);
+    const privateOperations = await makeRequest(target, { path: '/api/v1/operations', method: 'GET' });
+    assert.equal(privateOperations.statusCode, 401, 'Health does not expose owner diagnostics');
     const priorDemoFlag = process.env.LOCKGUARD_EPHEMERAL_DEMO;
     try {
       process.env.LOCKGUARD_EPHEMERAL_DEMO = 'true';
@@ -117,6 +137,23 @@ test('WebServer Smoke - starts on ephemeral port (0), serves dashboard & API, cl
     assert.equal(rulesJson.success, true);
     assert.equal(rulesJson.count, 12, 'Rules count should be 12');
     assert.equal(rulesJson.rules.length, 12, 'Rules array should contain 12 rules');
+
+    const { RuleEngine } = require('../src/core');
+    const logs = [], log = t.mock.method(console, 'error', (...args) => logs.push(args.join(' ')));
+    try {
+      for (const [method, request, payload] of [
+        ['analyze', { path: '/api/v1/analyze', method: 'POST', headers: { 'Content-Type': 'application/json' } }, { sql: 'SELECT 1;' }],
+        ['getRules', { path: '/api/v1/rules', method: 'GET' }, undefined]
+      ]) {
+        const failure = t.mock.method(RuleEngine.prototype, method, () => { throw new Error('private-sql-token@example.invalid'); });
+        try {
+          const response = await makeRequest(target, request, payload);
+          assert.equal(response.statusCode, 500);
+          assert.doesNotMatch(response.body + logs.join(' '), /private-sql-token|example\.invalid/);
+        } finally { failure.mock.restore(); }
+      }
+      assert.equal(logs.length, 2);
+    } finally { log.mock.restore(); }
 
     // 5. HTTP POST to /api/v1/split
     const splitRes = await makeRequest(target, {

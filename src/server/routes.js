@@ -19,6 +19,7 @@ const RunComparison = require('./run-comparison');
 const ruleEngine = new RuleEngine();
 
 function registerRoutes(router) {
+  router.get('/api/v1/health', require('./health-check')(db, () => RuleEngine.initialize()));
   const auth = new AuthService(db);
   const authPaths = new Set(['/api/v1/auth/session', '/api/v1/auth/register', '/api/v1/auth/login', '/api/v1/auth/logout', '/api/v1/auth/password', '/api/v1/auth/recovery-code', '/api/v1/auth/forgot', '/api/v1/auth/recover', '/api/v1/auth/email-verification/request', '/api/v1/auth/email-verification/confirm']);
   const publicPaths = new Set(['/api/v1/analyze', '/api/v1/rules', '/api/v1/verify-key', '/api/v1/split', '/api/v1/simulate', '/api/v1/watchdog']);
@@ -141,8 +142,9 @@ function registerRoutes(router) {
         }
       });
     } catch (err) {
-      if (!err.statusCode && !(err instanceof SyntaxError)) console.error('API /analyze error:', err);
-      return res.status(err.statusCode || (err instanceof SyntaxError ? 422 : 500)).json({ error: err.message });
+      const expected = err instanceof SyntaxError || Number.isInteger(err.statusCode) && err.statusCode >= 400 && err.statusCode < 500;
+      if (!expected) console.error('LockGuard SQL analysis request failed.');
+      return res.status(expected ? err.statusCode || 422 : 500).json({ error: expected ? err.message : 'SQL analysis failed. Check the server diagnostics.' });
     }
   });
 

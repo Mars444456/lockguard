@@ -28,6 +28,6 @@ jobs:
           fi
           curl --proto '=https' --fail --silent --show-error --output /dev/null \
             --connect-timeout 10 --max-time 25 --retry 5 --retry-all-errors \
-            --retry-delay 8 --retry-max-time 120 \
-            "$LOCKGUARD_RAILWAY_ORIGIN/api/v1/rules"
+            --retry-delay 8 --retry-max-time 180 \
+            "$LOCKGUARD_RAILWAY_ORIGIN/api/v1/health"
           echo "The cabinet answered its health check."
