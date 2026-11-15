@@ -18,7 +18,8 @@ module.exports=function operationalStatus(db,env=process.env) {
   const hours=Number(env.LOCKGUARD_BACKUP_HOURS||24);
   const maxAgeHours=Number(env.LOCKGUARD_BACKUP_MAX_AGE_HOURS||hours);
   const maxAge=Number.isFinite(hours)&&hours>=1&&Number.isFinite(maxAgeHours)&&maxAgeHours>=hours&&maxAgeHours<=8760?maxAgeHours*3600000:NaN;
-  const backupStatus=db.getMeta('last_backup_status')==='failed'?'failed':!lastBackupAt?'never':!Number.isFinite(maxAge)||!Number.isFinite(Date.parse(lastBackupAt))||Date.parse(lastBackupAt)>now?'unknown':recent(lastBackupAt,maxAge)?'ok':'overdue';
+  const lastBackupStatus=db.getMeta('last_backup_status');
+  const backupStatus=lastBackupStatus==='failed'?'failed':!lastBackupAt?'never':lastBackupStatus!=='ok'||!Number.isFinite(maxAge)||!Number.isFinite(Date.parse(lastBackupAt))||Date.parse(lastBackupAt)>now?'unknown':recent(lastBackupAt,maxAge)?'ok':'overdue';
   const driveBackup=drive.status(db,env,now,maxAge);
   const emailRecoveryConfigured=db.recovery.configured(env);
   return {storage:temporary?'temporary_demo':persistentConfigured?'persistent_configured':'local_unverified',

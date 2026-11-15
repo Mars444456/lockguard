@@ -157,7 +157,7 @@ const server = http.createServer(async (req, res) => {
         try {
           await matched.handler(req, res);
         } catch (err) {
-          console.error('Handler error:', err);
+          console.error('LockGuard request handler failed.');
           res.status(500).json({ error: 'Server handler error' });
         }
       });
@@ -167,7 +167,7 @@ const server = http.createServer(async (req, res) => {
       try {
         await matched.handler(req, res);
       } catch (err) {
-        console.error('Handler error:', err);
+        console.error('LockGuard request handler failed.');
         res.status(500).json({ error: 'Server handler error' });
       }
       return;

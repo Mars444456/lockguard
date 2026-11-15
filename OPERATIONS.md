@@ -86,7 +86,28 @@ Railway удаляет тома, созданные на Trial, через 30 д
 
 Служебная готовность сервера доступна только владельцу через `/api/v1/operations`. Для положительного статуса нужны свежие успешные локальная копия, выгрузка в настроенную папку Google Drive и проверка восстановления, а также постоянное хранилище, ключ шифрования и почта для восстановления. Копии в другом внешнем хранилище проверяются оператором отдельно.
 
+## Проверка состояния и действия при сбое
+
+Общедоступный `GET /api/v1/health` возвращает только `{"status":"ok"}` с HTTP 200 или `{"status":"unavailable"}` с HTTP 503. Он проверяет запуск SQL-анализатора и чтение метаданных базы. Для сервера с `LOCKGUARD_DURABLE_STORAGE=true` дополнительно нужны свежие успешные локальная копия, выгрузка в Drive и проверка восстановления не старше семи дней. Для временного демо проверяется работа приложения. Настройка почты и готовность платежей проверяются отдельно. Ответ не содержит организации, SQL, путей, дат копий или исключений и запрещён кэшированию.
+
+Workflow **Wake LockGuard for backups** использует этот маршрут и повторяет неудачные запросы, давая проснувшемуся планировщику время выгрузить копию. Окончательный отказ отмечает запуск GitHub Actions как неуспешный. Расписание не обеспечивает непрерывного наблюдения, а успешный запрос не заменяет скачивание и проверку архива из независимого хранилища. Отдельный канал уведомлений этим не подключается; его нужно согласовать. Для запуска платформенного деплоя сохраняйте прежнюю проверку запуска: первая внешняя копия может ещё выполняться.
+
+При сбое:
+
+1. Откройте неуспешный запуск Actions и панель хостинга. Проверьте доступность сервиса, бесплатный лимит и монтирование постоянного тома. Служебные журналы неожиданных ошибок обработчика и SQL-анализа содержат фиксированные сообщения без исходного текста исключения.
+2. Если приложение отвечает, войдите владельцем и откройте «История проверок → Сохранность данных». Уточните, какая копия или проверка восстановления отсутствует, устарела либо завершилась ошибкой. При живом процессе проверка состояния может вернуть 503 из-за резервирования.
+3. Если процесс остановился, перезапустите тот же сервис с существующим томом. После запуска подтвердите проверку восстановления, HTTP 200 и сохранение учебного аккаунта с историей. Перезапуск не исправляет исчерпанную квоту или потерянный том.
+4. При регрессии приложения разверните последнюю проверенную ревизию с тем же томом и секретами. Сначала сохраните независимый зашифрованный архив. Не откатывайте базу поверх рабочей и не запускайте несовместимую со схемой старую ревизию.
+5. При повреждении или потере базы скачайте последний независимый `.sqlite3.enc`, проверьте его через `npm run verify:restore -- --from <файл>`, остановите запись и восстановите командой `npm run restore -- <файл> <новый-абсолютный-путь>`. Укажите новый путь в настройках сервиса и проверьте данные после запуска. Старую базу сохраните для разбора; сеансы и временные коды после восстановления отзываются.
+6. Запустите workflow вручную после исправления. HTTP 200 должен восстановиться. Отдельно проверьте новую копию в Drive; при необходимости выполните `npm run verify:restore` в окружении сервера для обновления проверки восстановления. Не публикуйте базу, ключи или вывод с данными клиентов в отчётах об инциденте.
+
+Срабатывание 503 при отсутствии копии и восстановление 200 проверяются на изолированном тестовом сервере: `node --test test/health-check.test.js test/server.test.js`. Рабочий сервис для этой проверки останавливать не нужно.
+
 ## English
+
+`GET /api/v1/health` is a public, uncached aggregate: HTTP 200 with `{"status":"ok"}` or HTTP 503 with `{"status":"unavailable"}`. It checks analyzer initialization and a database metadata read. Durable deployments also require fresh local and Drive copies and a successful restore drill within seven days; temporary demos check application availability. It does not expose owner diagnostics or prove payment readiness. The existing wake workflow now fails if this check remains unhealthy after retries. A separate notification channel still needs agreement; no new delivery provider is configured.
+
+On failure, inspect the Actions run, hosting limits and mounted volume, then owner-only recovery diagnostics. Restart the existing service with its volume if needed. For an application regression, retain an encrypted independent copy before deploying a schema-compatible known-good revision. For data loss, verify an independently downloaded encrypted archive, stop writes, restore to a new absolute database path and update the service configuration. Keep the old database for investigation. Confirm account history, a fresh Drive copy and a successful manual workflow run after recovery. Simulated failure and recovery run only on isolated fixtures in `test/health-check.test.js` and `test/server.test.js`.
 
 Owners can inspect backup status, last attempt and last verified success under Review history → Data recovery readiness. Failures persist as a safe status without exception text, paths or keys. A verified successful retry clears the current failure while retaining its historical time. Failed or overdue backup evidence does not establish operational readiness. This local diagnostic does not replace external monitoring, notifications or off-host storage.
 
