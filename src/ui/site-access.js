@@ -1,10 +1,10 @@
 // GitHub Pages has no account API. Keep credentials on the actual server origin.
 (() => {
-  const entry = document.getElementById('public-account-link');
+  const entries = document.querySelectorAll('a[href="#account-access"]');
   const dialog = document.getElementById('account-access-dialog');
-  if (!entry || !dialog || entry.getAttribute('href') !== '#account-access') return;
+  if (!entries.length || !dialog) return;
   const close = () => dialog.close();
-  entry.addEventListener('click', event => {
+  for (const entry of entries) entry.addEventListener('click', event => {
     event.preventDefault();
     if (!dialog.open) dialog.showModal();
   });

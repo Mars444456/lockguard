@@ -1,5 +1,9 @@
 # Product status / Состояние продукта
 
+18.11.2026: LockGuard переходит на бесплатную бету. Прежние функции Pro открыты аккаунтам без оплаты: 10 схем, 1000 последних проверок, сравнение и ревью. Оплата и карта не нужны. Ограничения тестового хостинга и почтовых приглашений сохраняются; постоянный клиентский режим ещё не принят. Платёжные условия ниже остаются требованиями для возможного будущего платного запуска.
+
+LockGuard is moving to a free beta: former Pro features are available without payment. The hosted workspace remains a test pilot; production persistence and mail delivery are still pending. Payment readiness gates below apply to a possible future paid launch.
+
 The backup scheduler preserves the deadline across restarts, bounds long waits to Node timer limits and retries immediately on startup when backup evidence is missing, overdue, invalid, future-dated or failed. Attempts run one at a time; retries wait the configured interval after completion. Stopping prevents re-arming after a pending copy finishes. Seven simulated-clock regressions cover scheduling, failure and shutdown.
 
 Version 1.5.2 adds owner-visible backup attempt, success and failure diagnostics. A verified retry clears the active failure; failed, overdue or future-dated evidence cannot establish operational readiness. Scheduler errors contain no original exception text. External monitoring and off-host storage remain operator setup tasks.

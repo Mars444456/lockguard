@@ -656,7 +656,7 @@ class LockGuardApp {
         document.getElementById('org-name').textContent = this.organization.name;
         const planPill = document.getElementById('org-plan-badge');
         planPill.className = `plan-pill ${this.organization.plan}`;
-        planPill.textContent = this.organization.plan === 'team'
+        planPill.textContent = this.organization.features?.freeBeta ? uiText('Бесплатная бета') : this.organization.plan === 'team'
           ? `PRO${this.organization.accessUntil ? ' до ' + new Date(this.organization.accessUntil).toLocaleDateString(window.LockGuardI18n?.locale || 'ru-RU') : ''}` : 'Community';
         this.updatePlanCards(this.organization.plan);
       }
@@ -831,6 +831,12 @@ class LockGuardApp {
   }
 
   async selectPlan(plan) {
+    if (plan === 'team' && !this.organization && !adminToken) { this.toggleAccount(true); return; }
+    if (plan === 'team' && this.organization?.features?.freeBeta) {
+      this.switchTab('schemas');
+      this.showToast('Функции Pro доступны бесплатно на этапе беты.');
+      return;
+    }
     if (plan === 'free') { this.showToast('Бесплатный анализ доступен без оплаты.'); return; }
     if (!adminToken) {
       if (plan === 'business') window.location.href = 'contacts.html';
@@ -888,8 +894,13 @@ class LockGuardApp {
       const card = document.getElementById(`card-plan-${p}`);
       if (!card) return;
       const btn = card.querySelector('.btn-plan');
+      if (p === 'business') { btn.textContent = 'Отправить отзыв'; return; }
       if (p === 'free') {
         btn.textContent = 'Бесплатный анализ'; btn.disabled = true;
+      } else if (p === 'team' && this.organization?.features?.freeBeta) {
+        btn.textContent = 'Открыть бесплатно';
+        btn.className = 'btn-plan btn-primary';
+        btn.disabled = false;
       } else if (p === currentPlan && p !== 'team') {
         btn.textContent = 'Текущий план';
         btn.className = 'btn-plan btn-secondary';

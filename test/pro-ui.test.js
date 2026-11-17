@@ -8,7 +8,7 @@ async function page(language) {
   for(const form of document.querySelectorAll('form'))form.reset=function(){for(const input of this.querySelectorAll('input,textarea'))input.value='';};
   for(const select of document.querySelectorAll('select'))Object.defineProperty(select,'value',{configurable:true,get(){return this.querySelector('option[selected]')?.getAttribute('value') || this.querySelector('option')?.getAttribute('value') || '';},set(value){for(const option of this.querySelectorAll('option'))option.toggleAttribute('selected',option.getAttribute('value')===value);}});
   const engine=new RuleEngine(),calls=[],profile={id:'schema-a',name:'<img src=x onerror=alert(1)>',revision:'a'.repeat(64),summary:{tables:2,indexes:1,pgVersion:17}};
-  let authenticated=false,licensed=false,delayedSchemas,runs=[];
+  let authenticated=false,licensed=false,beta=false,delayedSchemas,runs=[];
   const response=body=>new Response(JSON.stringify(body),{headers:{'Content-Type':'application/json'}});
   const user={id:'u1',email:'qa@example.invalid',organizationId:'org-a'},organization={name:'QA',plan:'free'};
   const window={location:{search:''},confirm:()=>false};
@@ -21,7 +21,7 @@ async function page(language) {
     if(url==='/api/v1/rules')return response({rules:[]});
     if(url==='/api/v1/keys')return response({keys:[]});
     if(url==='/api/v1/runs')return response({runs});
-    if(url==='/api/v1/schemas')return delayedSchemas?delayedSchemas():response({schemas:licensed?[profile]:[],features:{pro:licensed}});
+    if(url==='/api/v1/schemas')return delayedSchemas?delayedSchemas():response({schemas:licensed?[profile]:[],features:{pro:licensed,freeBeta:beta}});
     if(url==='/api/v1/analyze')return response({data:{...engine.analyze(JSON.parse(options.body).sql),markdownReport:'report'}});
     if(url.startsWith('/api/v1/runs/compare?'))return response({comparison:{resolved:[{ruleId:'LG-002',ruleName:'index',table:'<script>test</script>',line:1}],introduced:[],persisting:[],contextChanged:true}});
     throw new Error('Unexpected '+url);
@@ -37,8 +37,21 @@ async function page(language) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ui/pro.js'),'utf8'),scope);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ui/app.js'),'utf8'),scope);
   await window.app.ready;
-  return {app:window.app,window,document,Event,calls,profile,organization,response,license:value=>licensed=value,setRuns:value=>runs=value,delay:value=>delayedSchemas=value};
+  return {app:window.app,window,document,Event,calls,profile,organization,response,license:value=>licensed=value,beta:value=>beta=value,setRuns:value=>runs=value,delay:value=>delayedSchemas=value};
 }
+test('Free beta UI shows free access in both languages without opening checkout',async()=>{
+  for(const language of ['ru','en']){
+    const state=await page(language),{app,document,organization,calls}=state;
+    organization.features={pro:true,freeBeta:true};state.license(true);state.beta(true);
+    document.getElementById('account-email').value='qa@example.invalid';document.getElementById('account-password').value='QA password 2026';
+    await app.submitAccount();
+    assert.match(document.getElementById('org-plan-badge').textContent,language==='en'?/Free beta/:/Бесплатная бета/);
+    assert.equal(document.getElementById('schema-fields').disabled,false);
+    await app.selectPlan('team');
+    assert.equal(calls.some(call=>call.url==='/api/v1/billing/checkout'),false);
+    assert.match(document.getElementById('pro-active-note').textContent,language==='en'?/free during the beta/:/бесплатно на этапе беты/);
+  }
+});
 test('Pro controls stay locked for guests and use server features after login',async()=>{
   const {app,document,license,profile}=await page();
   assert.equal(document.getElementById('schema-fields').disabled,true);

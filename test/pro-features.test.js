@@ -13,6 +13,34 @@ async function request(route,method='GET',body,cookie) {
 const post=(route,body,cookie)=>request(route,'POST',body,cookie);
 const schemaSQL='CREATE TABLE accounts(id int PRIMARY KEY); CREATE TABLE orders(account_id int); CREATE INDEX ix_account ON orders(account_id);';
 const migration="SET lock_timeout='3s'; ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY(account_id) REFERENCES accounts(id) NOT VALID;";
+test('Free beta opens Pro features without payments and preserves organization boundaries', async()=>{
+  process.env.LOCKGUARD_FREE_BETA='true';
+  try {
+    assert.equal(features({},{}).freeBeta,true,'Beta is the default unless explicitly disabled by the operator');
+    assert.equal(features({},{}).historyLimit,1000);
+    assert.equal(features({},{}).teamReviews,true);
+    assert.equal(features({},{LOCKGUARD_FREE_BETA:'false'}).pro,false);
+    assert.equal(db.forOrganization(b.body.user.organizationId).getOrganization().plan,'free');
+    const created=await post('/api/v1/schemas',{name:'Free beta schema',sql:schemaSQL},b.cookie);
+    assert.equal(created.status,201);
+    const schemaId=created.body.profile.id;
+    assert.equal((await request('/api/v1/schemas')).status,401);
+    assert.equal((await request('/api/v1/schemas/'+schemaId,'GET',null,a.cookie)).status,404);
+    assert.equal((await post('/api/v1/analyze',{sql:migration,schemaId})).status,401);
+    const first=await post('/api/v1/analyze',{sql:migration,schemaId,recordRun:true},b.cookie);
+    const second=await post('/api/v1/analyze',{sql:migration,schemaId,recordRun:true},b.cookie);
+    assert.equal(first.status,200);assert.equal(second.status,200);
+    const comparePath=`/api/v1/runs/compare?before=${first.body.data.runId}&after=${second.body.data.runId}`;
+    assert.equal((await request(comparePath,'GET',null,b.cookie)).status,200);
+    assert.equal((await request(comparePath,'GET',null,a.cookie)).status,404);
+    const review=await post('/api/v1/reviews',{title:'Free beta review',runId:first.body.data.runId},b.cookie);
+    assert.equal(review.status,201);
+    assert.equal((await request('/api/v1/reviews/'+review.body.review.id,'GET',null,a.cookie)).status,404);
+    assert.equal((await post('/api/v1/billing/checkout',{plan:'team',email:'beta@example.invalid'},b.cookie)).status,409);
+    const org=(await request('/api/v1/organization','GET',null,b.cookie)).body.organization;
+    assert.equal(org.plan,'free');assert.equal(org.features.plan,'free_beta');assert.equal(org.features.pro,true);
+  } finally { process.env.LOCKGUARD_FREE_BETA='false'; }
+});
 test.before(async()=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));process.env.APP_URL='http://127.0.0.1:'+server.address().port;
   a=await post('/api/v1/auth/register',{email:'pro@example.invalid',password:'Long Pro test password 2026',organizationName:'Pro team'});
   b=await post('/api/v1/auth/register',{email:'free@example.invalid',password:'Long Pro test password 2026',organizationName:'Free team'});

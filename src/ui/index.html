@@ -10,7 +10,7 @@
 
 
 <meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=20261031"><link rel="stylesheet" href="pro.css?v=20261031">
-<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=96c1afc73e8b"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
+<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=e870782c8c46"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
 </head>
 <body class="bg-dark text-light antialiased">
   <!-- Top Announcement Banner -->
@@ -42,7 +42,7 @@
         <button aria-selected="false" class="nav-tab" data-tab="runs">История проверок</button>
         <button aria-selected="false" class="nav-tab" data-tab="keys">Ключи API</button>
         <button class="nav-tab" data-tab="schemas" aria-selected="false">Схемы <span class="pro-label">PRO</span></button><button aria-selected="false" class="nav-tab" data-tab="rules">Правила</button>
-        <button aria-selected="false" class="nav-tab" data-tab="billing">Тарифы</button>
+        <button aria-selected="false" class="nav-tab" data-tab="billing">Бесплатная бета</button>
         <a href="#team-pilot" class="nav-pilot">Пилот для команды</a>
       </nav></div>
   </header>
@@ -302,7 +302,7 @@
     <!-- TAB 4: RULE CATALOG -->
     <section id="tab-schemas" class="tab-pane">
   <div class="section-header"><div><p class="eyebrow">КОНТЕКСТ ВАШЕГО ПРОЕКТА <span>/ PRO</span></p><h1 class="page-title">Анализ с учётом схемы.</h1><p class="page-desc">Сохраните структуру таблиц и индексов. LockGuard учтёт существующие индексы и подтверждённые ограничения при следующих проверках.</p></div></div>
-  <div id="pro-locked-note" class="pro-callout"><div><span class="pro-label">LOCKGUARD PRO</span><h2>Один раз загрузите схему.<br>Используйте в каждом релизе.</h2><p>До 10 схем, 1000 проверок, сравнение результатов и закрытое командное ревью с историей решений.</p><p>Бесплатный анализ и все 12 правил остаются доступны в Community.</p></div><div><button class="btn-primary" onclick="app.switchTab('billing')">Посмотреть возможности Pro →</button><p class="account-hint">Онлайн-оплата подключается. Платный доступ активирует сервер.</p></div></div>
+  <div id="pro-locked-note" class="pro-callout"><div><span class="pro-label">LOCKGUARD PRO</span><h2>Один раз загрузите схему.<br>Используйте в каждом релизе.</h2><p>До 10 схем, 1000 проверок, сравнение результатов и закрытое командное ревью с историей решений.</p><p>Бесплатный анализ и все 12 правил остаются доступны в Community.</p></div><div><button class="btn-primary" onclick="app.switchTab('billing')">Посмотреть бесплатные возможности →</button><p class="account-hint">На этапе беты функции Pro открыты бесплатно после входа.</p></div></div>
   <p id="pro-active-note" class="notice-strip" hidden>Pro активен. Схемы доступны только вашей организации. Снимок следует обновлять после изменений базы.</p>
   <div class="schema-layout"><form id="schema-form" class="schema-import-card"><h2>Добавить снимок структуры</h2><p class="account-hint">Только описание схемы, без строк данных. SQL не выполняется. Сохраняется нормализованная структура, а не исходный файл.</p>
     <fieldset id="schema-fields" disabled><label>Название снимка<input id="schema-name" maxlength="80" required placeholder="Например, production · октябрь"></label>
@@ -328,67 +328,22 @@ CREATE INDEX ix_account ON orders (account_id);"></textarea></label>
 
     <!-- TAB 5: BILLING & PLANS -->
     <section id="tab-billing" class="tab-pane">
-      <div class="section-header text-center">
-        <div>
-          <h1 class="page-title">Выберите подходящий формат</h1>
-          <p class="page-desc">Бесплатное ядро, доступ Pro и технический аудит. Онлайн-оплата пока подключается.</p>
-        </div>
-      </div>
-
-      <p style="margin-bottom:1rem">До оплаты ознакомьтесь с <a rel="noopener noreferrer" href="offer.html" target="_blank">офертой и правилами возврата</a> и <a rel="noopener noreferrer" href="contacts.html" target="_blank">реквизитами исполнителя</a>.</p><!-- plan-comparison:start --><div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr><tr><td>Командное ревью изменений</td><td>—</td><td>До 20 участников · 100 закрытых карточек</td></tr><tr><td>История согласования</td><td>—</td><td>Роли, подтверждения и временные исключения</td></tr></tbody></table></div><!-- plan-comparison:end --><div class="pricing-grid">
-        <!-- Free Card -->
-        <div class="pricing-card" id="card-plan-free">
-          <div class="pricing-badge">ОТКРЫТОЕ ЯДРО</div>
-          <h3 class="plan-name">Community</h3>
-          <div class="plan-price">0 ₽ <span class="per-month">/ бесплатно</span></div>
-          <p class="plan-desc">Для локального анализа, обучения и собственных проектов.</p>
-          <ul class="plan-features"><li>Анализ SQL и 12 правил блокировок</li><li>Локальный CLI без лимита проверок</li><li>Открытый код и GitHub Action</li><li>100 последних проверок в личном кабинете</li></ul>
-          <button class="btn-plan btn-secondary" onclick="app.selectPlan('free')">Current Plan</button>
-        </div>
-
-        <!-- Team Card -->
-        <div class="pricing-card featured" id="card-plan-team">
-          <div class="pricing-badge popular" style="background: linear-gradient(135deg, #6366F1, #EC4899);">НА 30 ДНЕЙ</div>
-          <h3 class="plan-name">LockGuard Pro</h3>
-          <div class="plan-price">1 500 ₽ <span class="per-month">/ 30 дней</span></div>
-          <p class="plan-desc">Доступ к согласованному экземпляру LockGuard и поддержка по его использованию. Возможности и адрес подтверждаются до оплаты.</p>
-          <ul class="plan-features"><li>До 10 сохранённых схем организации</li><li>Анализ с учётом существующих индексов и ограничений</li><li>До 1000 последних проверок</li><li>Сравнение: новые, устранённые и оставшиеся замечания</li><li>Экспорт нормализованной схемы в JSON</li><li>Поддержка по email · без автосписаний</li></ul>
-          <button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Подключение оплаты</button>
-        </div>
-
-        <!-- Business Card -->
-        <div class="pricing-card" id="card-plan-business">
-          <div class="pricing-badge" style="background: linear-gradient(135deg, #0284C7, #06B6D4);">ТЕХНИЧЕСКИЙ АУДИТ</div>
-          <h3 class="plan-name">Аудит SQL-миграций</h3>
-          <div class="plan-price">30 000 ₽ <span class="per-month">/ разовый заказ</span></div>
-          <p class="plan-desc">Разовый персональный аудит. Материалы, объём и срок выполнения согласуются письменно до оплаты.</p>
-          <ul class="plan-features">
-            <li>Проверка согласованного набора SQL и схемы</li>
-            <li>Анализ индексов, внешних ключей и рисков блокировок</li>
-            <li>✔ Дополнительные работы согласуются отдельно</li>
-            <li>✔ Рекомендации по порядку применения миграций</li>
-            <li>✔ Формат консультации согласуется до оплаты</li>
-            <li>✔ Электронный отчёт и чек самозанятого</li>
-          </ul>
-          <button class="btn-plan btn-secondary" onclick="app.selectPlan('business')">Обсудить аудит</button>
-        </div>
-      </div>
-      <div id="billing-payment-section" hidden style="margin-top:1.5rem">
-        <label for="billing-payment-link">Ссылка для оплаты созданного заказа</label>
-        <input id="billing-payment-link" readonly style="width:100%;padding:0.7rem" aria-label="Ссылка на оплату">
-        <p>Если платёжная страница не открылась, скопируйте ссылку. Тестовые заказы не включают рабочий доступ.</p>
-      </div>
-      <button class="btn-secondary" style="margin-top:1rem" onclick="app.fetchPaymentOrders()">Обновить статус заказов</button>
-      <div id="billing-orders" aria-live="polite"></div>
+      <div class="section-header text-center"><div><h1 class="page-title">Бесплатная бета LockGuard</h1><p class="page-desc">Схемы, история и сравнение проверок доступны без покупки подписки. Создайте аккаунт и попробуйте на обезличенной миграции.</p></div></div>
+      <div class="pricing-grid">
+        <div class="pricing-card" id="card-plan-free"><div class="pricing-badge">ОТКРЫТОЕ ЯДРО</div><h3 class="plan-name">Community</h3><div class="plan-price">0 ₽</div><p class="plan-desc">Все 12 правил, CLI и GitHub Action доступны бесплатно по MIT.</p><button class="btn-plan btn-secondary" onclick="app.selectPlan('free')">Бесплатный анализ</button></div>
+        <div class="pricing-card featured" id="card-plan-team"><div class="pricing-badge popular">БЕЗ ОПЛАТЫ</div><h3 class="plan-name">Бесплатная бета</h3><div class="plan-price">0 ₽</div><p class="plan-desc">Прежние функции Pro открыты бесплатно на этапе беты.</p><ul class="plan-features"><li>До 10 сохранённых схем</li><li>До 1000 последних проверок</li><li>Анализ с учётом схемы и сравнение замечаний</li><li>Командное ревью с историей решений</li></ul><button class="btn-plan btn-primary" id="btn-subscribe-team" onclick="app.selectPlan('team')">Открыть бесплатно</button></div>
+        <div class="pricing-card" id="card-plan-business"><h3 class="plan-name">Помогите сделать LockGuard лучше</h3><p class="plan-desc">Расскажите, какие замечания полезны, чего не хватает и где анализатор ошибается.</p><a class="btn-plan btn-secondary" href="contacts.html">Отправить отзыв</a></div>
+      </div><p class="notice-strip">Кабинет работает в тестовом режиме. Используйте только учебные или обезличенные данные и сохраняйте свои файлы отдельно. Приглашения участников требуют подключения почтовой доставки.</p><p>Оплата и банковская карта для беты не нужны. Условия следующих этапов пока не определены.</p><p><a href="offer.html">Условия использования</a> · <a href="privacy.html">Конфиденциальность</a></p>
+      <div id="billing-payment-section" hidden><label for="billing-payment-link">Ссылка на прежний заказ</label><input id="billing-payment-link" readonly></div><div id="billing-orders" hidden></div>
     </section>
     <!-- team-pilot:start -->
 <section id="team-pilot" class="team-pilot" aria-labelledby="team-pilot-title">
   <div class="pilot-intro">
     <p class="eyebrow">ДЛЯ КОМАНД НА POSTGRESQL</p>
     <h2 id="team-pilot-title">Проверьте LockGuard на своих миграциях</h2>
-    <p>Обсудим пилот на 1–3 SQL-миграциях: какие риски видит анализатор, какие замечания полезны и как встроить проверку в ваш CI.</p>
+    <p>Попробуйте бесплатную бету на 1–3 SQL-миграциях: проверьте риски блокировок, сравните результаты и расскажите, чего не хватает.</p>
     <p><a href="start.html">Первые 10 минут: пример до / после и подключение к CI →</a></p>
-    <a class="btn-primary" href="contacts.html">Обсудить пилот <span aria-hidden="true">↗</span></a>
+    <a class="btn-primary" href="contacts.html">Отправить отзыв <span aria-hidden="true">↗</span></a>
     <p class="pilot-note">Для первого знакомства достаточно описания процесса. Объём и условия пилота согласуем до начала работы.</p>
   </div>
   <ol class="pilot-steps">
@@ -404,7 +359,7 @@ CREATE INDEX ix_account ON orders (account_id);"></textarea></label>
     <p class="eyebrow">ОТКРЫТЫЙ ПРОЕКТ</p>
     <h2 id="support-project-title">Поддержать развитие LockGuard</h2>
     <p>Если инструмент помогает вам в работе, можно поддержать автора разовым донатом через DonationAlerts.</p>
-    <p class="support-note">Добровольная поддержка автора. Доступ Pro оформляется отдельно.</p>
+    <p class="support-note">Добровольная поддержка автора. Все функции беты доступны без доната.</p>
   </div>
   <a class="btn-secondary donation-link" href="https://www.donationalerts.com/r/marswwu" target="_blank" rel="noopener noreferrer">Поддержать на DonationAlerts <span aria-hidden="true">↗</span></a>
 </section>

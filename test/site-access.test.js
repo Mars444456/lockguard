@@ -38,6 +38,10 @@ test('The public sign-in chooser opens and continues local analysis without acce
   dialog.querySelector('[data-continue-analysis]').click();
   assert.equal(dialog.open, false);
   assert.equal(focused, true);
+  const betaEntry=document.querySelector('#pricing a[href="#account-access"]');
+  assert.ok(betaEntry);
+  betaEntry.dispatchEvent(new Event('click', { cancelable: true }));
+  assert.equal(dialog.open, true, 'The free beta call to action opens the same account chooser');
 });
 
 test('The configured test cabinet link has a reset warning and stays behind the account chooser', () => {
@@ -68,6 +72,6 @@ test('Public and server pages link to the same voluntary donation and keep it se
       assert.equal(link.getAttribute('target'), '_blank');
       assert.ok(link.getAttribute('rel').includes('noopener'));
     }
-    assert.ok(document.querySelector('.support-project').textContent.includes('Доступ Pro оформляется отдельно'));
+    assert.ok(document.querySelector('.support-project').textContent.includes('Все функции беты доступны без доната'));
   }
 });

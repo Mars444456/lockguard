@@ -10,7 +10,7 @@ Review PostgreSQL migration SQL before release. LockGuard uses the PostgreSQL AS
 
 The website, pilot walkthrough and server workspace have a **RU / EN** switch. Your choice is saved in the browser, and `?lang=en` or `?lang=ru` selects a language directly. Switching does not change SQL, object names or user-provided data.
 
-The public demo analyzes SQL in your browser without an account. **Sign in** offers the [online test workspace](https://lockguard-test-cabinet.onrender.com/?lang=en#account) and the local application. The free test workspace has temporary storage: accounts, history and schemas may reset on restart. Use sample data only; a permanent public workspace for production data is not hosted yet. The local workspace runs at [localhost:3000](http://localhost:3000/?lang=en).
+The public demo analyzes SQL in your browser without an account. **Sign in** offers the [online test workspace](https://tranquil-presence-production-c455.up.railway.app/?lang=en#account) and the local application. The free test workspace has temporary storage: accounts, history and schemas may reset on restart. Use sample data only; a permanent public workspace for production data is not hosted yet. The local workspace runs at [localhost:3000](http://localhost:3000/?lang=en).
 
 For a team pilot, [discuss reviewing 1–3 sanitized migrations](https://mars444456.github.io/lockguard/?lang=en#team-pilot). Scope, schedule and terms are agreed before work begins. No production database access is needed. [Reproducible example](fixtures/team-pilot/README.md).
 
@@ -185,32 +185,23 @@ node bin/lockguard.js check ./migration.sql --schema=./examples/schema.snapshot.
 
 Multiple files require `--isolated`: each is checked independently against the same snapshot. A snapshot does not replay migration sequences or verify itself against a live database. Update it after schema changes. Partial, invalid or semantically unconfirmed indexes do not prove FK coverage. Validated CHECK ... IS NOT NULL constraints are considered for PostgreSQL 12+.
 
-While payment setup is pending, the server operator can grant or revoke access for an existing account:
-
-```sh
-npm run pro -- grant user@example.com 30
-npm run pro -- revoke user@example.com
-```
-
-These commands require server file access, create no payment and do not expose a self-service upgrade API. Entitlements and expiry are enforced by the server. Purchasing an audit does not automatically include Pro. After Pro expires, schema export and deletion remain available, while schema-aware workspace analysis and comparison are blocked. New history writes trim history to the Community limit.
+Former Pro features are free for every account during the beta. Saving schemas and comparing checks does not require a paid plan.
 
 For API analysis, send a `schemaId` from `/api/v1/schemas` with `sql` and an API key from the Pro organization to `/api/v1/analyze`. Older reports without structured findings and incomplete analyses cannot be compared.
 
 ## Backups
 
-`npm run backup` creates a checked SQLite backup. Backups contain private account data and password hashes: restrict access and store copies separately from the live database. Automatic transfer to external storage is not configured. Restoration creates a new database file, verifies integrity and revokes browser sessions; it does not overwrite the current database. See the [deployment and recovery guide](DEPLOYMENT.md) for commands and settings.
+`npm run backup` creates a checked SQLite backup. Backups contain private account data and password hashes: restrict access and store copies separately from the live database. Encrypted Google Drive backup transfer is available for the pilot; see OPERATIONS.md for configuration and verification. Restoration creates a new database file, verifies integrity and revokes browser sessions; it does not overwrite the current database. See the [deployment and recovery guide](DEPLOYMENT.md) for commands and settings.
 
-## Services and payment
+## Free access
 
-| Offering | Price | Terms |
-| --- | --- | --- |
-| Community | Free | Open core, local CLI and browser demo |
-| Pro | 1 500 ₽ / 30 days | Saved schemas, schema-aware analysis, 1,000 recent checks and comparison; instance address confirmed before payment |
-| PostgreSQL migration audit | 30 000 ₽ / one-off order | Scope, materials and schedule agreed in writing before payment; electronic report and recommendations |
+LockGuard is temporarily running a free beta. Former Pro features are available to every account without payment: up to 10 saved schemas, 1,000 recent checks, comparisons and team reviews. No payment card is required. Terms for later stages have not been set.
 
-Renewal is a separate payment without automatic charges. **Online payments through Robokassa are still being connected.** Integration code being present does not mean the merchant account is activated or real payments are available. Agree on an order through the [project contacts](https://mars444456.github.io/lockguard/contacts.html?lang=en) before paying.
+[Try browser analysis](https://mars444456.github.io/lockguard/?lang=en) · [Open the test workspace](https://tranquil-presence-production-c455.up.railway.app/?lang=en#account)
 
-Payment requires an HTTPS server configured with Robokassa secrets, ResultURL and self-employed receipt services. Keep secrets in server environment variables. Test payments and a return to SuccessURL do not confirm a live payment or activate production access. Refunds are handled through support and the provider's dashboard; automatic refund synchronization and access revocation are not implemented. Generated B2B invoices are samples without banking details and must not be used to transfer money.
+The workspace remains a pilot on limited free hosting. Use synthetic or anonymized data and export important files. Invitations and email recovery require configured mail delivery. Feedback can include a problem description and anonymized SQL; production database access is not required.
+
+Free beta access is enabled by default. An operator can explicitly set `LOCKGUARD_FREE_BETA=false` for a separately configured instance using the former access model. Existing payment records are unchanged. An individual audit by a person requires a separate agreement and is not included automatically.
 
 ## Contact and terms
 

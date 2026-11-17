@@ -1,5 +1,39 @@
 /* Russian source text and reviewed English UI translations. No remote translation service. */
 window.LockGuardTranslations = [
+  ["Добровольная поддержка автора. Все функции беты доступны без доната.", "Voluntary support for the author. All beta features are available without donating."],
+  ["Бесплатная бета", "Free beta"],
+  ["Бесплатная бета LockGuard", "LockGuard free beta"],
+  ["БЕЗ ОПЛАТЫ", "FREE ACCESS"],
+  ["Открыть бесплатно", "Open for free"],
+  ["Открыть бесплатный кабинет", "Open the free workspace"],
+  ["Попробуйте все возможности бесплатно", "Try all features for free"],
+  ["Схемы, история и сравнение проверок доступны без покупки подписки. Создайте аккаунт и попробуйте на обезличенной миграции.", "Saved schemas, history and comparisons are available without a subscription. Create an account and try an anonymized migration."],
+  ["Все 12 правил, CLI и GitHub Action доступны бесплатно по MIT.", "All 12 checks, the CLI and GitHub Action are free under MIT."],
+  ["Прежние функции Pro открыты бесплатно на этапе беты.", "Former Pro features are free during the beta."],
+  ["До 10 сохранённых схем", "Up to 10 saved schemas"],
+  ["До 1000 последних проверок", "Up to 1,000 recent checks"],
+  ["Анализ с учётом схемы и сравнение замечаний", "Schema-aware analysis and finding comparisons"],
+  ["Командное ревью с историей решений", "Team reviews with decision history"],
+  ["Помогите сделать LockGuard лучше", "Help improve LockGuard"],
+  ["Расскажите, какие замечания полезны, чего не хватает и где анализатор ошибается.", "Tell us which findings help, what is missing and where the analyzer gets things wrong."],
+  ["Отправить отзыв", "Send feedback"],
+  ["Кабинет работает в тестовом режиме. Используйте только учебные или обезличенные данные и сохраняйте свои файлы отдельно. Приглашения участников требуют подключения почтовой доставки.", "The workspace is a test service. Use only synthetic or anonymized data and keep your own files. Member invitations require configured mail delivery."],
+  ["Оплата и банковская карта для беты не нужны. Условия следующих этапов пока не определены.", "The beta requires no payment or card. Terms for later stages have not been set."],
+  ["Условия использования", "Terms of use"],
+  ["Ссылка на прежний заказ", "Previous order link"],
+  ["На этапе беты функции Pro открыты бесплатно после входа.", "During the beta, Pro features are free after signing in."],
+  ["Посмотреть бесплатные возможности →", "See free features →"],
+  ["Функции Pro доступны бесплатно на этапе беты.", "Pro features are free during the beta."],
+  ["Функции Pro доступны бесплатно на этапе беты. Схемы видны только вашей организации.", "Pro features are free during the beta. Only your organization can access its schemas."],
+  ["Бесплатная бета · до 10 схем организации", "Free beta · up to 10 organization schemas"],
+  ["Попробуйте бесплатную бету на 1–3 SQL-миграциях: проверьте риски блокировок, сравните результаты и расскажите, чего не хватает.", "Try the free beta on 1–3 SQL migrations: review lock risks, compare results and tell us what is missing."],
+  ["Прежние функции Pro доступны бесплатно на этапе беты. Создайте аккаунт в тестовом кабинете для сохранения схем и сравнения проверок. Используйте только обезличенные или учебные данные.", "Former Pro features are free during the beta. Create an account in the test workspace to save schemas and compare checks. Use only anonymized or synthetic data."],
+  ["LockGuard · бесплатная бета", "LockGuard · free beta"],
+  ["Бесплатная бета LockGuard:", "LockGuard free beta:"],
+  ["программные функции, включая сохранённые схемы, сравнение проверок и командное ревью, доступны без оплаты. Доступ требует аккаунта. Кабинет работает в тестовом режиме. Используйте только учебные или обезличенные данные и сохраняйте свои файлы отдельно. Приглашения участников требуют подключения почтовой доставки.", "Software features, including saved schemas, comparisons and team reviews, are free. An account is required. This is a test workspace: use synthetic or anonymized data and keep your own files. Member invitations require configured mail delivery."],
+  ["В бесплатной бете доступны до 10 схем организации, до 1000 последних проверок и сравнение замечаний. Лимиты защищают ресурсы тестового сервиса. Все 12 правил, браузерный анализ и CLI остаются доступны по MIT. Условия следующих этапов пока не определены.", "The free beta includes up to 10 organization schemas, 1,000 recent checks and finding comparisons. Limits protect the test service's resources. All 12 checks, browser analysis and the CLI remain available under MIT. Terms for later stages have not been set."],
+  ["Доступ к бесплатной бете не требует заказа или оплаты. Условия оплаты ниже относятся только к отдельно согласованным индивидуальным услугам и прежним платным заказам.", "Free beta access requires no order or payment. Payment terms below apply only to separately agreed individual services and previous paid orders."],
+  ["Схемы, история и сравнение проверок доступны без покупки подписки. Создайте аккаунт и попробуйте на обезличенной миграции. На этапе беты доступны до 10 схем и до 1000 последних проверок. Оплата и банковская карта не нужны.", "Saved schemas, history and comparisons are available without a subscription. Create an account and try an anonymized migration. The beta includes up to 10 schemas and 1,000 recent checks. No payment or card is required."],
   ["Браузерное демо сохраняет настройки языка. По кнопке «Сохранить проверку» в этом браузере сохраняются SQL, название, версия PostgreSQL и дата — до 20 записей. Без этого действия введённый SQL в историю не записывается. Экспорт проекта создаёт незашифрованный JSON-файл с текущим SQL и локальной историей; импорт выполняется локально после подтверждения. Результаты из файла не принимаются за проверенные: SQL анализируется заново. Локальную историю можно удалить на странице или очисткой данных сайта. Данные доступны пользователям того же профиля браузера; храните конфиденциальные файлы самостоятельно. Хостинг и внешние ресурсы могут получать IP-адрес и технические сведения для доставки страницы. Ссылки на GitHub, Telegram и платёжную страницу ведут на отдельные сервисы.","The browser demo saves language preferences. Save check stores SQL, name, PostgreSQL version and date in this browser, up to 20 entries. SQL is not added to history without that action. Project export creates an unencrypted JSON file containing the current SQL and local history; import runs locally after confirmation. Imported results are not trusted: SQL is analyzed again. Delete local history on the page or by clearing site data. People using the same browser profile can access it; keep confidential files private. Hosting and external resources may receive the IP address and technical details needed to deliver the page. GitHub, Telegram and payment links lead to separate services."],
   ["Подтвердите email в личном кабинете перед работой с приглашениями.","Verify your email in account settings before using invitations."],
   ["Ссылка подтверждения недействительна или истекла.","The verification link is invalid or expired."],
@@ -600,11 +634,11 @@ window.LockGuardTranslations = [
   ],
   [
     "100 последних проверок",
-    "100 most recent reviews"
+    "100 recent checks"
   ],
   [
     "1000 последних проверок",
-    "1,000 most recent reviews"
+    "1,000 recent checks"
   ],
   [
     "Сохранённые схемы организации",
@@ -676,7 +710,7 @@ window.LockGuardTranslations = [
   ],
   [
     "До 1000 последних проверок",
-    "Up to 1,000 most recent reviews"
+    "Up to 1,000 recent checks"
   ],
   [
     "Сравнение новых, устранённых и оставшихся замечаний",
