@@ -103,6 +103,10 @@ Workflow **Wake LockGuard for backups** использует этот маршр
 
 Срабатывание 503 при отсутствии копии и восстановление 200 проверяются на изолированном тестовом сервере: `node --test test/health-check.test.js test/server.test.js`. Рабочий сервис для этой проверки останавливать не нужно.
 
+Для почтовых уведомлений GitHub Actions подпишитесь на репозиторий и в **Settings → Notifications → System → Actions** выберите **Email** и **Only notify for failed workflows**. Эти настройки относятся к аккаунту GitHub. Адрес доставки хранится в настройках аккаунта, не в репозитории. [Настройка уведомлений Actions](https://docs.github.com/en/subscriptions-and-notifications/how-tos/managing-github-actions-notifications).
+
+Чтобы проверить канал, вручную запустите **Wake LockGuard for backups** с `test_notification=true`. После проверки кабинета этот запуск намеренно завершится ошибкой с фиксированным сообщением **Synthetic LockGuard monitoring notification test**. Он не меняет базу, настройки сервера или права доступа. Проверьте получение письма и ссылку на этот запуск. Затем запустите workflow без флажка и убедитесь в успешном завершении. Успешный запуск виден в Actions; при режиме «только ошибки» отдельного письма о восстановлении нет. Плановые запуски этот тест не включают.
+
 ## English
 
 `GET /api/v1/health` is a public, uncached aggregate: HTTP 200 with `{"status":"ok"}` or HTTP 503 with `{"status":"unavailable"}`. It checks analyzer initialization and a database metadata read. Durable deployments also require fresh local and Drive copies and a successful restore drill within seven days; temporary demos check application availability. It does not expose owner diagnostics or prove payment readiness. The existing wake workflow now fails if this check remains unhealthy after retries. A separate notification channel still needs agreement; no new delivery provider is configured.
