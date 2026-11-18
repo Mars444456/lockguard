@@ -8,7 +8,7 @@
 
 
 
-<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=dc26fc2a6760"><link rel="stylesheet" href="pro.css?v=ccc79b83ed16"><!-- discovery:start -->
+<meta name="google" content="notranslate"><meta name="description" content="Проверьте SQL-миграции PostgreSQL: риски блокировок, рекомендации и план изменений. Открытое ядро, CLI и GitHub Action."><link rel="stylesheet" href="design.css?v=dc26fc2a6760"><link rel="stylesheet" href="pro.css?v=39a99001af07"><!-- discovery:start -->
 <link rel="canonical" href="https://mars444456.github.io/lockguard/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
@@ -23,7 +23,7 @@
 <meta property="og:image:alt" content="LockGuard: PostgreSQL migration SQL review, 12 checks, CLI and GitHub Action">
 <meta name="twitter:card" content="summary_large_image">
 <!-- discovery:end -->
-<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=96c1afc73e8b"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
+<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=e870782c8c46"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
 </head>
 <body>
   <!-- Top Announcement Banner -->
@@ -45,7 +45,7 @@
       <nav class="nav-links" aria-label="Разделы LockGuard">
         <a href="#tab-playground" class="nav-btn">SQL-проверка</a>
         <a href="#lock-matrix-explorer" class="nav-btn">Матрица блокировок</a>
-        <a href="#pricing" class="nav-btn">Тарифы</a>
+        <a href="#pricing" class="nav-btn">Бесплатная бета</a>
         <a href="#team-pilot" class="nav-btn nav-pilot">Пилот для команды</a>
         <a href="contacts.html" class="nav-btn">Контакты</a>
         <a href="https://github.com/Mars444456/lockguard" class="nav-btn" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
@@ -61,7 +61,7 @@
     <h2 id="account-access-title">Выберите кабинет LockGuard</h2>
     <p id="account-access-description">Проверка SQL работает на этом сайте без регистрации. Постоянный кабинет для рабочих данных ещё не размещён. Локальное приложение доступно на вашем компьютере.</p>
     <!-- demo-account:start -->
-<div class="access-local-option" data-demo-account><h3>Онлайн-кабинет для тестирования</h3><p>Аккаунты, история и схемы могут сброситься при перезапуске. Используйте только учебные данные. После простоя первый запуск может занять около минуты.</p><a class="btn-primary" href="https://lockguard-test-cabinet.onrender.com/#account" target="_blank" rel="noopener noreferrer">Открыть тестовый кабинет ↗</a></div>
+<div class="access-local-option" data-demo-account><h3>Онлайн-кабинет для тестирования</h3><p>Аккаунты, история и схемы могут сброситься при перезапуске. Используйте только учебные данные. После простоя первый запуск может занять около минуты.</p><a class="btn-primary" href="https://tranquil-presence-production-c455.up.railway.app/#account" target="_blank" rel="noopener noreferrer">Открыть тестовый кабинет ↗</a></div>
 <!-- demo-account:end -->
     <div class="access-local-option">
       <h3>LockGuard запущен на этом компьютере?</h3>
@@ -303,35 +303,12 @@
 
     <!-- Pricing & Commercial Monetization Section -->
     <section id="pricing" class="pricing-section">
-      <div class="pricing-header"><h2 class="pricing-title">Услуги и стоимость</h2>
-        <p class="pricing-subtitle">Бесплатный анализ, доступ Pro на 30 дней и разовый технический аудит. Автоматических списаний нет.</p></div>
-      <div class="plans-table-wrap"><table class="plans-table"><thead><tr><th>Возможности</th><th>Community</th><th>LockGuard Pro</th></tr></thead><tbody><tr><td>Все 12 правил и локальный CLI</td><td>Да · MIT</td><td>Да</td></tr><tr><td>История в серверном кабинете</td><td>100 последних проверок</td><td>1000 последних проверок</td></tr><tr><td>Сохранённые схемы организации</td><td>—</td><td>До 10 · SQL / JSON</td></tr><tr><td>Анализ с сохранённой схемой</td><td>—</td><td>Кабинет и API-ключ</td></tr><tr><td>Сравнение замечаний до / после</td><td>—</td><td>Новые, устранённые, оставшиеся</td></tr><tr><td>Командное ревью изменений</td><td>—</td><td>До 20 участников · 100 закрытых карточек</td></tr><tr><td>История согласования</td><td>—</td><td>Роли, подтверждения и временные исключения</td></tr></tbody></table></div>
+      <div class="pricing-header"><h2 class="pricing-title">Попробуйте все возможности бесплатно</h2><p class="pricing-subtitle">Схемы, история и сравнение проверок доступны без покупки подписки. Создайте аккаунт и попробуйте на обезличенной миграции.</p></div>
       <div class="pricing-grid">
-        <div class="pricing-card"><div class="pricing-name">Community</div>
-          <div class="pricing-price">0 ₽ <span class="pricing-period">/ без оплаты</span></div>
-          <div class="pricing-desc">Открытое ядро и браузерная демонстрация анализа SQL.</div>
-          <ul class="pricing-features"><li><span class="check">✔</span> Анализ SQL в браузере</li><li><span class="check">✔</span> Каталог правил блокировок PostgreSQL</li><li><span class="check">✔</span> Открытый исходный код и локальный CLI</li></ul>
-          <a href="#tab-playground" class="pricing-btn btn-free">Открыть бесплатный анализ</a></div>
-        <div class="pricing-card featured"><div class="pricing-badge">ДОСТУП НА 30 ДНЕЙ</div>
-          <div class="pricing-name">LockGuard Pro</div><div class="pricing-price">1 500 ₽ <span class="pricing-period">/ 30 дней</span></div>
-          <div class="pricing-desc">Рабочий процесс команды: схемы, сравнение результатов и закрытое ревью с ролями и историей решений. Нужен серверный экземпляр LockGuard.</div>
-          <ul class="pricing-features"><li><span class="check">✔</span> До 10 схем организации · SQL / JSON</li><li><span class="check">✔</span> Анализ с учётом существующих индексов и ограничений</li><li><span class="check">✔</span> До 1000 последних проверок</li><li><span class="check">✔</span> Сравнение новых, устранённых и оставшихся замечаний</li><li><span class="check">✔</span> 30 дней · поддержка по email · без автосписаний</li><li><span class="check">✔</span> Адрес экземпляра подтверждается до оплаты</li></ul>
-          <a href="contacts.html" class="pricing-btn btn-pro">Условия и заказ Pro</a>
-          <a href="offer.html#refund" class="pricing-btn btn-free">Порядок отказа и возврата</a></div>
-        <div class="pricing-card"><div class="pricing-name">Аудит SQL-миграций</div>
-          <div class="pricing-price">30 000 ₽ <span class="pricing-period">/ разовый заказ</span></div>
-          <div class="pricing-desc">Техническая проверка согласованного набора миграций PostgreSQL.</div>
-          <ul class="pricing-features"><li><span class="check">✔</span> Объём, материалы и срок согласуются письменно до оплаты</li><li><span class="check">✔</span> Электронный отчёт о выявленных рисках</li><li><span class="check">✔</span> Рекомендации по изменению миграций</li><li><span class="check">✔</span> Внедрение и дополнительные работы согласуются отдельно</li></ul>
-          <a href="contacts.html" class="pricing-btn btn-enterprise">Согласовать аудит</a></div>
-      </div>
-      <div id="payment-methods" class="payment-methods-box">
-        <h3>Оплата и получение услуги</h3>
-        <p>Онлайн-оплата через Robokassa находится на этапе подключения. Перед оплатой согласуйте заказ через <a href="contacts.html">контакты исполнителя</a>. Платёжная ссылка предоставляется для согласованного заказа после подключения магазина.</p>
-        <p>Расчёты — в рублях. При подключённом магазине способы оплаты выбираются на защищённой странице Robokassa. Данные карты на сайте LockGuard не вводятся. Чек предоставляется самозанятым в установленном порядке; автоматическая выдача зависит от подключения сервиса чеков.</p>
-        <p>Доставка только электронная: доступ к сервису или отчёт по согласованному каналу. Доступ Pro предоставляется после подтверждения платежа, аудит — в срок, согласованный в заказе. Если услуга не оказана, обратитесь за возвратом; подробнее — <a href="offer.html#refund">условия отказа и возврата</a>.</p>
-        <p>Статический анализ не гарантирует отсутствие всех дефектов и простоев. Перед применением миграции необходима проверка на тестовой базе.</p>
-        <p><a href="contacts.html">Контакты и реквизиты</a> · <a href="offer.html">Публичная оферта</a> · <a href="privacy.html">Конфиденциальность</a></p>
-      </div>
+        <div class="pricing-card"><div class="pricing-name">Community</div><div class="pricing-price">0 ₽</div><p class="pricing-desc">Все 12 правил, CLI и GitHub Action доступны бесплатно по MIT.</p><a href="#tab-playground" class="pricing-btn btn-free">Открыть бесплатный анализ</a></div>
+        <div class="pricing-card featured"><div class="pricing-badge">БЕЗ ОПЛАТЫ</div><div class="pricing-name">Бесплатная бета</div><div class="pricing-price">0 ₽</div><p class="pricing-desc">Прежние функции Pro открыты бесплатно на этапе беты.</p><ul class="pricing-features"><li>До 10 сохранённых схем</li><li>До 1000 последних проверок</li><li>Анализ с учётом схемы и сравнение замечаний</li><li>Командное ревью с историей решений</li></ul><a href="#account-access" class="pricing-btn btn-pro">Открыть бесплатный кабинет</a></div>
+        <div class="pricing-card"><div class="pricing-name">Помогите сделать LockGuard лучше</div><p class="pricing-desc">Расскажите, какие замечания полезны, чего не хватает и где анализатор ошибается.</p><a href="contacts.html" class="pricing-btn btn-free">Отправить отзыв</a></div>
+      </div><div class="payment-terms"><p>Кабинет работает в тестовом режиме. Используйте только учебные или обезличенные данные и сохраняйте свои файлы отдельно. Приглашения участников требуют подключения почтовой доставки.</p><p>Оплата и банковская карта для беты не нужны. Условия следующих этапов пока не определены.</p><p><a href="offer.html">Условия использования</a> · <a href="privacy.html">Конфиденциальность</a></p></div>
     </section>
 
     <!-- team-pilot:start -->
@@ -339,9 +316,9 @@
   <div class="pilot-intro">
     <p class="eyebrow">ДЛЯ КОМАНД НА POSTGRESQL</p>
     <h2 id="team-pilot-title">Проверьте LockGuard на своих миграциях</h2>
-    <p>Обсудим пилот на 1–3 SQL-миграциях: какие риски видит анализатор, какие замечания полезны и как встроить проверку в ваш CI.</p>
+    <p>Попробуйте бесплатную бету на 1–3 SQL-миграциях: проверьте риски блокировок, сравните результаты и расскажите, чего не хватает.</p>
     <p><a href="start.html">Первые 10 минут: пример до / после и подключение к CI →</a></p>
-    <a class="btn-primary" href="contacts.html">Обсудить пилот <span aria-hidden="true">↗</span></a>
+    <a class="btn-primary" href="contacts.html">Отправить отзыв <span aria-hidden="true">↗</span></a>
     <p class="pilot-note">Для первого знакомства достаточно описания процесса. Объём и условия пилота согласуем до начала работы.</p>
   </div>
   <ol class="pilot-steps">
@@ -357,7 +334,7 @@
     <p class="eyebrow">ОТКРЫТЫЙ ПРОЕКТ</p>
     <h2 id="support-project-title">Поддержать развитие LockGuard</h2>
     <p>Если инструмент помогает вам в работе, можно поддержать автора разовым донатом через DonationAlerts.</p>
-    <p class="support-note">Добровольная поддержка автора. Доступ Pro оформляется отдельно.</p>
+    <p class="support-note">Добровольная поддержка автора. Все функции беты доступны без доната.</p>
   </div>
   <a class="btn-secondary donation-link" href="https://www.donationalerts.com/r/marswwu" target="_blank" rel="noopener noreferrer">Поддержать на DonationAlerts <span aria-hidden="true">↗</span></a>
 </section>
@@ -367,7 +344,7 @@
 <footer class="seller-footer" style="max-width:1200px;margin:2rem auto;padding:2rem 1.5rem;border-top:1px solid #334155;color:#cbd5e1;line-height:1.8"><p><a href="contacts.html">Контакты и реквизиты</a> · <a href="offer.html">Оферта и возвраты</a> · <a href="privacy.html">Конфиденциальность</a></p></footer>
 <!-- seller-footer:end -->
 <!-- Scripts -->
-  <script src="site-access.js?v=6c7531bb874d"></script>
+  <script src="site-access.js?v=d95427045dda"></script>
   <script src="lockguard-engine.js?v=8b7daa2b0ba6"></script>
   <script src="local-project.js?v=ccf5bc0d5a6d"></script>
   <script src="review-ui.js?v=f346561868c9"></script><script src="labels.js?v=a3f6055cbde8"></script><script src="app.js?v=dde21ecb1840"></script>

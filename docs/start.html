@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="pilot-guide.css?v=0c218c89eb0f">
   <script src="pilot-example.js?v=988dc4a18dee" defer></script>
   <script src="pilot-guide.js?v=483f3adb28aa" defer></script>
-<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=96c1afc73e8b"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
+<!-- i18n:start --><link rel="stylesheet" href="i18n.css?v=c81f7d32ec3f"><script src="i18n-catalog.js?v=e870782c8c46"></script><script src="i18n.js?v=4147e18a6867" defer></script><!-- i18n:end -->
 <!-- discovery:start -->
 <link rel="canonical" href="https://mars444456.github.io/lockguard/start.html">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -52,7 +52,7 @@
     </section>
     <section class="pro-section" aria-labelledby="pro-title"><p class="eyebrow">02 / КОГДА НУЖЕН PRO</p><h2 id="pro-title">От проверки файла — к истории изменений.</h2><p>Все 12 правил и CLI доступны бесплатно. Pro в серверном кабинете сохраняет контекст и результаты работы организации.</p>
       <div class="value-grid"><article class="panel"><span class="card-number">01</span><h3>Снимки схем</h3><p>До 10 структур SQL / JSON. Выбирайте сохранённую схему для следующих проверок.</p></article><article class="panel"><span class="card-number">02</span><h3>Сравнение до / после</h3><p>Новые, устранённые и оставшиеся замечания. В этом примере снимок тот же, а риск обычного CREATE INDEX устранён.</p><strong id="comparison-summary"></strong></article><article class="panel"><span class="card-number">03</span><h3>История организации</h3><p>До 1000 последних проверок вместо 100 в Community. Участники пилота оценивают это на согласованном серверном экземпляре.</p></article></div>
-      <p class="small">Эта страница показывает учебный сценарий и не активирует Pro. В открытом ядре также доступны передача структуры и анализ; платный кабинет добавляет сохранение и рабочий процесс. Онлайн-оплата пока подключается.</p>
+      <p class="small">Прежние функции Pro доступны бесплатно на этапе беты. Создайте аккаунт в тестовом кабинете для сохранения схем и сравнения проверок. Используйте только обезличенные или учебные данные.</p>
     </section>
     <section id="connect" aria-labelledby="connect-title"><p class="eyebrow">03 / ВАШ ПЕРВЫЙ ЗАПУСК</p><h2 id="connect-title">Начните с готового SQL.</h2><p>Выберите способ подготовки миграций. Команды выполняются в вашем проекте; LockGuard читает SQL, а не подключается к базе.</p>
       <div class="integration-grid"><article class="panel"><h3>Prisma</h3><p>Создайте SQL без применения новой миграции. Используйте только отдельную базу разработки: Prisma работает с shadow database и при drift может предложить сброс.</p><pre>npx prisma migrate dev --create-only --name reviewed_change</pre><p>Затем проверьте созданный <code>prisma/migrations/&lt;имя&gt;/migration.sql</code> через браузерный редактор или CI.</p><a href="https://docs.prisma.io/docs/cli/migrate/dev" target="_blank" rel="noopener noreferrer">Документация Prisma ↗</a></article>

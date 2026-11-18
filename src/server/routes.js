@@ -47,6 +47,9 @@ function registerRoutes(router) {
           if (!process.env.LOCKGUARD_ADMIN_TOKEN) return res.status(401).json({ error: 'Войдите в аккаунт для доступа к своей организации.' });
           if (!requireAdmin(req, res)) return;
         }
+        if (features().freeBeta && ['/api/v1/billing/checkout', '/api/v1/billing/b2b-invoice', '/api/v1/billing/invoice'].includes(path)) {
+          return res.status(409).json({ error: 'Во время бесплатной беты оплата доступа не требуется.' });
+        }
         // Payment onboarding stays with the operator while the merchant is being activated.
         if (req.auth && ['/api/v1/billing/checkout', '/api/v1/billing/b2b-invoice', '/api/v1/billing/invoice'].includes(path)) {
           return res.status(403).json({ error: 'Онлайн-оплата ещё подключается. Согласуйте заказ с исполнителем по контактам на сайте.' });

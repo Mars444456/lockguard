@@ -6,6 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { Worker } = require('node:worker_threads');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lockguard-sqlite-'));
+process.env.LOCKGUARD_FREE_BETA = 'false';
 process.env.LOCKGUARD_DB_FILE = path.join(tmp, 'main.sqlite3');
 const main = require('../src/server/db');
 const { PersistentDatabase } = main;

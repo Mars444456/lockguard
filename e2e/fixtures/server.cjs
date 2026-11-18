@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'../..'),runtime=fs.mkdtempSync(path.join(os.t
 const {previewSettings}=require(path.join(root,'scripts/preview-server'));
 const env=previewSettings('https://example.invalid',runtime,3020);
 for(const key of Object.keys(process.env))delete process.env[key];
-Object.assign(process.env,env,{NODE_ENV:'test',APP_URL:'http://127.0.0.1:3020',LOCKGUARD_MAIL_FROM:'LockGuard <mail@example.invalid>',LOCKGUARD_MAIL_API_KEY:'isolated-test-provider'});
+Object.assign(process.env,env,{NODE_ENV:'test',LOCKGUARD_FREE_BETA:'false',APP_URL:'http://127.0.0.1:3020',LOCKGUARD_MAIL_FROM:'LockGuard <mail@example.invalid>',LOCKGUARD_MAIL_API_KEY:'isolated-test-provider'});
 process.chdir(runtime);
 const inbox=[];
 global.fetch=async(address,options)=>{
@@ -28,6 +28,9 @@ const controls=http.createServer(async(req,res)=>{
       res.setHeader('Content-Type',types[path.extname(file).slice(1)]);res.end(fs.readFileSync(file));return;
     }
     if(req.method==='GET'&&url.pathname==='/ready'){res.end('{}');return;}
+    if(req.method==='POST'&&['/enable-free-beta','/disable-free-beta'].includes(url.pathname)){
+      process.env.LOCKGUARD_FREE_BETA=url.pathname==='/enable-free-beta'?'true':'false';res.end('{}');return;
+    }
     if(req.method==='GET'&&url.pathname==='/inbox'){
       const email=url.searchParams.get('email');if(!email?.endsWith('@example.invalid'))throw new Error('Invalid test address');
       res.end(JSON.stringify(inbox.filter(message=>message.to[0]===email)));return;

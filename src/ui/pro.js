@@ -26,7 +26,7 @@ window.LockGuardPro = class {
   }
   message(text) {document.getElementById('schema-message').textContent=text;}
   reset() {
-    this.epoch++;this.pro=false;this.profiles=[];this.lastComparison=null;this.lastContext=null;
+    this.epoch++;this.pro=false;this.freeBeta=false;this.profiles=[];this.lastComparison=null;this.lastContext=null;
     document.getElementById('schema-form').reset();
     document.getElementById('schema-list').replaceChildren();
     document.getElementById('comparison-result').replaceChildren();
@@ -41,6 +41,7 @@ window.LockGuardPro = class {
     $('btn-schema-save').disabled=!this.pro;
     $('pro-locked-note').hidden=this.pro;
     $('pro-active-note').hidden=!this.pro;
+    if(this.pro)$('pro-active-note').textContent=this.freeBeta ? proText('Функции Pro доступны бесплатно на этапе беты. Схемы видны только вашей организации.') : proText('Pro активен. Схемы доступны только вашей организации. Снимок следует обновлять после изменений базы.');
     $('btn-compare-runs').disabled=!this.pro || $('compare-before').options?.length<2;
     $('compare-pro-note').hidden=this.pro;
     const select=$('analysis-schema-select'),selected=select.value;
@@ -50,7 +51,7 @@ window.LockGuardPro = class {
       const option=document.createElement('option');option.value=profile.id;option.setAttribute('data-i18n-ignore','');option.textContent=profile.name+' · '+profile.summary.tables+' '+proText('табл.');select.appendChild(option);
     }
     select.disabled=!this.pro;select.value=this.pro && this.profiles.some(p=>p.id===selected) ? selected : '';
-    $('schema-workspace-status').textContent=this.pro ? 'PRO · до 10 схем организации' : 'PRO · сохранённые схемы';
+    $('schema-workspace-status').textContent=this.freeBeta ? proText('Бесплатная бета · до 10 схем организации') : this.pro ? 'PRO · до 10 схем организации' : 'PRO · сохранённые схемы';
     const list=$('schema-list');list.replaceChildren();
     if(!this.profiles.length){const p=document.createElement('p');p.className='account-hint';p.textContent='Сохранённых схем пока нет.';list.appendChild(p);}
     for(const profile of this.profiles) {
@@ -69,7 +70,7 @@ window.LockGuardPro = class {
     try {
       const response=await apiFetch('/api/v1/schemas'),data=await response.json();
       if(epoch!==this.epoch)return;
-      this.profiles=data.schemas;this.pro=!!data.features?.pro;this.render();
+      this.profiles=data.schemas;this.pro=!!data.features?.pro;this.freeBeta=!!data.features?.freeBeta;this.render();
       this.setRuns(this.app.runs||[]);
     } catch(error) {if(epoch===this.epoch)this.message(error.message);}
   }

@@ -16,6 +16,11 @@
   border: 1px solid #78603b;
   box-shadow: none;
 }
+.pro-callout .btn-primary {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+}
 .pro-callout {
   display: flex;
   gap: 40px;

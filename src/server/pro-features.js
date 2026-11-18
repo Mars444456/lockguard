@@ -1,8 +1,10 @@
-function features(org = {}) {
+function features(org = {}, env = process.env) {
+  const freeBeta = env.LOCKGUARD_FREE_BETA !== 'false';
   const expiry = org.accessUntil === undefined ? null : Date.parse(org.accessUntil);
-  const pro = org.plan === 'team' && org.subscriptionStatus === 'active' &&
+  const paidPro = org.plan === 'team' && org.subscriptionStatus === 'active' &&
     (expiry === null ? org.billingProvider !== 'robokassa' : Number.isFinite(expiry) && expiry > Date.now());
-  return { pro, plan: pro ? 'pro' : 'community', savedSchemas: pro ? 10 : 0, historyLimit: pro ? 1000 : 100, compareRuns: pro,
+  const pro = freeBeta || paidPro;
+  return { pro, freeBeta, plan: freeBeta ? 'free_beta' : pro ? 'pro' : 'community', savedSchemas: pro ? 10 : 0, historyLimit: pro ? 1000 : 100, compareRuns: pro,
     teamReviews:pro, members:pro ? 20 : 1, reviewLimit:pro ? 100 : 0 };
 }
 function requirePro(store) {
