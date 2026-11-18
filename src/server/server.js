@@ -73,12 +73,34 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
+function insideDirectory(directory, file) {
+  const relative = path.relative(directory, file);
+  return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep));
+}
+
 function serveFile(file, res) {
-  if (process.env.LOCKGUARD_EPHEMERAL_DEMO === 'true' && path.extname(file).toLowerCase() === '.html') {
-    const banner = '<aside role="note" style="padding:14px 20px;background:#302917;color:#ffebbd;border-bottom:1px solid #8f7846;text-align:center;font:14px/1.6 system-ui">Тестовый стенд: аккаунты, история и схемы могут сброситься при перезапуске. Используйте только учебные данные.</aside>';
-    res.setHeader('Cache-Control', 'no-store');
-    res.end(fs.readFileSync(file, 'utf8').replace(/<body\b[^>]*>/i, match => match + banner));
-  } else fs.createReadStream(file).pipe(res);
+  try {
+    const publicRoot = fs.realpathSync(path.resolve(__dirname, '..', 'ui'));
+    file = fs.realpathSync(file);
+    if (!insideDirectory(publicRoot, file)) {
+      return res.status(403).json({ error: 'Forbidden: Path traversal detected' });
+    }
+    if (process.env.LOCKGUARD_EPHEMERAL_DEMO === 'true' && path.extname(file).toLowerCase() === '.html') {
+      const banner = '<aside role="note" style="padding:14px 20px;background:#302917;color:#ffebbd;border-bottom:1px solid #8f7846;text-align:center;font:14px/1.6 system-ui">Тестовый стенд: аккаунты, история и схемы могут сброситься при перезапуске. Используйте только учебные данные.</aside>';
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(fs.readFileSync(file, 'utf8').replace(/<body\b[^>]*>/i, match => match + banner));
+    } else {
+      const stream = fs.createReadStream(file);
+      stream.on('error', () => {
+        if (!res.headersSent) res.status(404).json({ error: 'Static file unavailable' });
+        else res.destroy();
+      });
+      stream.pipe(res);
+    }
+  } catch {
+    if (!res.headersSent) res.status(404).json({ error: 'Static file unavailable' });
+    else res.destroy();
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -196,7 +218,7 @@ const server = http.createServer(async (req, res) => {
   const safeRelativePath = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^\/+/, '');
   let filePath = path.resolve(uiDir, safeRelativePath);
 
-  if (!filePath.startsWith(uiDir)) {
+  if (!insideDirectory(uiDir, filePath)) {
     res.status(403).json({ error: 'Forbidden: Path traversal detected' });
     return;
   }
