@@ -4,6 +4,13 @@ on:
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
+    inputs:
+      test_notification:
+        description: 'Fail this manual run to test the operator notification channel'
+        type: boolean
+        default: false
+
+run-name: ${{ inputs.test_notification && 'LockGuard monitoring notification test' || 'Wake LockGuard for backups' }}
 
 permissions: {}
 
@@ -31,3 +38,8 @@ jobs:
             --retry-delay 8 --retry-max-time 180 \
             "$LOCKGUARD_RAILWAY_ORIGIN/api/v1/health"
           echo "The cabinet answered its health check."
+      - name: Exercise the failure notification using a synthetic event
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_notification }}
+        run: |
+          echo "::error::Synthetic LockGuard monitoring notification test."
+          exit 1
